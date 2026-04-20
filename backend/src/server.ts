@@ -1,0 +1,34 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import pinoHttp from 'pino-http';
+import { env } from './env.js';
+import { logger } from './lib/logger.js';
+import { healthRouter } from './routes/health.js';
+import { prisma } from './lib/prisma.js';
+import { redis } from './lib/redis.js';
+
+const app = express();
+
+app.use(helmet());
+app.use(cors());
+app.use(express.json({ limit: '100kb' }));
+app.use(pinoHttp({ logger }));
+
+app.use('/health', healthRouter);
+
+app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
+
+const server = app.listen(env.PORT, () => {
+  logger.info(`unplgd backend listening on http://localhost:${env.PORT}`);
+});
+
+async function shutdown(signal: string) {
+  logger.info({ signal }, 'shutting down');
+  server.close();
+  await Promise.allSettled([prisma.$disconnect(), redis.quit()]);
+  process.exit(0);
+}
+
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
