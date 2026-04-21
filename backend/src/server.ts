@@ -16,6 +16,9 @@ import { redis } from './lib/redis.js';
 
 const app = express();
 
+// Behind nginx reverse proxy - trust X-Forwarded-* so req.ip is the real client IP.
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '100kb' }));
