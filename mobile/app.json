@@ -48,7 +48,9 @@
         {
           "nfcPermission": "Unplgd foloseste NFC pentru a conecta prieteni si a colectiona pet-uri prin carduri."
         }
-      ]
+      ],
+      "expo-router",
+      "expo-secure-store"
     ]
   }
 }
