@@ -1,7 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
-import pinoHttp from 'pino-http';
+import { pinoHttp } from 'pino-http';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
