@@ -21,18 +21,24 @@ export function TextField({ label, error, style, ...rest }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: 6 },
-  label: { color: colors.textMuted, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  wrap: { gap: 8 },
+  label: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
   input: {
     backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    borderWidth: 2,
+    borderColor: colors.text,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
     color: colors.text,
     fontSize: 16,
+    fontWeight: '500',
   },
   inputError: { borderColor: colors.danger },
-  errorText: { color: colors.danger, fontSize: 12 },
+  errorText: { color: colors.danger, fontSize: 13, fontWeight: '600', marginLeft: 4 },
 });

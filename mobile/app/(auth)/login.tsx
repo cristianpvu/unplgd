@@ -44,13 +44,13 @@ export default function Login() {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <View style={styles.headerRow}>
-            <Pressable onPress={() => router.back()} hitSlop={12}>
-              <Text style={styles.back}>‹ Inapoi</Text>
+            <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+              <Text style={styles.back}>←</Text>
             </Pressable>
           </View>
 
-          <Text style={styles.title}>Bine ai revenit</Text>
-          <Text style={styles.subtitle}>Logheaza-te sa continui aventura</Text>
+          <Text style={styles.title}>Bine ai revenit! 👋</Text>
+          <Text style={styles.subtitle}>Continua aventura cu mascota ta</Text>
 
           <View style={styles.form}>
             <TextField
@@ -86,10 +86,31 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   scroll: { padding: 24, paddingBottom: 48 },
-  headerRow: { marginBottom: 16 },
-  back: { color: colors.textMuted, fontSize: 16 },
-  title: { color: colors.text, fontSize: 32, fontWeight: '700' },
-  subtitle: { color: colors.textMuted, marginTop: 6, marginBottom: 32 },
+  headerRow: { marginBottom: 24 },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  back: { color: colors.text, fontSize: 22, fontWeight: '700' },
+  title: { color: colors.text, fontSize: 32, fontWeight: '800' },
+  subtitle: { color: colors.text, marginTop: 6, marginBottom: 32, fontSize: 15, opacity: 0.7, fontWeight: '500' },
   form: { gap: 16 },
-  error: { color: colors.danger, fontSize: 14 },
+  error: {
+    color: colors.danger,
+    fontSize: 14,
+    fontWeight: '600',
+    backgroundColor: colors.dangerBg,
+    padding: 12,
+    borderRadius: 12,
+    textAlign: 'center',
+  },
 });

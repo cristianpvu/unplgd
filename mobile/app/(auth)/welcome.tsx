@@ -9,12 +9,15 @@ export default function Welcome() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.container}>
         <View style={styles.hero}>
+          <View style={styles.mascotPlaceholder}>
+            <Text style={styles.mascotEmoji}>🦝</Text>
+          </View>
           <Text style={styles.logo}>Unplgd</Text>
-          <Text style={styles.tagline}>Jocul prieteniilor reale</Text>
+          <Text style={styles.tagline}>Iesi afara. Fa-ti prieteni.{'\n'}Creste-ti mascota!</Text>
         </View>
 
         <View style={styles.actions}>
-          <Button label="Creeaza cont" onPress={() => router.push('/(auth)/register')} />
+          <Button label="Sa incepem!" onPress={() => router.push('/(auth)/register')} />
           <Button
             label="Am deja cont"
             variant="secondary"
@@ -35,7 +38,35 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
   },
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  logo: { color: colors.text, fontSize: 56, fontWeight: '800', letterSpacing: -2 },
-  tagline: { color: colors.textMuted, fontSize: 16, marginTop: 12 },
+  mascotPlaceholder: {
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 32,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  mascotEmoji: { fontSize: 96 },
+  logo: {
+    color: colors.text,
+    fontSize: 56,
+    fontWeight: '900',
+    letterSpacing: -2,
+  },
+  tagline: {
+    color: colors.text,
+    fontSize: 18,
+    textAlign: 'center',
+    marginTop: 8,
+    fontWeight: '600',
+    lineHeight: 26,
+    opacity: 0.8,
+  },
   actions: { gap: 12 },
 });

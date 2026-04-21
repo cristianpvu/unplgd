@@ -24,7 +24,7 @@ export function Button({ label, variant = 'primary', loading, disabled, style, .
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.text} />
+        <ActivityIndicator color={variant === 'secondary' ? colors.text : '#FFFFFF'} />
       ) : (
         <Text style={[styles.label, variantLabels[variant]]}>{label}</Text>
       )}
@@ -34,29 +34,34 @@ export function Button({ label, variant = 'primary', loading, disabled, style, .
 
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 14,
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  label: { fontSize: 16, fontWeight: '600' },
+  label: { fontSize: 17, fontWeight: '700', letterSpacing: 0.2 },
   disabled: { opacity: 0.5 },
-  pressed: { opacity: 0.85 },
+  pressed: { transform: [{ scale: 0.97 }], opacity: 0.9 },
 });
 
 const variantStyles = StyleSheet.create({
   primary: { backgroundColor: colors.accent },
   secondary: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.text,
   },
   danger: { backgroundColor: colors.danger },
 });
 
 const variantLabels = StyleSheet.create({
-  primary: { color: colors.text },
+  primary: { color: '#FFFFFF' },
   secondary: { color: colors.text },
-  danger: { color: colors.text },
+  danger: { color: '#FFFFFF' },
 });

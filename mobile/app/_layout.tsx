@@ -10,7 +10,7 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SafeAreaProvider>
-          <StatusBar style="light" />
+          <StatusBar style="dark" />
           <Slot />
         </SafeAreaProvider>
       </AuthProvider>
