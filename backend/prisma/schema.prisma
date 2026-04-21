@@ -1,5 +1,6 @@
-// Schema initiala - extindem incremental pe masura ce adaugam features.
-// Modele urmatoare (planificate): Friendship, DailyInteraction, Avatar, GameSession etc.
+// Schema incrementala. Modele viitoare planificate:
+// Avatar + AvatarItem, GameSession + rounds/answers, PetSpecies + NfcCard + UserPet,
+// Achievements. Le adaugam pe masura ce construim feature-urile.
 
 generator client {
   provider = "prisma-client-js"
@@ -22,5 +23,70 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  friendshipsSent     Friendship[]      @relation("FriendshipRequester")
+  friendshipsReceived Friendship[]      @relation("FriendshipReceiver")
+  interactionsAsA     DailyInteraction[] @relation("InteractionUser")
+  interactionsAsB     DailyInteraction[] @relation("InteractionFriend")
+  xpTransactions      XpTransaction[]
+
   @@index([email])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum InteractionMethod {
+  nfc
+  ble
+  manual
+}
+
+model Friendship {
+  id            String            @id @default(cuid())
+  requesterId   String
+  receiverId    String
+  status        FriendshipStatus  @default(PENDING)
+  connectedVia  InteractionMethod?
+  createdAt     DateTime          @default(now())
+  acceptedAt    DateTime?
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  receiver  User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, receiverId])
+  @@index([receiverId, status])
+  @@index([requesterId, status])
+}
+
+model DailyInteraction {
+  id        String            @id @default(cuid())
+  userId    String
+  friendId  String
+  date      DateTime          @db.Date
+  method    InteractionMethod
+  createdAt DateTime          @default(now())
+
+  user   User @relation("InteractionUser",   fields: [userId],   references: [id], onDelete: Cascade)
+  friend User @relation("InteractionFriend", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId, date])
+  @@index([userId, date])
+}
+
+model XpTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  amount      Int
+  sourceType  String
+  sourceId    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourceType, sourceId])
+  @@index([userId, createdAt])
 }

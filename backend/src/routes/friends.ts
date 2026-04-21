@@ -1,0 +1,121 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { FriendshipStatus, InteractionMethod } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { requireAuth } from '../middleware/auth.js';
+import { badRequest, notFound } from '../lib/errors.js';
+
+export const friendsRouter = Router();
+friendsRouter.use(requireAuth);
+
+const addSchema = z.object({
+  friendUserId: z.string().cuid(),
+  method: z.nativeEnum(InteractionMethod).default(InteractionMethod.nfc),
+});
+
+friendsRouter.post('/', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { friendUserId, method } = addSchema.parse(req.body);
+
+    if (friendUserId === me) throw badRequest('self_friend', 'Nu te poti adauga pe tine');
+
+    const friend = await prisma.user.findUnique({ where: { id: friendUserId } });
+    if (!friend) throw notFound('user_not_found', 'Utilizator inexistent');
+
+    const existing = await prisma.friendship.findFirst({
+      where: {
+        OR: [
+          { requesterId: me, receiverId: friendUserId },
+          { requesterId: friendUserId, receiverId: me },
+        ],
+      },
+    });
+
+    if (existing) {
+      res.json({ friendship: existing, created: false });
+      return;
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const friendship = await tx.friendship.create({
+        data: {
+          requesterId: me,
+          receiverId: friendUserId,
+          status: FriendshipStatus.ACCEPTED,
+          connectedVia: method,
+          acceptedAt: new Date(),
+        },
+      });
+
+      const [meResult, friendResult] = await Promise.all([
+        awardXp(me, XP_REWARDS.FRIENDSHIP_NEW, 'friendship_new', friendship.id, 'Prieten nou', tx),
+        awardXp(
+          friendUserId,
+          XP_REWARDS.FRIENDSHIP_NEW,
+          'friendship_new',
+          friendship.id,
+          'Prieten nou',
+          tx,
+        ),
+      ]);
+
+      return { friendship, me: meResult, friend: friendResult };
+    });
+
+    res.status(201).json({ ...result, created: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+friendsRouter.get('/', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const friendships = await prisma.friendship.findMany({
+      where: {
+        status: FriendshipStatus.ACCEPTED,
+        OR: [{ requesterId: me }, { receiverId: me }],
+      },
+      include: {
+        requester: { select: publicFields },
+        receiver: { select: publicFields },
+      },
+      orderBy: { acceptedAt: 'desc' },
+    });
+
+    const friends = friendships.map((f) => ({
+      friendshipId: f.id,
+      since: f.acceptedAt,
+      method: f.connectedVia,
+      user: f.requesterId === me ? f.receiver : f.requester,
+    }));
+
+    res.json({ friends });
+  } catch (e) {
+    next(e);
+  }
+});
+
+friendsRouter.delete('/:friendshipId', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { friendshipId } = req.params;
+    const fs = await prisma.friendship.findUnique({ where: { id: friendshipId } });
+    if (!fs || (fs.requesterId !== me && fs.receiverId !== me)) {
+      throw notFound('friendship_not_found', 'Prietenie inexistenta');
+    }
+    await prisma.friendship.delete({ where: { id: friendshipId } });
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+const publicFields = {
+  id: true,
+  name: true,
+  xp: true,
+  level: true,
+} as const;
