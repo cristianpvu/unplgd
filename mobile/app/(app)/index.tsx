@@ -1,9 +1,12 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { getMe } from '../../src/api/me';
 import { useAuth } from '../../src/lib/auth';
 import { Button } from '../../src/ui/Button';
+import { AvatarHead } from '../../src/avatar/AvatarHead';
+import { DEFAULT_PICKS } from '../../src/avatar/catalog';
 import { colors } from '../../src/theme/colors';
 
 export default function Home() {
@@ -20,11 +23,12 @@ export default function Home() {
           </View>
         </View>
 
-        <View style={styles.scene}>
+        <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-test')}>
           <View style={styles.mascot}>
-            <Text style={styles.mascotEmoji}>🦝</Text>
+            <AvatarHead picks={DEFAULT_PICKS} size={200} />
           </View>
-        </View>
+          <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
+        </Pressable>
 
         <View style={styles.card}>
           {isPending && <ActivityIndicator color={colors.accent} />}
@@ -90,6 +94,13 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   mascotEmoji: { fontSize: 110 },
+  tapHint: {
+    color: colors.text,
+    opacity: 0.6,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 16,
+  },
   card: {
     backgroundColor: colors.card,
     borderRadius: 24,
