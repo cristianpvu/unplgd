@@ -148,7 +148,7 @@ export const CATALOG: Catalog = {
     { id: 'fw-01', feature: 'shoes:f5f2ea:cfc7b5', name: 'Sneakers albi', level: 1 },
     { id: 'fw-02', feature: 'shoes:4a4340:2d2826', name: 'Adidasi negri', level: 1 },
     { id: 'fw-03', feature: 'shoes:c45a4a:8a3d34', name: 'Pantofi rosii', level: 5 },
-    { id: 'fw-04', feature: 'shoes:8a6a44:5d4528', name: 'Ghete', level: 10 },
+    { id: 'fw-04', feature: 'boots:8a6a44:5d4528', name: 'Ghete', level: 10 },
     { id: 'fw-05', feature: 'shoes:5ea06a:3e7a4a', name: 'Adidasi verzi', level: 10 },
   ],
   holding: [
@@ -197,7 +197,7 @@ export const DEFAULT_PICKS: AvatarPicks = {
 
 // Bump when the rendered SVG output changes (new layers, geometry, etc.).
 // Existing avatars are re-rendered on next read when their version is older.
-export const CATALOG_VERSION = 2;
+export const CATALOG_VERSION = 3;
 
 export const ALL_SLOTS: Slot[] = [
   'skin',
