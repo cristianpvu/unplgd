@@ -93,6 +93,26 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
   }
 });
 
+// Render-only endpoint for live preview while the user edits picks. Validates
+// (so locked items can't even be previewed) but does NOT persist anything.
+avatarRouter.post('/avatar/preview', requireAuth, async (req, res, next) => {
+  try {
+    const picks = picksSchema.parse(req.body) as unknown as AvatarPicks;
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId! },
+      select: { level: true },
+    });
+    if (!user) throw notFound('user_not_found', 'User not found');
+
+    const check = validatePicks(picks, user.level);
+    if (!check.ok) throw badRequest('invalid_picks', check.reason);
+
+    res.json({ svg: renderAvatarSvg(picks) });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Public catalog with locked/unlocked status so the mobile picker can render
 // without hardcoding the catalog twice (still mirrored for offline preview but
 // the level gates come from the server).
