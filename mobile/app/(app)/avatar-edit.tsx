@@ -11,6 +11,8 @@ import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
 
 const FACE_SLOTS: Slot[] = ['skin', 'hair', 'hairColor', 'eyes', 'mouth', 'eyebrows', 'glasses', 'earrings'];
+const BODY_SLOTS: Slot[] = ['bodyShape', 'top', 'outerwear', 'bottom', 'footwear', 'holding'];
+const ALL_SLOTS_ORDERED: Slot[] = [...FACE_SLOTS, ...BODY_SLOTS];
 
 const SLOT_LABEL: Record<Slot, string> = {
   skin: 'Ten',
@@ -100,13 +102,13 @@ export default function AvatarEdit() {
         {isPending || !picks ? (
           <ActivityIndicator color={colors.accent} />
         ) : (
-          <AvatarHead svg={previewSvg} size={200} />
+          <AvatarHead svg={previewSvg} height={240} />
         )}
       </View>
 
       <View style={styles.tabsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {FACE_SLOTS.map((s) => (
+          {ALL_SLOTS_ORDERED.map((s) => (
             <Pressable
               key={s}
               onPress={() => setActiveSlot(s)}
@@ -127,6 +129,10 @@ export default function AvatarEdit() {
               const selected = picks[activeSlot] === item.id;
               const locked = item.level > userLevel;
               const isColor = activeSlot === 'skin' || activeSlot === 'hairColor';
+              const isFaceSlot = FACE_SLOTS.includes(activeSlot);
+              // Body item features encode colors as 'type:fill:shadow:...';
+              // pull the fill hex for a quick swatch.
+              const bodyColor = !isFaceSlot && item.feature ? item.feature.split(':')[1] : null;
               return (
                 <Pressable
                   key={item.id}
@@ -139,12 +145,14 @@ export default function AvatarEdit() {
                 >
                   {isColor && item.feature ? (
                     <View style={[styles.swatch, { backgroundColor: `#${item.feature}` }]} />
-                  ) : item.feature ? (
+                  ) : isFaceSlot && item.feature ? (
                     <Image
                       source={{ uri: thumbnailUri(activeSlot, item, 96) }}
                       style={styles.thumb}
                       resizeMode="contain"
                     />
+                  ) : bodyColor ? (
+                    <View style={[styles.swatch, { backgroundColor: `#${bodyColor}` }]} />
                   ) : (
                     <View style={styles.thumbEmpty}>
                       <Text style={styles.optionEmoji}>∅</Text>
@@ -202,8 +210,8 @@ const styles = StyleSheet.create({
   previewBox: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 12,
-    minHeight: 220,
+    marginVertical: 8,
+    minHeight: 250,
   },
   tabsWrap: { borderBottomWidth: 1, borderBottomColor: colors.border, marginBottom: 8 },
   tabs: { paddingHorizontal: 16, gap: 8, paddingVertical: 8 },
@@ -246,12 +254,12 @@ const styles = StyleSheet.create({
   thumb: {
     width: 64,
     height: 64,
-    borderRadius: 32,
+    borderRadius: 12,
   },
   thumbEmpty: {
     width: 64,
     height: 64,
-    borderRadius: 32,
+    borderRadius: 12,
     backgroundColor: colors.bgAlt,
     alignItems: 'center',
     justifyContent: 'center',

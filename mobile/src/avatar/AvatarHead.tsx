@@ -2,21 +2,25 @@ import { ActivityIndicator, View, type ViewStyle } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors } from '../theme/colors';
 
+const ASPECT_W = 762;
+const ASPECT_H = 1400;
+
 type Props = {
   svg: string | null | undefined;
-  size?: number;
+  // `height` drives the rendered size; width is derived to preserve the
+  // 200×340 viewBox ratio so the body never gets squished into a square.
+  height?: number;
   style?: ViewStyle;
 };
 
-// Pure renderer. SVG comes from the server (cached on the Avatar row).
-// No DiceBear calls happen on the device — we only display what's stored.
-export function AvatarHead({ svg, size = 200, style }: Props) {
+export function AvatarHead({ svg, height = 220, style }: Props) {
+  const width = Math.round(height * (ASPECT_W / ASPECT_H));
   return (
     <View
       style={[
         {
-          width: size,
-          height: size,
+          width,
+          height,
           alignItems: 'center',
           justifyContent: 'center',
           backgroundColor: 'transparent',
@@ -25,7 +29,7 @@ export function AvatarHead({ svg, size = 200, style }: Props) {
       ]}
     >
       {svg ? (
-        <SvgXml xml={svg} width={size} height={size} />
+        <SvgXml xml={svg} width={width} height={height} />
       ) : (
         <ActivityIndicator color={colors.accent} />
       )}

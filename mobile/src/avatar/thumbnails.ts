@@ -17,7 +17,10 @@ export function thumbnailUri(slot: Slot, item: Item, size = 96): string {
   params.set('seed', 'thumb');
   params.set('size', String(size));
   params.set('backgroundColor', 'ffffff');
-  params.set('radius', '50');
+  // No radius clipping; long hair otherwise gets cut off. Slight zoom-out
+  // (scale<100) gives breathing room for tall hairstyles.
+  params.set('scale', '85');
+  params.set('translateY', '-5');
   params.set('featuresProbability', '0');
 
   const skin =

@@ -26,7 +26,7 @@ export default function Home() {
 
         <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-edit')}>
           <View style={styles.mascot}>
-            <AvatarHead svg={avatar?.svg} size={200} />
+            <AvatarHead svg={avatar?.svg} height={260} />
           </View>
           <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
         </Pressable>
@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   mascot: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    borderRadius: 28,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
