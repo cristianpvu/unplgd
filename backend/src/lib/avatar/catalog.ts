@@ -195,7 +195,9 @@ export const DEFAULT_PICKS: AvatarPicks = {
   holding: 'hd-00',
 };
 
-export const CATALOG_VERSION = 1;
+// Bump when the rendered SVG output changes (new layers, geometry, etc.).
+// Existing avatars are re-rendered on next read when their version is older.
+export const CATALOG_VERSION = 2;
 
 export const ALL_SLOTS: Slot[] = [
   'skin',

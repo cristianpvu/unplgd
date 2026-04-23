@@ -34,6 +34,15 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
           catalogVersion: CATALOG_VERSION,
         },
       });
+    } else if (avatar.catalogVersion < CATALOG_VERSION) {
+      // Catalog/render output changed since this avatar was last saved.
+      // Re-render from existing picks so the user sees the new look without
+      // needing to re-save manually.
+      const svg = renderAvatarSvg(avatar.picks as unknown as AvatarPicks);
+      avatar = await prisma.avatar.update({
+        where: { userId: user.id },
+        data: { svg, catalogVersion: CATALOG_VERSION },
+      });
     }
 
     res.json({

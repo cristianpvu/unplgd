@@ -8,6 +8,7 @@ import { createAvatar } from '@dicebear/core';
 import * as adventurer from '@dicebear/adventurer';
 import type { Options as AdventurerOptions } from '@dicebear/adventurer';
 import { findItem, type AvatarPicks } from './catalog.js';
+import { composeAvatar } from './body.js';
 
 // Adventurer always renders eyes/mouth/eyebrows (no probability gate). The
 // optional features (hair, glasses, earrings) take an *Probability scalar in
@@ -55,10 +56,10 @@ function picksToOptions(picks: AvatarPicks): AdventurerOptions {
 
 export function renderAvatarSvg(picks: AvatarPicks): string {
   const options = picksToOptions(picks);
-  const result = createAvatar(adventurer, {
+  const head = createAvatar(adventurer, {
     seed: 'unplgd',
     backgroundColor: ['transparent'],
     ...options,
-  });
-  return result.toString();
+  }).toString();
+  return composeAvatar(picks, head);
 }
