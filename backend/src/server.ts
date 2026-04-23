@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js';
 import { meRouter } from './routes/me.js';
 import { friendsRouter } from './routes/friends.js';
 import { interactionsRouter } from './routes/interactions.js';
+import { avatarRouter } from './routes/avatar.js';
 import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
@@ -29,6 +30,7 @@ app.use('/auth', authRateLimit, authRouter);
 app.use('/me', meRouter);
 app.use('/friends', friendsRouter);
 app.use('/interactions', interactionsRouter);
+app.use(avatarRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);

@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js';
 import { hashPassword, verifyPassword } from '../lib/hash.js';
 import { signToken } from '../lib/jwt.js';
 import { badRequest, conflict, unauthorized } from '../lib/errors.js';
+import { CATALOG_VERSION, DEFAULT_PICKS } from '../lib/avatar/catalog.js';
+import { renderAvatarSvg } from '../lib/avatar/render.js';
 
 export const authRouter = Router();
 
@@ -32,6 +34,13 @@ authRouter.post('/register', async (req, res, next) => {
         name: body.name,
         birthDate: body.birthDate,
         passwordHash: await hashPassword(body.password),
+        avatar: {
+          create: {
+            picks: DEFAULT_PICKS,
+            svg: renderAvatarSvg(DEFAULT_PICKS),
+            catalogVersion: CATALOG_VERSION,
+          },
+        },
       },
     });
 
