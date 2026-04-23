@@ -1,35 +1,16 @@
-import { useEffect, useState } from 'react';
 import { ActivityIndicator, View, type ViewStyle } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { fetchAvatarSvg, picksToOptions } from './dicebear';
-import type { AvatarPicks } from './catalog';
 import { colors } from '../theme/colors';
 
 type Props = {
-  picks: AvatarPicks;
+  svg: string | null | undefined;
   size?: number;
   style?: ViewStyle;
 };
 
-export function AvatarHead({ picks, size = 200, style }: Props) {
-  const [svg, setSvg] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setError(false);
-    fetchAvatarSvg(picksToOptions(picks))
-      .then((s) => {
-        if (!cancelled) setSvg(s);
-      })
-      .catch(() => {
-        if (!cancelled) setError(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [picks]);
-
+// Pure renderer. SVG comes from the server (cached on the Avatar row).
+// No DiceBear calls happen on the device — we only display what's stored.
+export function AvatarHead({ svg, size = 200, style }: Props) {
   return (
     <View
       style={[
@@ -43,8 +24,11 @@ export function AvatarHead({ picks, size = 200, style }: Props) {
         style,
       ]}
     >
-      {!svg && !error && <ActivityIndicator color={colors.accent} />}
-      {svg && <SvgXml xml={svg} width={size} height={size} />}
+      {svg ? (
+        <SvgXml xml={svg} width={size} height={size} />
+      ) : (
+        <ActivityIndicator color={colors.accent} />
+      )}
     </View>
   );
 }

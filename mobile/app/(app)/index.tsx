@@ -3,15 +3,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { getMe } from '../../src/api/me';
+import { getMyAvatar } from '../../src/api/avatar';
 import { useAuth } from '../../src/lib/auth';
 import { Button } from '../../src/ui/Button';
 import { AvatarHead } from '../../src/avatar/AvatarHead';
-import { DEFAULT_PICKS } from '../../src/avatar/catalog';
 import { colors } from '../../src/theme/colors';
 
 export default function Home() {
   const { signOut } = useAuth();
   const { data: me, isPending, error } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const { data: avatar } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -23,9 +24,9 @@ export default function Home() {
           </View>
         </View>
 
-        <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-test')}>
+        <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-edit')}>
           <View style={styles.mascot}>
-            <AvatarHead picks={DEFAULT_PICKS} size={200} />
+            <AvatarHead svg={avatar?.svg} size={200} />
           </View>
           <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
         </Pressable>
@@ -47,7 +48,7 @@ export default function Home() {
                 </View>
               </View>
               <Text style={styles.placeholder}>
-                Mascota si prietenii tai apar aici cand adaugam urmatoarele feature-uri. ✨
+                Mascota si prietenii tai apar aici cand adaugam urmatoarele feature-uri.
               </Text>
             </>
           )}
@@ -93,7 +94,6 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
-  mascotEmoji: { fontSize: 110 },
   tapHint: {
     color: colors.text,
     opacity: 0.6,
