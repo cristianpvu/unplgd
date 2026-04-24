@@ -6,11 +6,11 @@ import { colors } from '../theme/colors';
 const ASPECT_W = 762;
 const ASPECT_H = 1400;
 
-// Breathing: scale subtila pe loop ca avatarul sa "respire". Amplitudinea
-// minima (1%) ca sa nu para o pulsare medicala.
-const BREATH_MIN = 1.0;
-const BREATH_MAX = 1.012;
-const BREATH_PERIOD = 3500;
+// Idle bob: translatie verticala subtila pe loop. Scale facea tot corpul sa
+// pulseze, asa ca am inlocuit cu un bob vertical de cativa pixeli — citeste
+// vizual ca o respiratie naturala fara sa "umfle" avatarul.
+const BOB_AMPLITUDE_RATIO = 0.012;
+const BOB_PERIOD = 3800;
 
 // Blink: tinem ochii inchisi ~140ms, apoi reluam la interval random intre
 // 2.5s si 5s. Random-ul evita sincronizarea perceputa la mai multe avataruri
@@ -32,22 +32,23 @@ type Props = {
 
 export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true }: Props) {
   const width = Math.round(height * (ASPECT_W / ASPECT_H));
-  const scale = useRef(new Animated.Value(BREATH_MIN)).current;
+  const bobAmplitude = Math.max(2, Math.round(height * BOB_AMPLITUDE_RATIO));
+  const bob = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (!animate || !svg) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(scale, {
-          toValue: BREATH_MAX,
-          duration: BREATH_PERIOD / 2,
+        Animated.timing(bob, {
+          toValue: 1,
+          duration: BOB_PERIOD / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
-        Animated.timing(scale, {
-          toValue: BREATH_MIN,
-          duration: BREATH_PERIOD / 2,
+        Animated.timing(bob, {
+          toValue: 0,
+          duration: BOB_PERIOD / 2,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -55,7 +56,7 @@ export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true 
     );
     loop.start();
     return () => loop.stop();
-  }, [animate, svg, scale]);
+  }, [animate, svg, bob]);
 
   useEffect(() => {
     if (!animate || !svg || !svgBlink) return;
@@ -97,7 +98,20 @@ export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true 
       ]}
     >
       {svg ? (
-        <Animated.View style={{ width, height, transform: [{ scale }] }}>
+        <Animated.View
+          style={{
+            width,
+            height,
+            transform: [
+              {
+                translateY: bob.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -bobAmplitude],
+                }),
+              },
+            ],
+          }}
+        >
           <SvgXml xml={svg} width={width} height={height} />
           {svgBlink ? (
             <Animated.View

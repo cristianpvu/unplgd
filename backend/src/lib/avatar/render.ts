@@ -22,10 +22,11 @@ const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbabilit
 
 type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
 
-// Variant Adventurer cu ochii inchisi — folosit pentru frame-ul de blink.
-// Crossfade pe mobil intre svg si svgBlink simuleaza clipitul fara a re-randa
-// nimic la runtime.
-export const BLINK_EYES_VARIANT: AdventurerVariant = 'variant22';
+// Variant Adventurer cu ambii ochi inchisi (curbe "u" simple, fara pupile) —
+// folosit pentru frame-ul de blink. Crossfade pe mobil intre svg si svgBlink
+// simuleaza clipitul fara a re-randa nimic la runtime. NU folosi variant22
+// (e wink, doar un ochi).
+export const BLINK_EYES_VARIANT: AdventurerVariant = 'variant20';
 
 function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant): AdventurerOptions {
   const skin = items.skin.feature ?? 'ecad80';
