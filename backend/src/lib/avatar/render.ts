@@ -22,7 +22,12 @@ const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbabilit
 
 type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
 
-function itemsToOptions(items: EquippedItems): AdventurerOptions {
+// Variant Adventurer cu ochii inchisi — folosit pentru frame-ul de blink.
+// Crossfade pe mobil intre svg si svgBlink simuleaza clipitul fara a re-randa
+// nimic la runtime.
+export const BLINK_EYES_VARIANT: AdventurerVariant = 'variant22';
+
+function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant): AdventurerOptions {
   const skin = items.skin.feature ?? 'ecad80';
   const hairColor = items.hairColor.feature ?? '6a4e35';
 
@@ -32,7 +37,8 @@ function itemsToOptions(items: EquippedItems): AdventurerOptions {
     featuresProbability: 0,
   };
 
-  if (items.eyes.feature) opts.eyes = [items.eyes.feature as AdventurerVariant];
+  const eyesFeature = eyesOverride ?? (items.eyes.feature as AdventurerVariant | undefined);
+  if (eyesFeature) opts.eyes = [eyesFeature];
   if (items.mouth.feature) opts.mouth = [items.mouth.feature as NonNullable<AdventurerOptions['mouth']>[number]];
   if (items.eyebrows.feature) opts.eyebrows = [items.eyebrows.feature as NonNullable<AdventurerOptions['eyebrows']>[number]];
 
@@ -50,12 +56,20 @@ function itemsToOptions(items: EquippedItems): AdventurerOptions {
   return opts;
 }
 
-export function renderAvatarSvg(items: EquippedItems): string {
-  const options = itemsToOptions(items);
+function renderHead(items: EquippedItems, eyesOverride?: AdventurerVariant): string {
+  const options = itemsToOptions(items, eyesOverride);
   const head = createAvatar(adventurer, {
     seed: 'unplgd',
     backgroundColor: ['transparent'],
     ...options,
   }).toString();
   return composeAvatar(items, head);
+}
+
+export function renderAvatarSvg(items: EquippedItems): string {
+  return renderHead(items);
+}
+
+export function renderAvatarBlinkSvg(items: EquippedItems): string {
+  return renderHead(items, BLINK_EYES_VARIANT);
 }

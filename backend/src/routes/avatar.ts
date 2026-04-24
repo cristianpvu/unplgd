@@ -12,7 +12,7 @@ import {
   type AvatarWithItems,
   type Slot,
 } from '../lib/avatar/catalog.js';
-import { renderAvatarSvg } from '../lib/avatar/render.js';
+import { renderAvatarBlinkSvg, renderAvatarSvg } from '../lib/avatar/render.js';
 
 export const avatarRouter = Router();
 
@@ -97,7 +97,7 @@ function validateLevels(items: Record<Slot, Item>, userLevel: number): string | 
   return null;
 }
 
-// Serializeaza un Avatar cu relatii in payload-ul API: { picks: slug-uri, svg, level }
+// Serializeaza un Avatar cu relatii in payload-ul API: { picks: slug-uri, svg, svgBlink, level }
 function serializeAvatar(avatar: AvatarWithItems, level: number) {
   const equipped = equippedBySlot(avatar);
   const picks: Record<Slot, string> = {} as Record<Slot, string>;
@@ -105,6 +105,7 @@ function serializeAvatar(avatar: AvatarWithItems, level: number) {
   return {
     picks,
     svg: avatar.svg,
+    svgBlink: avatar.svgBlink,
     level,
     updatedAt: avatar.updatedAt,
   };
@@ -127,8 +128,19 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
       if (missing.length) throw serverError('seed_incomplete', `Missing default items: ${missing.join(', ')}`);
 
       const svg = renderAvatarSvg(items);
+      const svgBlink = renderAvatarBlinkSvg(items);
       avatar = await prisma.avatar.create({
-        data: { userId: user.id, svg, ...itemsToFkData(items) },
+        data: { userId: user.id, svg, svgBlink, ...itemsToFkData(items) },
+        include: AVATAR_INCLUDE,
+      });
+    } else if (!avatar.svgBlink) {
+      // Backfill lazy pentru avataruri create inainte de coloana svgBlink:
+      // re-randam frame-ul de blink din item-urile echipate curent.
+      const equipped = equippedBySlot(avatar);
+      const svgBlink = renderAvatarBlinkSvg(equipped);
+      avatar = await prisma.avatar.update({
+        where: { userId: user.id },
+        data: { svgBlink },
         include: AVATAR_INCLUDE,
       });
     }
@@ -153,12 +165,13 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
     if (lockedReason) throw badRequest('locked', lockedReason);
 
     const svg = renderAvatarSvg(items);
+    const svgBlink = renderAvatarBlinkSvg(items);
     const fkData = itemsToFkData(items);
 
     const avatar = await prisma.avatar.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, svg, ...fkData },
-      update: { svg, ...fkData },
+      create: { userId: user.id, svg, svgBlink, ...fkData },
+      update: { svg, svgBlink, ...fkData },
       include: AVATAR_INCLUDE,
     });
 

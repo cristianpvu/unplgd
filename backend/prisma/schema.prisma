@@ -91,6 +91,10 @@ model Avatar {
   id        String   @id @default(cuid())
   userId    String   @unique
   svg       String
+  // Frame de blink: acelasi avatar cu ochii suprascrisi (variant22). Generat
+  // odata cu `svg` la save. Nullable pentru avataruri create inainte de
+  // animatii — se completeaza lazy la primul GET dupa deploy.
+  svgBlink  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

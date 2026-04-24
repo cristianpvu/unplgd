@@ -1,0 +1,1 @@
+ALTER TABLE "Avatar" ADD COLUMN "svgBlink" TEXT;

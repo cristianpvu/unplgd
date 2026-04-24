@@ -4,6 +4,7 @@ import type { AvatarPicks, Slot } from '../avatar/catalog';
 export type AvatarResponse = {
   picks: AvatarPicks;
   svg: string;
+  svgBlink: string | null;
   level: number;
   updatedAt: string;
 };

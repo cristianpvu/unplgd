@@ -26,7 +26,7 @@ export default function Home() {
 
         <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-edit')}>
           <View style={styles.mascot}>
-            <AvatarHead svg={avatar?.svg} height={260} />
+            <AvatarHead svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={260} />
           </View>
           <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
         </Pressable>
