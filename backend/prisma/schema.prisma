@@ -37,10 +37,14 @@ model User {
 // concreta (skin-02 "Nisip"). Datele sunt seed-uite din prisma/seed.ts. Slug-ul
 // e identificatorul stabil folosit in API-ul cu mobile (mobile trimite "skin-02",
 // backend rezolva la id intern).
+// `group` separa tab-urile mari din editor: "face" (ten, par, ochi...) vs
+// "body" (top, pantaloni, ghete...). Stocat ca string nu enum ca sa adaugam
+// usor grupuri noi (ex: "accessories") fara migrare de schema.
 model ItemType {
   id        String @id @default(cuid())
   slug      String @unique
   name      String
+  group     String
   sortOrder Int    @default(0)
 
   items Item[]

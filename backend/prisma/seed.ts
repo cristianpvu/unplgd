@@ -19,6 +19,7 @@ type SeedItem = {
 type SeedType = {
   slug: string;
   name: string;
+  group: 'face' | 'body';
   items: SeedItem[];
 };
 
@@ -26,6 +27,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'skin',
     name: 'Ten',
+    group: 'face',
     items: [
       { slug: 'skin-01', feature: 'f2d3b1', name: 'Alabastru', level: 1 },
       { slug: 'skin-02', feature: 'ecad80', name: 'Nisip', level: 1 },
@@ -38,6 +40,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'hairColor',
     name: 'Culoare par',
+    group: 'face',
     items: [
       { slug: 'hc-01', feature: '0e0e0e', name: 'Negru', level: 1 },
       { slug: 'hc-02', feature: '6a4e35', name: 'Saten', level: 1 },
@@ -52,6 +55,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'hair',
     name: 'Coafura',
+    group: 'face',
     items: [
       { slug: 'h-01', feature: 'short01', name: 'Tuns scurt', level: 1 },
       { slug: 'h-02', feature: 'short02', name: 'Volum classic', level: 1 },
@@ -77,6 +81,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'eyes',
     name: 'Ochi',
+    group: 'face',
     items: [
       { slug: 'e-01', feature: 'variant01', name: 'Rotund', level: 1 },
       { slug: 'e-02', feature: 'variant02', name: 'Bland', level: 1 },
@@ -92,6 +97,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'mouth',
     name: 'Gura',
+    group: 'face',
     items: [
       { slug: 'm-01', feature: 'variant01', name: 'Zambet mic', level: 1 },
       { slug: 'm-02', feature: 'variant05', name: 'Fericire', level: 1 },
@@ -106,6 +112,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'eyebrows',
     name: 'Sprancene',
+    group: 'face',
     items: [
       { slug: 'b-01', feature: 'variant01', name: 'Naturale', level: 1 },
       { slug: 'b-02', feature: 'variant05', name: 'Arcuite', level: 1 },
@@ -117,6 +124,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'glasses',
     name: 'Ochelari',
+    group: 'face',
     items: [
       { slug: 'g-00', feature: null, name: 'Fara', level: 1 },
       { slug: 'g-01', feature: 'variant01', name: 'Rotunzi', level: 5 },
@@ -127,6 +135,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'earrings',
     name: 'Cercei',
+    group: 'face',
     items: [
       { slug: 'a-00', feature: null, name: 'Fara', level: 1 },
       { slug: 'a-01', feature: 'variant01', name: 'Mic', level: 5 },
@@ -137,6 +146,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'bodyShape',
     name: 'Corp',
+    group: 'body',
     items: [
       { slug: 'bs-slim', feature: 'slim', name: 'Zvelt', level: 1 },
       { slug: 'bs-medium', feature: 'medium', name: 'Mediu', level: 1 },
@@ -146,6 +156,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'top',
     name: 'Tricou',
+    group: 'body',
     items: [
       { slug: 't-01', feature: 'tee:e8e3d5:d4ccb8:short', name: 'Tricou alb', level: 1 },
       { slug: 't-02', feature: 'tee:3d6fa3:2a5283:short', name: 'Tricou albastru', level: 1 },
@@ -162,6 +173,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'outerwear',
     name: 'Jacheta',
+    group: 'body',
     items: [
       { slug: 'ow-00', feature: null, name: 'Fara', level: 1 },
       { slug: 'ow-01', feature: 'vest:4a4340:2d2826', name: 'Vesta inchisa', level: 5 },
@@ -172,6 +184,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'bottom',
     name: 'Pantaloni',
+    group: 'body',
     items: [
       { slug: 'b-01', feature: 'pants:3d6fa3:2a5283:long', name: 'Blugi', level: 1 },
       { slug: 'b-02', feature: 'pants:4a4340:2d2826:long', name: 'Pantaloni negri', level: 1 },
@@ -185,6 +198,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'footwear',
     name: 'Incaltaminte',
+    group: 'body',
     items: [
       { slug: 'fw-01', feature: 'shoes:f5f2ea:cfc7b5', name: 'Sneakers albi', level: 1 },
       { slug: 'fw-02', feature: 'shoes:4a4340:2d2826', name: 'Adidasi negri', level: 1 },
@@ -196,6 +210,7 @@ const TYPES: SeedType[] = [
   {
     slug: 'holding',
     name: 'In mana',
+    group: 'body',
     items: [
       { slug: 'hd-00', feature: null, name: 'Mana libera', level: 1 },
       { slug: 'hd-01', feature: 'hand::::book', name: 'Carte', level: 5 },
@@ -211,8 +226,8 @@ async function main() {
   for (const [typeIdx, type] of TYPES.entries()) {
     const typeRow = await prisma.itemType.upsert({
       where: { slug: type.slug },
-      create: { slug: type.slug, name: type.name, sortOrder: typeIdx },
-      update: { name: type.name, sortOrder: typeIdx },
+      create: { slug: type.slug, name: type.name, group: type.group, sortOrder: typeIdx },
+      update: { name: type.name, group: type.group, sortOrder: typeIdx },
     });
 
     for (const [itemIdx, item] of type.items.entries()) {

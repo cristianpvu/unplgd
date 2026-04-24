@@ -4,13 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AvatarHead } from '../../src/avatar/AvatarHead';
-import {
-  ALL_SLOTS_ORDERED,
-  FACE_SLOTS,
-  SLOT_LABEL,
-  type AvatarPicks,
-  type Slot,
-} from '../../src/avatar/catalog';
+import type { AvatarPicks, Slot } from '../../src/avatar/catalog';
 import { thumbnailUri } from '../../src/avatar/thumbnails';
 import {
   getAvatarCatalog,
@@ -18,6 +12,7 @@ import {
   previewAvatar,
   updateMyAvatar,
   type AvatarResponse,
+  type CatalogType,
 } from '../../src/api/avatar';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
@@ -26,7 +21,7 @@ export default function AvatarEdit() {
   const qc = useQueryClient();
   const { data, isPending } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
   // Catalogul vine separat ca sa cache-uim aspectele pe termen lung — se
-  // schimba doar la deploy nou, nu la fiecare salvare.
+  // schimba doar la deploy nou (seed), nu la fiecare salvare.
   const { data: catalog } = useQuery({
     queryKey: ['avatar', 'catalog'],
     queryFn: getAvatarCatalog,
@@ -34,7 +29,8 @@ export default function AvatarEdit() {
   });
 
   const [picks, setPicks] = useState<AvatarPicks | null>(null);
-  const [activeSlot, setActiveSlot] = useState<Slot>('skin');
+  // Slot-ul activ — initializat cu primul tip din catalog dupa ce vine.
+  const [activeSlot, setActiveSlot] = useState<Slot | null>(null);
   const [previewSvg, setPreviewSvg] = useState<string | null>(null);
   const previewSeq = useRef(0);
 
@@ -44,6 +40,12 @@ export default function AvatarEdit() {
       setPreviewSvg(data.svg);
     }
   }, [data, picks]);
+
+  useEffect(() => {
+    if (catalog && !activeSlot && catalog.types.length > 0) {
+      setActiveSlot(catalog.types[0].slug);
+    }
+  }, [catalog, activeSlot]);
 
   const dirty = useMemo(() => {
     if (!data || !picks) return false;
@@ -84,8 +86,7 @@ export default function AvatarEdit() {
     setPicks((p) => (p ? { ...p, [slot]: id } : p));
   }
 
-  const userLevel = catalog?.level ?? data?.level ?? 1;
-  const slotItems = catalog?.slots[activeSlot] ?? [];
+  const activeType: CatalogType | undefined = catalog?.types.find((t) => t.slug === activeSlot);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -107,14 +108,14 @@ export default function AvatarEdit() {
 
       <View style={styles.tabsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {ALL_SLOTS_ORDERED.map((s) => (
+          {catalog?.types.map((t) => (
             <Pressable
-              key={s}
-              onPress={() => setActiveSlot(s)}
-              style={[styles.tab, activeSlot === s && styles.tabActive]}
+              key={t.slug}
+              onPress={() => setActiveSlot(t.slug)}
+              style={[styles.tab, activeSlot === t.slug && styles.tabActive]}
             >
-              <Text style={[styles.tabText, activeSlot === s && styles.tabTextActive]}>
-                {SLOT_LABEL[s]}
+              <Text style={[styles.tabText, activeSlot === t.slug && styles.tabTextActive]}>
+                {t.name}
               </Text>
             </Pressable>
           ))}
@@ -123,18 +124,18 @@ export default function AvatarEdit() {
 
       <ScrollView contentContainerStyle={styles.optionsScroll}>
         <View style={styles.options}>
-          {picks &&
-            slotItems.map((item) => {
-              const selected = picks[activeSlot] === item.slug;
-              const isColor = activeSlot === 'skin' || activeSlot === 'hairColor';
-              const isFaceSlot = FACE_SLOTS.includes(activeSlot);
+          {picks && activeType &&
+            activeType.items.map((item) => {
+              const selected = picks[activeType.slug] === item.slug;
+              const isColor = activeType.slug === 'skin' || activeType.slug === 'hairColor';
+              const isFaceSlot = activeType.group === 'face';
               // Body item features encode colors as 'type:fill:shadow:...';
               // pull the fill hex for a quick swatch.
               const bodyColor = !isFaceSlot && item.feature ? item.feature.split(':')[1] : null;
               return (
                 <Pressable
                   key={item.slug}
-                  onPress={() => !item.locked && setSlot(activeSlot, item.slug)}
+                  onPress={() => !item.locked && setSlot(activeType.slug, item.slug)}
                   style={[
                     styles.optionCard,
                     selected && styles.optionSelected,
@@ -145,7 +146,7 @@ export default function AvatarEdit() {
                     <View style={[styles.swatch, { backgroundColor: `#${item.feature}` }]} />
                   ) : isFaceSlot && item.feature ? (
                     <Image
-                      source={{ uri: thumbnailUri(activeSlot, item, 96) }}
+                      source={{ uri: thumbnailUri(activeType.slug, item, 96) }}
                       style={styles.thumb}
                       resizeMode="contain"
                     />

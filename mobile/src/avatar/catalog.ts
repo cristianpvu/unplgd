@@ -1,6 +1,6 @@
-// Sloturi avatar + ordonare pentru UI. Datele propriu-zise (item-uri,
-// nivele, deblocari) vin de pe backend prin GET /avatar/catalog. Tinem aici
-// doar lista canonica de sloturi si labelurile pentru tabs.
+// Singura informatie hardcodata local: lista de sloturi (pentru type-safety
+// pe AvatarPicks). Toata metadata (label, grup, ordonare, item-uri, level)
+// vine de pe backend prin GET /avatar/catalog.
 
 export const SLOTS = [
   'skin',
@@ -22,6 +22,7 @@ export const SLOTS = [
 export type Slot = (typeof SLOTS)[number];
 
 export type AvatarPicks = Record<Slot, string>;
+tring>;
 
 export const SLOT_LABEL: Record<Slot, string> = {
   skin: 'Ten',

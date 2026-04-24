@@ -9,7 +9,6 @@ export type AvatarResponse = {
 };
 
 export type CatalogItem = {
-  id: string; // = slug; expus ca "id" pentru compatibilitate cu UI-ul existent
   slug: string;
   name: string;
   feature: string | null;
@@ -17,9 +16,16 @@ export type CatalogItem = {
   locked: boolean;
 };
 
+export type CatalogType = {
+  slug: Slot;
+  name: string;
+  group: 'face' | 'body';
+  items: CatalogItem[];
+};
+
 export type CatalogResponse = {
   level: number;
-  slots: Record<Slot, CatalogItem[]>;
+  types: CatalogType[];
 };
 
 export function getMyAvatar() {

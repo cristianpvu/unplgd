@@ -201,19 +201,22 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
       include: { items: { orderBy: { sortOrder: 'asc' } } },
     });
 
-    const slots: Record<string, Array<{ id: string; slug: string; name: string; feature: string | null; level: number; locked: boolean }>> = {};
-    for (const type of types) {
-      slots[type.slug] = type.items.map((item) => ({
-        id: item.slug, // mobile se identifica dupa slug; cuid e detaliu intern DB
+    // Returnam un array de tipuri (cu label, grup, sortOrder) — mobile
+    // randeaza tab-urile direct din asta, fara metadata hardcodata local.
+    const responseTypes = types.map((type) => ({
+      slug: type.slug,
+      name: type.name,
+      group: type.group,
+      items: type.items.map((item) => ({
         slug: item.slug,
         name: item.name,
         feature: item.feature,
         level: item.level,
         locked: item.level > user.level,
-      }));
-    }
+      })),
+    }));
 
-    res.json({ level: user.level, slots });
+    res.json({ level: user.level, types: responseTypes });
   } catch (e) {
     next(e);
   }
