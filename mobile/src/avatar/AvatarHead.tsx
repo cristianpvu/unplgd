@@ -6,17 +6,6 @@ import { colors } from '../theme/colors';
 const ASPECT_W = 762;
 const ASPECT_H = 1400;
 
-// Idle bob: translatie verticala subtila pe loop. Scale facea tot corpul sa
-// pulseze, asa ca am inlocuit cu un bob vertical de cativa pixeli — citeste
-// vizual ca o respiratie naturala fara sa "umfle" avatarul.
-const BOB_AMPLITUDE_RATIO = 0.012;
-const BOB_PERIOD = 3800;
-
-// Tilt: rotatie pe alt loop, period diferit fata de bob ca sa nu fie sincron
-// (ar parea robotic). Amplitudine mica — peste 2° devine clar "swinging".
-const TILT_DEGREES = 1.5;
-const TILT_PERIOD = 4600;
-
 // Blink: tinem ochii inchisi ~140ms, apoi reluam la interval random intre
 // 2.5s si 5s. Random-ul evita sincronizarea perceputa la mai multe avataruri
 // pe ecran (de ex lista prieteni).
@@ -48,9 +37,6 @@ export const AvatarHead = forwardRef<AvatarHeadHandle, Props>(function AvatarHea
   ref,
 ) {
   const width = Math.round(height * (ASPECT_W / ASPECT_H));
-  const bobAmplitude = Math.max(2, Math.round(height * BOB_AMPLITUDE_RATIO));
-  const bob = useRef(new Animated.Value(0)).current;
-  const tilt = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(0)).current;
   const bounce = useRef(new Animated.Value(1)).current;
 
@@ -74,54 +60,6 @@ export const AvatarHead = forwardRef<AvatarHeadHandle, Props>(function AvatarHea
       ]).start();
     },
   }));
-
-  useEffect(() => {
-    if (!animate || !svg) return;
-    const bobLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(bob, {
-          toValue: 1,
-          duration: BOB_PERIOD / 2,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(bob, {
-          toValue: 0,
-          duration: BOB_PERIOD / 2,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    const tiltLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(tilt, {
-          toValue: 1,
-          duration: TILT_PERIOD / 2,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(tilt, {
-          toValue: -1,
-          duration: TILT_PERIOD,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(tilt, {
-          toValue: 0,
-          duration: TILT_PERIOD / 2,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    bobLoop.start();
-    tiltLoop.start();
-    return () => {
-      bobLoop.stop();
-      tiltLoop.stop();
-    };
-  }, [animate, svg, bob, tilt]);
 
   useEffect(() => {
     if (!animate || !svg || !svgBlink) return;
@@ -163,27 +101,7 @@ export const AvatarHead = forwardRef<AvatarHeadHandle, Props>(function AvatarHea
       ]}
     >
       {svg ? (
-        <Animated.View
-          style={{
-            width,
-            height,
-            transform: [
-              {
-                translateY: bob.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -bobAmplitude],
-                }),
-              },
-              {
-                rotate: tilt.interpolate({
-                  inputRange: [-1, 1],
-                  outputRange: [`-${TILT_DEGREES}deg`, `${TILT_DEGREES}deg`],
-                }),
-              },
-              { scale: bounce },
-            ],
-          }}
-        >
+        <Animated.View style={{ width, height, transform: [{ scale: bounce }] }}>
           <SvgXml xml={svg} width={width} height={height} />
           {svgBlink ? (
             <Animated.View
