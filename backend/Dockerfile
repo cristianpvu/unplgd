@@ -19,4 +19,6 @@ RUN npm ci && npm cache clean --force
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/server.js"]
+# Seed-ul e idempotent (upsert pe slug), il rulam la fiecare start ca sa
+# garantam ca tabelele Item/ItemType reflecta intotdeauna codul deployat.
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/server.js"]
