@@ -3,16 +3,19 @@
 // picker only shows ~80 unique items total. The real avatar render still
 // happens server-side; this is just for the picker UI.
 
-import { findItem, type Slot, type Item } from './catalog';
+import type { Slot } from './catalog';
+import type { CatalogItem } from '../api/avatar';
 
 const BASE = 'https://api.dicebear.com/9.x/adventurer/png';
 
+const DEFAULT_SKIN = 'ecad80';
+const DEFAULT_HAIR_COLOR = '6a4e35';
 const DEFAULT_HAIR = 'short02';
 const DEFAULT_EYES = 'variant01';
 const DEFAULT_MOUTH = 'variant01';
 const DEFAULT_EYEBROWS = 'variant08';
 
-export function thumbnailUri(slot: Slot, item: Item, size = 96): string {
+export function thumbnailUri(slot: Slot, item: CatalogItem, size = 96): string {
   const params = new URLSearchParams();
   params.set('seed', 'thumb');
   params.set('size', String(size));
@@ -23,10 +26,8 @@ export function thumbnailUri(slot: Slot, item: Item, size = 96): string {
   params.set('translateY', '-5');
   params.set('featuresProbability', '0');
 
-  const skin =
-    slot === 'skin' && item.feature ? item.feature : findItem('skin', 'skin-02')?.feature ?? 'ecad80';
-  const hairColor =
-    slot === 'hairColor' && item.feature ? item.feature : findItem('hairColor', 'hc-02')?.feature ?? '6a4e35';
+  const skin = slot === 'skin' && item.feature ? item.feature : DEFAULT_SKIN;
+  const hairColor = slot === 'hairColor' && item.feature ? item.feature : DEFAULT_HAIR_COLOR;
   params.set('skinColor', skin);
   params.set('hairColor', hairColor);
 

@@ -4,13 +4,13 @@ import type { AvatarPicks, Slot } from '../avatar/catalog';
 export type AvatarResponse = {
   picks: AvatarPicks;
   svg: string;
-  catalogVersion: number;
   level: number;
   updatedAt: string;
 };
 
 export type CatalogItem = {
-  id: string;
+  id: string; // = slug; expus ca "id" pentru compatibilitate cu UI-ul existent
+  slug: string;
   name: string;
   feature: string | null;
   level: number;
@@ -18,7 +18,6 @@ export type CatalogItem = {
 };
 
 export type CatalogResponse = {
-  catalogVersion: number;
   level: number;
   slots: Record<Slot, CatalogItem[]>;
 };

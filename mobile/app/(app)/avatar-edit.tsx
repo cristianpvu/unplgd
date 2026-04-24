@@ -4,36 +4,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AvatarHead } from '../../src/avatar/AvatarHead';
-import { CATALOG, type AvatarPicks, type Slot } from '../../src/avatar/catalog';
+import {
+  ALL_SLOTS_ORDERED,
+  FACE_SLOTS,
+  SLOT_LABEL,
+  type AvatarPicks,
+  type Slot,
+} from '../../src/avatar/catalog';
 import { thumbnailUri } from '../../src/avatar/thumbnails';
-import { getMyAvatar, previewAvatar, updateMyAvatar, type AvatarResponse } from '../../src/api/avatar';
+import {
+  getAvatarCatalog,
+  getMyAvatar,
+  previewAvatar,
+  updateMyAvatar,
+  type AvatarResponse,
+} from '../../src/api/avatar';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
-
-const FACE_SLOTS: Slot[] = ['skin', 'hair', 'hairColor', 'eyes', 'mouth', 'eyebrows', 'glasses', 'earrings'];
-const BODY_SLOTS: Slot[] = ['bodyShape', 'top', 'outerwear', 'bottom', 'footwear', 'holding'];
-const ALL_SLOTS_ORDERED: Slot[] = [...FACE_SLOTS, ...BODY_SLOTS];
-
-const SLOT_LABEL: Record<Slot, string> = {
-  skin: 'Ten',
-  hair: 'Coafura',
-  hairColor: 'Culoare par',
-  eyes: 'Ochi',
-  mouth: 'Gura',
-  eyebrows: 'Sprancene',
-  glasses: 'Ochelari',
-  earrings: 'Cercei',
-  bodyShape: 'Corp',
-  top: 'Tricou',
-  outerwear: 'Jacheta',
-  bottom: 'Pantaloni',
-  footwear: 'Incaltaminte',
-  holding: 'In mana',
-};
 
 export default function AvatarEdit() {
   const qc = useQueryClient();
   const { data, isPending } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
+  // Catalogul vine separat ca sa cache-uim aspectele pe termen lung — se
+  // schimba doar la deploy nou, nu la fiecare salvare.
+  const { data: catalog } = useQuery({
+    queryKey: ['avatar', 'catalog'],
+    queryFn: getAvatarCatalog,
+    staleTime: 1000 * 60 * 60, // 1h
+  });
 
   const [picks, setPicks] = useState<AvatarPicks | null>(null);
   const [activeSlot, setActiveSlot] = useState<Slot>('skin');
@@ -86,7 +84,8 @@ export default function AvatarEdit() {
     setPicks((p) => (p ? { ...p, [slot]: id } : p));
   }
 
-  const userLevel = data?.level ?? 1;
+  const userLevel = catalog?.level ?? data?.level ?? 1;
+  const slotItems = catalog?.slots[activeSlot] ?? [];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -125,9 +124,8 @@ export default function AvatarEdit() {
       <ScrollView contentContainerStyle={styles.optionsScroll}>
         <View style={styles.options}>
           {picks &&
-            CATALOG[activeSlot].map((item) => {
-              const selected = picks[activeSlot] === item.id;
-              const locked = item.level > userLevel;
+            slotItems.map((item) => {
+              const selected = picks[activeSlot] === item.slug;
               const isColor = activeSlot === 'skin' || activeSlot === 'hairColor';
               const isFaceSlot = FACE_SLOTS.includes(activeSlot);
               // Body item features encode colors as 'type:fill:shadow:...';
@@ -135,12 +133,12 @@ export default function AvatarEdit() {
               const bodyColor = !isFaceSlot && item.feature ? item.feature.split(':')[1] : null;
               return (
                 <Pressable
-                  key={item.id}
-                  onPress={() => !locked && setSlot(activeSlot, item.id)}
+                  key={item.slug}
+                  onPress={() => !item.locked && setSlot(activeSlot, item.slug)}
                   style={[
                     styles.optionCard,
                     selected && styles.optionSelected,
-                    locked && styles.optionLocked,
+                    item.locked && styles.optionLocked,
                   ]}
                 >
                   {isColor && item.feature ? (
@@ -161,7 +159,7 @@ export default function AvatarEdit() {
                   <Text style={styles.optionName} numberOfLines={1}>
                     {item.name}
                   </Text>
-                  {locked && (
+                  {item.locked && (
                     <View style={styles.lockBadge}>
                       <Text style={styles.lockText}>Lvl {item.level}</Text>
                     </View>
