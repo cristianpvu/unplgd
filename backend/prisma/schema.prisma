@@ -33,20 +33,93 @@ model User {
   @@index([email])
 }
 
-// Avatarul user-ului. Sursa de adevar = `picks` (alegerile per slot).
-// `svg` e cache-ul SVG renderat din picks la save, ca sa nu re-randam pe
-// fiecare GET (lista de prieteni etc). `catalogVersion` permite invalidarea
-// cache-ului in batch daca schimbam paleta sau adaugam slot-uri.
-model Avatar {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  picks          Json
-  svg            String
-  catalogVersion Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+// Catalogul de iteme. ItemType = slotul (skin, hair, top...), Item = optiunea
+// concreta (skin-02 "Nisip"). Datele sunt seed-uite din prisma/seed.ts. Slug-ul
+// e identificatorul stabil folosit in API-ul cu mobile (mobile trimite "skin-02",
+// backend rezolva la id intern).
+model ItemType {
+  id        String @id @default(cuid())
+  slug      String @unique
+  name      String
+  sortOrder Int    @default(0)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items Item[]
+}
+
+model Item {
+  id        String  @id @default(cuid())
+  typeId    String
+  slug      String  @unique
+  name      String
+  // Codul de redare folosit de DiceBear / body composer. NULL = "fara"
+  // (ochelari, cercei, vesta, holding) — opt-out explicit, item real in catalog.
+  feature   String?
+  level     Int     @default(1)
+  sortOrder Int     @default(0)
+
+  type ItemType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  // Echipari per slot — cate o relatie nominala pentru fiecare FK pe Avatar,
+  // ca Prisma sa stie sa reverse-lookup-uiasca corect.
+  equippedAsSkin      Avatar[] @relation("AvatarSkin")
+  equippedAsHairColor Avatar[] @relation("AvatarHairColor")
+  equippedAsHair      Avatar[] @relation("AvatarHair")
+  equippedAsEyes      Avatar[] @relation("AvatarEyes")
+  equippedAsMouth     Avatar[] @relation("AvatarMouth")
+  equippedAsEyebrows  Avatar[] @relation("AvatarEyebrows")
+  equippedAsGlasses   Avatar[] @relation("AvatarGlasses")
+  equippedAsEarrings  Avatar[] @relation("AvatarEarrings")
+  equippedAsBodyShape Avatar[] @relation("AvatarBodyShape")
+  equippedAsTop       Avatar[] @relation("AvatarTop")
+  equippedAsOuterwear Avatar[] @relation("AvatarOuterwear")
+  equippedAsBottom    Avatar[] @relation("AvatarBottom")
+  equippedAsFootwear  Avatar[] @relation("AvatarFootwear")
+  equippedAsHolding   Avatar[] @relation("AvatarHolding")
+
+  @@index([typeId, sortOrder])
+}
+
+// Avatarul user-ului. Sursa de adevar = FK-urile per slot catre Item. `svg` e
+// cache-ul renderat la save ca read-urile (lista prieteni, home) sa fie 1
+// query fara DiceBear/composer. Toate cele 14 sloturi sunt obligatorii — "Fara"
+// e item real cu feature=NULL (ramane FK valid).
+model Avatar {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  svg       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  skinItemId      String
+  hairColorItemId String
+  hairItemId      String
+  eyesItemId      String
+  mouthItemId     String
+  eyebrowsItemId  String
+  glassesItemId   String
+  earringsItemId  String
+  bodyShapeItemId String
+  topItemId       String
+  outerwearItemId String
+  bottomItemId    String
+  footwearItemId  String
+  holdingItemId   String
+
+  user          User @relation(fields: [userId],          references: [id], onDelete: Cascade)
+  skinItem      Item @relation("AvatarSkin",      fields: [skinItemId],      references: [id])
+  hairColorItem Item @relation("AvatarHairColor", fields: [hairColorItemId], references: [id])
+  hairItem      Item @relation("AvatarHair",      fields: [hairItemId],      references: [id])
+  eyesItem      Item @relation("AvatarEyes",      fields: [eyesItemId],      references: [id])
+  mouthItem     Item @relation("AvatarMouth",     fields: [mouthItemId],     references: [id])
+  eyebrowsItem  Item @relation("AvatarEyebrows",  fields: [eyebrowsItemId],  references: [id])
+  glassesItem   Item @relation("AvatarGlasses",   fields: [glassesItemId],   references: [id])
+  earringsItem  Item @relation("AvatarEarrings",  fields: [earringsItemId],  references: [id])
+  bodyShapeItem Item @relation("AvatarBodyShape", fields: [bodyShapeItemId], references: [id])
+  topItem       Item @relation("AvatarTop",       fields: [topItemId],       references: [id])
+  outerwearItem Item @relation("AvatarOuterwear", fields: [outerwearItemId], references: [id])
+  bottomItem    Item @relation("AvatarBottom",    fields: [bottomItemId],    references: [id])
+  footwearItem  Item @relation("AvatarFootwear", fields: [footwearItemId],  references: [id])
+  holdingItem   Item @relation("AvatarHolding",   fields: [holdingItemId],   references: [id])
 }
 
 enum FriendshipStatus {

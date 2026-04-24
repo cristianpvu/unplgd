@@ -1,142 +1,211 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type { Item } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, notFound, serverError } from '../lib/errors.js';
 import {
-  ALL_SLOTS,
-  CATALOG,
-  CATALOG_VERSION,
-  DEFAULT_PICKS,
-  validatePicks,
-  type AvatarPicks,
+  AVATAR_INCLUDE,
+  DEFAULT_SLUGS,
+  SLOTS,
+  equippedBySlot,
+  type AvatarWithItems,
+  type Slot,
 } from '../lib/avatar/catalog.js';
 import { renderAvatarSvg } from '../lib/avatar/render.js';
 
 export const avatarRouter = Router();
 
+// Schema PATCH/preview: 14 chei (cate una per slot), fiecare un slug string.
+const picksSchema = z
+  .object(Object.fromEntries(SLOTS.map((s) => [s, z.string().min(1).max(40)])) as Record<Slot, z.ZodString>)
+  .strict();
+
+type PicksInput = Record<Slot, string>;
+
+// Cauta toate item-urile dintr-un set de slug-uri si le indexeaza pe slug
+// pentru lookup O(1). Arunca daca lipseste vreun slug — folosit la creare
+// avatar default (panic) si la PATCH (returnam 400 explicit).
+async function fetchItemsBySlug(slugs: string[]): Promise<Map<string, Item>> {
+  const items = await prisma.item.findMany({
+    where: { slug: { in: slugs } },
+    include: { type: true },
+  });
+  return new Map(items.map((i) => [i.slug, i]));
+}
+
+type AvatarFkData = {
+  skinItemId: string;
+  hairColorItemId: string;
+  hairItemId: string;
+  eyesItemId: string;
+  mouthItemId: string;
+  eyebrowsItemId: string;
+  glassesItemId: string;
+  earringsItemId: string;
+  bodyShapeItemId: string;
+  topItemId: string;
+  outerwearItemId: string;
+  bottomItemId: string;
+  footwearItemId: string;
+  holdingItemId: string;
+};
+
+function itemsToFkData(items: Record<Slot, Item>): AvatarFkData {
+  return {
+    skinItemId: items.skin.id,
+    hairColorItemId: items.hairColor.id,
+    hairItemId: items.hair.id,
+    eyesItemId: items.eyes.id,
+    mouthItemId: items.mouth.id,
+    eyebrowsItemId: items.eyebrows.id,
+    glassesItemId: items.glasses.id,
+    earringsItemId: items.earrings.id,
+    bodyShapeItemId: items.bodyShape.id,
+    topItemId: items.top.id,
+    outerwearItemId: items.outerwear.id,
+    bottomItemId: items.bottom.id,
+    footwearItemId: items.footwear.id,
+    holdingItemId: items.holding.id,
+  };
+}
+
+// Construieste payload-ul de echipare per slot pentru a-l randa + persista.
+function resolveSlots(
+  picks: PicksInput,
+  bySlug: Map<string, Item>,
+): { items: Record<Slot, Item>; missing: string[] } {
+  const items = {} as Record<Slot, Item>;
+  const missing: string[] = [];
+  for (const slot of SLOTS) {
+    const slug = picks[slot];
+    const item = bySlug.get(slug);
+    if (!item) {
+      missing.push(`${slot}:${slug}`);
+      continue;
+    }
+    items[slot] = item;
+  }
+  return { items, missing };
+}
+
+function validateLevels(items: Record<Slot, Item>, userLevel: number): string | null {
+  for (const slot of SLOTS) {
+    const item = items[slot];
+    if (item.level > userLevel) return `locked:${slot}:${item.slug}:requires_lvl_${item.level}`;
+  }
+  return null;
+}
+
+// Serializeaza un Avatar cu relatii in payload-ul API: { picks: slug-uri, svg, level }
+function serializeAvatar(avatar: AvatarWithItems, level: number) {
+  const equipped = equippedBySlot(avatar);
+  const picks: Record<Slot, string> = {} as Record<Slot, string>;
+  for (const slot of SLOTS) picks[slot] = equipped[slot].slug;
+  return {
+    picks,
+    svg: avatar.svg,
+    level,
+    updatedAt: avatar.updatedAt,
+  };
+}
+
 avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.userId! },
-      include: { avatar: true },
+      include: { avatar: { include: AVATAR_INCLUDE } },
     });
     if (!user) throw notFound('user_not_found', 'User not found');
 
     let avatar = user.avatar;
     if (!avatar) {
-      const svg = renderAvatarSvg(DEFAULT_PICKS);
+      // Bootstrap avatar default. Necesita ca seed-ul sa fi rulat — daca un
+      // slug default lipseste, e bug de configurare (500), nu user error.
+      const bySlug = await fetchItemsBySlug(Object.values(DEFAULT_SLUGS));
+      const { items, missing } = resolveSlots(DEFAULT_SLUGS, bySlug);
+      if (missing.length) throw serverError('seed_incomplete', `Missing default items: ${missing.join(', ')}`);
+
+      const svg = renderAvatarSvg(items);
       avatar = await prisma.avatar.create({
-        data: {
-          userId: user.id,
-          picks: DEFAULT_PICKS,
-          svg,
-          catalogVersion: CATALOG_VERSION,
-        },
-      });
-    } else if (avatar.catalogVersion < CATALOG_VERSION) {
-      // Catalog/render output changed since this avatar was last saved.
-      // Re-render from existing picks so the user sees the new look without
-      // needing to re-save manually.
-      const svg = renderAvatarSvg(avatar.picks as unknown as AvatarPicks);
-      avatar = await prisma.avatar.update({
-        where: { userId: user.id },
-        data: { svg, catalogVersion: CATALOG_VERSION },
+        data: { userId: user.id, svg, ...itemsToFkData(items) },
+        include: AVATAR_INCLUDE,
       });
     }
 
-    res.json({
-      picks: avatar.picks,
-      svg: avatar.svg,
-      catalogVersion: avatar.catalogVersion,
-      level: user.level,
-      updatedAt: avatar.updatedAt,
-    });
+    res.json(serializeAvatar(avatar, user.level));
   } catch (e) {
     next(e);
   }
 });
-
-const picksSchema = z
-  .object(Object.fromEntries(ALL_SLOTS.map((s) => [s, z.string().min(1).max(40)])) as Record<
-    string,
-    z.ZodString
-  >)
-  .strict();
 
 avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
   try {
-    const picks = picksSchema.parse(req.body) as unknown as AvatarPicks;
-    const user = await prisma.user.findUnique({ where: { id: req.userId! } });
+    const picks = picksSchema.parse(req.body) as PicksInput;
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { id: true, level: true } });
     if (!user) throw notFound('user_not_found', 'User not found');
 
-    const check = validatePicks(picks, user.level);
-    if (!check.ok) throw badRequest('invalid_picks', check.reason);
+    const bySlug = await fetchItemsBySlug(Object.values(picks));
+    const { items, missing } = resolveSlots(picks, bySlug);
+    if (missing.length) throw badRequest('unknown_item', missing.join(','));
 
-    const svg = renderAvatarSvg(picks);
+    const lockedReason = validateLevels(items, user.level);
+    if (lockedReason) throw badRequest('locked', lockedReason);
+
+    const svg = renderAvatarSvg(items);
+    const fkData = itemsToFkData(items);
 
     const avatar = await prisma.avatar.upsert({
       where: { userId: user.id },
-      create: {
-        userId: user.id,
-        picks,
-        svg,
-        catalogVersion: CATALOG_VERSION,
-      },
-      update: {
-        picks,
-        svg,
-        catalogVersion: CATALOG_VERSION,
-      },
+      create: { userId: user.id, svg, ...fkData },
+      update: { svg, ...fkData },
+      include: AVATAR_INCLUDE,
     });
 
-    res.json({
-      picks: avatar.picks,
-      svg: avatar.svg,
-      catalogVersion: avatar.catalogVersion,
-      level: user.level,
-      updatedAt: avatar.updatedAt,
-    });
+    res.json(serializeAvatar(avatar, user.level));
   } catch (e) {
     next(e);
   }
 });
 
-// Render-only endpoint for live preview while the user edits picks. Validates
-// (so locked items can't even be previewed) but does NOT persist anything.
+// Render-only endpoint pentru preview live in editor. Valideaza (deci item-uri
+// blocate nu pot fi nici previzualizate) dar nu persista nimic.
 avatarRouter.post('/avatar/preview', requireAuth, async (req, res, next) => {
   try {
-    const picks = picksSchema.parse(req.body) as unknown as AvatarPicks;
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId! },
-      select: { level: true },
-    });
+    const picks = picksSchema.parse(req.body) as PicksInput;
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { level: true } });
     if (!user) throw notFound('user_not_found', 'User not found');
 
-    const check = validatePicks(picks, user.level);
-    if (!check.ok) throw badRequest('invalid_picks', check.reason);
+    const bySlug = await fetchItemsBySlug(Object.values(picks));
+    const { items, missing } = resolveSlots(picks, bySlug);
+    if (missing.length) throw badRequest('unknown_item', missing.join(','));
 
-    res.json({ svg: renderAvatarSvg(picks) });
+    const lockedReason = validateLevels(items, user.level);
+    if (lockedReason) throw badRequest('locked', lockedReason);
+
+    res.json({ svg: renderAvatarSvg(items) });
   } catch (e) {
     next(e);
   }
 });
 
-// Public catalog with locked/unlocked status so the mobile picker can render
-// without hardcoding the catalog twice (still mirrored for offline preview but
-// the level gates come from the server).
+// Catalog public cu locked/unlocked. Mobile fetch-uieste o data la app start
+// si cache-uieste local; sortarea respecta sortOrder din DB.
 avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId! },
-      select: { level: true },
-    });
+    const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { level: true } });
     if (!user) throw notFound('user_not_found', 'User not found');
 
-    const out: Record<string, Array<{ id: string; name: string; feature: string | null; level: number; locked: boolean }>> = {};
-    for (const slot of ALL_SLOTS) {
-      out[slot] = CATALOG[slot].map((item) => ({
-        id: item.id,
+    const types = await prisma.itemType.findMany({
+      orderBy: { sortOrder: 'asc' },
+      include: { items: { orderBy: { sortOrder: 'asc' } } },
+    });
+
+    const slots: Record<string, Array<{ id: string; slug: string; name: string; feature: string | null; level: number; locked: boolean }>> = {};
+    for (const type of types) {
+      slots[type.slug] = type.items.map((item) => ({
+        id: item.slug, // mobile se identifica dupa slug; cuid e detaliu intern DB
+        slug: item.slug,
         name: item.name,
         feature: item.feature,
         level: item.level,
@@ -144,7 +213,7 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
       }));
     }
 
-    res.json({ catalogVersion: CATALOG_VERSION, level: user.level, slots: out });
+    res.json({ level: user.level, slots });
   } catch (e) {
     next(e);
   }

@@ -19,3 +19,4 @@ export const forbidden = (code = 'forbidden', message = 'Forbidden') =>
 export const notFound = (code = 'not_found', message = 'Not found') =>
   new AppError(404, code, message);
 export const conflict = (code: string, message: string) => new AppError(409, code, message);
+export const serverError = (code: string, message: string) => new AppError(500, code, message);

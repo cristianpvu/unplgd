@@ -3,8 +3,8 @@
 // Layer order matches the prototype: body-base → bottom (skipped if dress) →
 // top → shoes → head (head drawn last so its outline overlaps the neck).
 
-import type { AvatarPicks } from './catalog.js';
-import { findItem } from './catalog.js';
+import type { Item } from '@prisma/client';
+import type { Slot } from './catalog.js';
 import { BODY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
 
 export const VIEWBOX_W = BODY_VIEWBOX.w;
@@ -19,38 +19,40 @@ type TopKey = 'top-tshirt' | 'top-sweater' | 'top-hoodie' | 'top-dress';
 type BottomKey = 'bottom-pants' | 'bottom-shorts' | 'bottom-skirt';
 type ShoesKey = 'shoes-sneakers' | 'shoes-boots';
 
-function pickFeature(picks: AvatarPicks, slot: 'skin' | 'top' | 'bottom' | 'footwear'): string[] {
-  const f = findItem(slot, picks[slot])?.feature;
-  return f ? f.split(':') : [];
+export type EquippedItems = Record<Slot, Item>;
+
+function featureParts(item: Item): string[] {
+  return item.feature ? item.feature.split(':') : [];
 }
 
-function topKey(picks: AvatarPicks): TopKey {
-  const [type, , , sub] = pickFeature(picks, 'top');
+function topKey(items: EquippedItems): TopKey {
+  const [type, , , sub] = featureParts(items.top);
   if (type === 'dress') return 'top-dress';
   if (type === 'hoodie') return 'top-hoodie';
   if (sub === 'long' || sub === '3q') return 'top-sweater';
   return 'top-tshirt';
 }
 
-function bottomKey(picks: AvatarPicks): BottomKey {
-  const [type, , , length] = pickFeature(picks, 'bottom');
+function bottomKey(items: EquippedItems): BottomKey {
+  const [type, , , length] = featureParts(items.bottom);
   if (type === 'skirt') return 'bottom-skirt';
   if (length === 'short') return 'bottom-shorts';
   return 'bottom-pants';
 }
 
-function shoesKey(picks: AvatarPicks): ShoesKey {
-  const [type] = pickFeature(picks, 'footwear');
+function shoesKey(items: EquippedItems): ShoesKey {
+  const [type] = featureParts(items.footwear);
   if (type === 'boots') return 'shoes-boots';
   return 'shoes-sneakers';
 }
 
-function colors(picks: AvatarPicks) {
-  const skin = findItem('skin', picks.skin)?.feature ?? SKIN_FALLBACK;
-  const top = pickFeature(picks, 'top')[1] ?? TOP_FALLBACK;
-  const bottom = pickFeature(picks, 'bottom')[1] ?? BOTTOM_FALLBACK;
-  const shoes = pickFeature(picks, 'footwear')[1] ?? SHOES_FALLBACK;
-  return { skin, top, bottom, shoes };
+function colors(items: EquippedItems) {
+  return {
+    skin: items.skin.feature ?? SKIN_FALLBACK,
+    top: featureParts(items.top)[1] ?? TOP_FALLBACK,
+    bottom: featureParts(items.bottom)[1] ?? BOTTOM_FALLBACK,
+    shoes: featureParts(items.footwear)[1] ?? SHOES_FALLBACK,
+  };
 }
 
 // SvgXml on RN doesn't expand CSS variables. The asset SVGs use literal
@@ -79,11 +81,11 @@ function wrapHead(headSvg: string): string {
   );
 }
 
-export function composeAvatar(picks: AvatarPicks, headSvg: string): string {
-  const c = colors(picks);
-  const tk = topKey(picks);
-  const bk = bottomKey(picks);
-  const sk = shoesKey(picks);
+export function composeAvatar(items: EquippedItems, headSvg: string): string {
+  const c = colors(items);
+  const tk = topKey(items);
+  const bk = bottomKey(items);
+  const sk = shoesKey(items);
   const head = wrapHead(headSvg);
   const renderBottom = tk !== 'top-dress';
 

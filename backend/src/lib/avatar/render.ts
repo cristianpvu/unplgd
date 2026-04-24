@@ -7,8 +7,7 @@
 import { createAvatar } from '@dicebear/core';
 import * as adventurer from '@dicebear/adventurer';
 import type { Options as AdventurerOptions } from '@dicebear/adventurer';
-import { findItem, type AvatarPicks } from './catalog.js';
-import { composeAvatar } from './body.js';
+import { composeAvatar, type EquippedItems } from './body.js';
 
 // Adventurer always renders eyes/mouth/eyebrows (no probability gate). The
 // optional features (hair, glasses, earrings) take an *Probability scalar in
@@ -23,12 +22,9 @@ const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbabilit
 
 type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
 
-function picksToOptions(picks: AvatarPicks): AdventurerOptions {
-  const skin = findItem('skin', picks.skin)?.feature ?? 'ecad80';
-  const hairColor = findItem('hairColor', picks.hairColor)?.feature ?? '6a4e35';
-  const eyes = findItem('eyes', picks.eyes)?.feature;
-  const mouth = findItem('mouth', picks.mouth)?.feature;
-  const eyebrows = findItem('eyebrows', picks.eyebrows)?.feature;
+function itemsToOptions(items: EquippedItems): AdventurerOptions {
+  const skin = items.skin.feature ?? 'ecad80';
+  const hairColor = items.hairColor.feature ?? '6a4e35';
 
   const opts: AdventurerOptions = {
     skinColor: [skin],
@@ -36,15 +32,15 @@ function picksToOptions(picks: AvatarPicks): AdventurerOptions {
     featuresProbability: 0,
   };
 
-  if (eyes) opts.eyes = [eyes as AdventurerVariant];
-  if (mouth) opts.mouth = [mouth as NonNullable<AdventurerOptions['mouth']>[number]];
-  if (eyebrows) opts.eyebrows = [eyebrows as NonNullable<AdventurerOptions['eyebrows']>[number]];
+  if (items.eyes.feature) opts.eyes = [items.eyes.feature as AdventurerVariant];
+  if (items.mouth.feature) opts.mouth = [items.mouth.feature as NonNullable<AdventurerOptions['mouth']>[number]];
+  if (items.eyebrows.feature) opts.eyebrows = [items.eyebrows.feature as NonNullable<AdventurerOptions['eyebrows']>[number]];
 
   for (const slot of Object.keys(OPTIONAL_PROB) as OptionalSlot[]) {
-    const item = findItem(slot, picks[slot]);
+    const feature = items[slot].feature;
     const probKey = OPTIONAL_PROB[slot];
-    if (item?.feature) {
-      (opts as Record<string, unknown>)[slot] = [item.feature];
+    if (feature) {
+      (opts as Record<string, unknown>)[slot] = [feature];
       opts[probKey] = 100;
     } else {
       opts[probKey] = 0;
@@ -54,12 +50,12 @@ function picksToOptions(picks: AvatarPicks): AdventurerOptions {
   return opts;
 }
 
-export function renderAvatarSvg(picks: AvatarPicks): string {
-  const options = picksToOptions(picks);
+export function renderAvatarSvg(items: EquippedItems): string {
+  const options = itemsToOptions(items);
   const head = createAvatar(adventurer, {
     seed: 'unplgd',
     backgroundColor: ['transparent'],
     ...options,
   }).toString();
-  return composeAvatar(picks, head);
+  return composeAvatar(items, head);
 }
