@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { ActivityIndicator, Animated, Easing, View, type ViewStyle } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors } from '../theme/colors';
@@ -12,12 +12,25 @@ const ASPECT_H = 1400;
 const BOB_AMPLITUDE_RATIO = 0.012;
 const BOB_PERIOD = 3800;
 
+// Tilt: rotatie pe alt loop, period diferit fata de bob ca sa nu fie sincron
+// (ar parea robotic). Amplitudine mica — peste 2° devine clar "swinging".
+const TILT_DEGREES = 1.5;
+const TILT_PERIOD = 4600;
+
 // Blink: tinem ochii inchisi ~140ms, apoi reluam la interval random intre
 // 2.5s si 5s. Random-ul evita sincronizarea perceputa la mai multe avataruri
 // pe ecran (de ex lista prieteni).
 const BLINK_HOLD = 140;
 const BLINK_MIN_GAP = 2500;
 const BLINK_MAX_GAP = 5000;
+
+// Bounce: scale punch la tap. Overshoot peste 1 ca sa para o reactie naturala
+// (fara overshoot pare ca s-a incarcat ceva, nu ca avatarul s-a "speriat").
+const BOUNCE_SCALE = 1.12;
+
+export type AvatarHeadHandle = {
+  bounce: () => void;
+};
 
 type Props = {
   svg: string | null | undefined;
@@ -30,15 +43,41 @@ type Props = {
   animate?: boolean;
 };
 
-export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true }: Props) {
+export const AvatarHead = forwardRef<AvatarHeadHandle, Props>(function AvatarHead(
+  { svg, svgBlink, height = 220, style, animate = true },
+  ref,
+) {
   const width = Math.round(height * (ASPECT_W / ASPECT_H));
   const bobAmplitude = Math.max(2, Math.round(height * BOB_AMPLITUDE_RATIO));
   const bob = useRef(new Animated.Value(0)).current;
+  const tilt = useRef(new Animated.Value(0)).current;
   const blink = useRef(new Animated.Value(0)).current;
+  const bounce = useRef(new Animated.Value(1)).current;
+
+  useImperativeHandle(ref, () => ({
+    bounce: () => {
+      bounce.stopAnimation();
+      bounce.setValue(1);
+      Animated.sequence([
+        Animated.timing(bounce, {
+          toValue: BOUNCE_SCALE,
+          duration: 110,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.spring(bounce, {
+          toValue: 1,
+          friction: 4,
+          tension: 140,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    },
+  }));
 
   useEffect(() => {
     if (!animate || !svg) return;
-    const loop = Animated.loop(
+    const bobLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(bob, {
           toValue: 1,
@@ -54,9 +93,35 @@ export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true 
         }),
       ]),
     );
-    loop.start();
-    return () => loop.stop();
-  }, [animate, svg, bob]);
+    const tiltLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(tilt, {
+          toValue: 1,
+          duration: TILT_PERIOD / 2,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tilt, {
+          toValue: -1,
+          duration: TILT_PERIOD,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(tilt, {
+          toValue: 0,
+          duration: TILT_PERIOD / 2,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    bobLoop.start();
+    tiltLoop.start();
+    return () => {
+      bobLoop.stop();
+      tiltLoop.stop();
+    };
+  }, [animate, svg, bob, tilt]);
 
   useEffect(() => {
     if (!animate || !svg || !svgBlink) return;
@@ -109,6 +174,13 @@ export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true 
                   outputRange: [0, -bobAmplitude],
                 }),
               },
+              {
+                rotate: tilt.interpolate({
+                  inputRange: [-1, 1],
+                  outputRange: [`-${TILT_DEGREES}deg`, `${TILT_DEGREES}deg`],
+                }),
+              },
+              { scale: bounce },
             ],
           }}
         >
@@ -127,4 +199,4 @@ export function AvatarHead({ svg, svgBlink, height = 220, style, animate = true 
       )}
     </View>
   );
-}
+});

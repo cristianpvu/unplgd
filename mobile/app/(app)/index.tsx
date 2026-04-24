@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -6,13 +7,14 @@ import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
 import { useAuth } from '../../src/lib/auth';
 import { Button } from '../../src/ui/Button';
-import { AvatarHead } from '../../src/avatar/AvatarHead';
+import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { colors } from '../../src/theme/colors';
 
 export default function Home() {
   const { signOut } = useAuth();
   const { data: me, isPending, error } = useQuery({ queryKey: ['me'], queryFn: getMe });
   const { data: avatar } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
+  const avatarRef = useRef<AvatarHeadHandle>(null);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -24,9 +26,13 @@ export default function Home() {
           </View>
         </View>
 
-        <Pressable style={styles.scene} onPress={() => router.push('/(app)/avatar-edit')}>
+        <Pressable
+          style={styles.scene}
+          onPressIn={() => avatarRef.current?.bounce()}
+          onPress={() => router.push('/(app)/avatar-edit')}
+        >
           <View style={styles.mascot}>
-            <AvatarHead svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={260} />
+            <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={260} />
           </View>
           <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
         </Pressable>
