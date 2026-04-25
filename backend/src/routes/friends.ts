@@ -85,12 +85,23 @@ friendsRouter.get('/', async (req, res, next) => {
       orderBy: { acceptedAt: 'desc' },
     });
 
-    const friends = friendships.map((f) => ({
-      friendshipId: f.id,
-      since: f.acceptedAt,
-      method: f.connectedVia,
-      user: f.requesterId === me ? f.receiver : f.requester,
-    }));
+    const friends = friendships.map((f) => {
+      const u = f.requesterId === me ? f.receiver : f.requester;
+      return {
+        friendshipId: f.id,
+        since: f.acceptedAt,
+        method: f.connectedVia,
+        user: {
+          id: u.id,
+          name: u.name,
+          xp: u.xp,
+          level: u.level,
+          // Doar SVG-ul cu ochii deschisi — frame-ul de blink ar dubla payload-ul
+          // degeaba pentru thumbnail-uri mici in lista.
+          avatarSvg: u.avatar?.svg ?? null,
+        },
+      };
+    });
 
     res.json({ friends });
   } catch (e) {
@@ -118,4 +129,5 @@ const publicFields = {
   name: true,
   xp: true,
   level: true,
+  avatar: { select: { svg: true } },
 } as const;
