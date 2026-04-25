@@ -1,15 +1,34 @@
-import { useEffect, useRef } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import Svg, { Circle, Path } from 'react-native-svg';
 import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
-import { Button } from '../../src/ui/Button';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { colors } from '../../src/theme/colors';
+
+type SheetKind = 'friends' | 'settings' | null;
+
+// Mirror al curbei din backend (lib/level.ts): level = 1 + floor(sqrt(xp/100)).
+// Tinem calculul aici ca sa nu mai facem un round-trip pt afisaj.
+function xpProgress(xp: number, level: number) {
+  const floor = (level - 1) ** 2 * 100;
+  const ceiling = level ** 2 * 100;
+  const span = ceiling - floor;
+  const earned = Math.max(0, xp - floor);
+  return { earned, span, ratio: span > 0 ? Math.min(1, earned / span) : 0 };
+}
 
 export default function Home() {
   const { signOut } = useAuth();
@@ -20,6 +39,7 @@ export default function Home() {
     retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 2,
   });
   const avatarRef = useRef<AvatarHeadHandle>(null);
+  const [sheet, setSheet] = useState<SheetKind>(null);
 
   // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
   // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
@@ -29,113 +49,327 @@ export default function Home() {
     }
   }, [avatarError]);
 
+  const progress = me ? xpProgress(me.xp, me.level) : null;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.hello}>Salut{me ? `, ${me.name}!` : '!'}</Text>
-          <View style={styles.levelPill}>
-            <Text style={styles.levelPillText}>Lvl {me?.level ?? '-'}</Text>
+        <View style={styles.topRow}>
+          <IconButton onPress={() => setSheet('friends')} accessibilityLabel="Prieteni">
+            <FriendsIcon />
+          </IconButton>
+          <View style={styles.statusBlock}>
+            <View style={styles.statusLabels}>
+              <Text style={styles.statusLabel}>Lvl {me?.level ?? '-'}</Text>
+              <Text style={styles.statusLabel}>
+                {progress ? `${progress.earned} / ${progress.span} XP` : ''}
+              </Text>
+            </View>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${(progress?.ratio ?? 0) * 100}%` }]} />
+            </View>
           </View>
+          <IconButton onPress={() => setSheet('settings')} accessibilityLabel="Setari">
+            <GearIcon />
+          </IconButton>
         </View>
+
+        <Text style={styles.hello} numberOfLines={1}>
+          Salut{me ? `, ${me.name}` : ''}!
+        </Text>
 
         <Pressable
           style={styles.scene}
           onPressIn={() => avatarRef.current?.bounce()}
           onPress={() => router.push('/(app)/avatar-edit')}
         >
-          <View style={styles.mascot}>
-            <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={260} />
-          </View>
-          <Text style={styles.tapHint}>Atinge avatarul ca sa il personalizezi →</Text>
+          <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={420} />
         </Pressable>
 
-        <View style={styles.card}>
-          {isPending && <ActivityIndicator color={colors.accent} />}
-          {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
-          {me && (
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{me.xp}</Text>
-                <Text style={styles.statLabel}>XP total</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>0</Text>
-                <Text style={styles.statLabel}>Prieteni</Text>
-              </View>
-            </View>
-          )}
-        </View>
+        {isPending && <ActivityIndicator color={colors.accent} />}
+        {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
 
-        <Button label="Scaneaza un prieten" onPress={() => router.push('/(app)/scan-friend')} />
-        <Button label="Bratara mea" variant="secondary" onPress={() => router.push('/(app)/link-bracelet')} />
-        <Button label="Iesi din cont" variant="secondary" onPress={signOut} />
+        <View style={styles.actionRow}>
+          <ActionPill label="Scaneaza prieten" primary onPress={() => router.push('/(app)/scan-friend')} />
+          <ActionPill label="Bratara mea" onPress={() => router.push('/(app)/link-bracelet')} />
+        </View>
       </View>
+
+      <BottomSheet
+        visible={sheet !== null}
+        title={sheet === 'friends' ? 'Prietenii mei' : 'Setari'}
+        onClose={() => setSheet(null)}
+      >
+        {sheet === 'friends' && (
+          <Text style={styles.sheetEmpty}>
+            Lista de prieteni va aparea aici. Foloseste „Scaneaza prieten" cand sunteti aproape ca sa
+            adaugi pe cineva.
+          </Text>
+        )}
+        {sheet === 'settings' && (
+          <View style={styles.sheetList}>
+            <SheetItem
+              label="Personalizeaza avatar"
+              onPress={() => {
+                setSheet(null);
+                router.push('/(app)/avatar-edit');
+              }}
+            />
+            <SheetItem
+              label="Iesi din cont"
+              danger
+              onPress={() => {
+                setSheet(null);
+                signOut();
+              }}
+            />
+          </View>
+        )}
+      </BottomSheet>
     </SafeAreaView>
+  );
+}
+
+function IconButton({
+  onPress,
+  children,
+  accessibilityLabel,
+}: {
+  onPress: () => void;
+  children: ReactNode;
+  accessibilityLabel: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={8}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
+function FriendsIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Circle cx={9} cy={8} r={3.2} stroke={colors.text} strokeWidth={2} />
+      <Path
+        d="M3 19c0-3 2.7-5 6-5s6 2 6 5"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M16 11.2a3 3 0 1 0 0-6"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M17 19c0-2.5 1.6-4.3 4-5"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={3} stroke={colors.text} strokeWidth={2} />
+      <Path
+        d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function ActionPill({
+  label,
+  onPress,
+  primary,
+}: {
+  label: string;
+  onPress: () => void;
+  primary?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionPill,
+        primary ? styles.actionPillPrimary : styles.actionPillSecondary,
+        pressed && styles.actionPillPressed,
+      ]}
+    >
+      <Text
+        style={[
+          styles.actionPillText,
+          primary ? styles.actionPillTextPrimary : styles.actionPillTextSecondary,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function BottomSheet({
+  visible,
+  title,
+  onClose,
+  children,
+}: {
+  visible: boolean;
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose} />
+      <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetGrip} />
+          <Text style={styles.sheetTitle}>{title}</Text>
+          {children}
+        </View>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function SheetItem({
+  label,
+  onPress,
+  danger,
+}: {
+  label: string;
+  onPress: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.sheetItem, pressed && styles.sheetItemPressed]}
+    >
+      <Text style={[styles.sheetItemLabel, danger && styles.sheetItemLabelDanger]}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, padding: 24, gap: 20 },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  container: { flex: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 14 },
+
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  hello: { color: colors.text, fontSize: 26, fontWeight: '800' },
-  levelPill: {
-    backgroundColor: colors.text,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  iconButtonPressed: { transform: [{ scale: 0.94 }], opacity: 0.85 },
+
+  statusBlock: { flex: 1, gap: 4 },
+  statusLabels: { flexDirection: 'row', justifyContent: 'space-between' },
+  statusLabel: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  hello: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+
+  progressTrack: {
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: colors.cardAlt,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
     borderRadius: 999,
   },
-  levelPillText: { color: '#FFFFFF', fontWeight: '800', fontSize: 14 },
-  scene: {
+
+  scene: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  actionRow: { flexDirection: 'row', gap: 10 },
+  actionPill: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mascot: {
-    paddingHorizontal: 28,
-    paddingVertical: 16,
-    borderRadius: 28,
-    backgroundColor: colors.card,
+    paddingVertical: 13,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 1,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  tapHint: {
-    color: colors.text,
-    opacity: 0.6,
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 16,
-  },
-  card: {
+  actionPillPrimary: { backgroundColor: colors.accent },
+  actionPillSecondary: {
     backgroundColor: colors.card,
-    borderRadius: 24,
-    padding: 20,
-    gap: 16,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 3,
+    borderWidth: 2,
+    borderColor: colors.text,
   },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statBox: { flex: 1, alignItems: 'center', gap: 4 },
-  statDivider: { width: 1, height: 32, backgroundColor: colors.border },
-  statValue: { color: colors.text, fontSize: 26, fontWeight: '800' },
-  statLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  placeholder: { color: colors.textMuted, textAlign: 'center', fontSize: 13, fontWeight: '500' },
+  actionPillPressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
+  actionPillText: { fontSize: 15, fontWeight: '700' },
+  actionPillTextPrimary: { color: '#FFFFFF' },
+  actionPillTextSecondary: { color: colors.text },
+
   errorText: { color: colors.danger, textAlign: 'center', fontWeight: '600' },
+
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  sheetWrap: { marginTop: 'auto' },
+  sheet: {
+    backgroundColor: colors.card,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  sheetGrip: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    marginBottom: 4,
+  },
+  sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  sheetEmpty: { color: colors.textMuted, fontSize: 14, lineHeight: 20, paddingBottom: 8 },
+  sheetList: { gap: 2, paddingBottom: 4 },
+  sheetItem: { paddingVertical: 14, paddingHorizontal: 4 },
+  sheetItemPressed: { opacity: 0.55 },
+  sheetItemLabel: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  sheetItemLabelDanger: { color: colors.danger },
 });
