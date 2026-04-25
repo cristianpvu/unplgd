@@ -10,15 +10,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Path, SvgXml } from 'react-native-svg';
 import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
+import { listFriends } from '../../src/api/friends';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { colors } from '../../src/theme/colors';
 
-type SheetKind = 'friends' | 'settings' | null;
+type SheetKind = 'friends' | 'settings' | 'play' | null;
 
 // Mirror al curbei din backend (lib/level.ts): level = 1 + floor(sqrt(xp/100)).
 // Tinem calculul aici ca sa nu mai facem un round-trip pt afisaj.
@@ -40,6 +41,11 @@ export default function Home() {
   });
   const avatarRef = useRef<AvatarHeadHandle>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
+  const friendsQuery = useQuery({
+    queryKey: ['friends'],
+    queryFn: listFriends,
+    enabled: sheet === 'friends',
+  });
 
   // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
   // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
@@ -89,21 +95,53 @@ export default function Home() {
         {isPending && <ActivityIndicator color={colors.accent} />}
         {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
 
-        <View style={styles.actionRow}>
-          <ActionPill label="Scaneaza prieten" primary onPress={() => router.push('/(app)/scan-friend')} />
-          <ActionPill label="Bratara mea" onPress={() => router.push('/(app)/link-bracelet')} />
-        </View>
+        <Pressable
+          onPress={() => setSheet('play')}
+          style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
+        >
+          <Text style={styles.playButtonText}>Hai la joaca!</Text>
+        </Pressable>
       </View>
 
       <BottomSheet
         visible={sheet !== null}
-        title={sheet === 'friends' ? 'Prietenii mei' : 'Setari'}
+        title={
+          sheet === 'friends' ? 'Prietenii mei' : sheet === 'settings' ? 'Setari' : 'Hai la joaca'
+        }
         onClose={() => setSheet(null)}
       >
         {sheet === 'friends' && (
+          <View style={styles.sheetList}>
+            {friendsQuery.isPending && <ActivityIndicator color={colors.accent} />}
+            {friendsQuery.error && (
+              <Text style={styles.errorText}>Nu am putut incarca prietenii</Text>
+            )}
+            {friendsQuery.data && friendsQuery.data.friends.length === 0 && (
+              <Text style={styles.sheetEmpty}>Inca nu ai prieteni adaugati.</Text>
+            )}
+            {friendsQuery.data?.friends.map((f) => (
+              <View key={f.friendshipId} style={styles.friendRow}>
+                <FriendAvatar svg={f.user.avatarSvg} />
+                <View style={styles.friendInfo}>
+                  <Text style={styles.friendName} numberOfLines={1}>
+                    {f.user.name}
+                  </Text>
+                  <Text style={styles.friendLevel}>Lvl {f.user.level} · {f.user.xp} XP</Text>
+                </View>
+              </View>
+            ))}
+            <SheetItem
+              label="Adauga prieten"
+              onPress={() => {
+                setSheet(null);
+                router.push('/(app)/scan-friend');
+              }}
+            />
+          </View>
+        )}
+        {sheet === 'play' && (
           <Text style={styles.sheetEmpty}>
-            Lista de prieteni va aparea aici. Foloseste „Scaneaza prieten" cand sunteti aproape ca sa
-            adaugi pe cineva.
+            Aici vor aparea provocarile, AI-ul tau si jocurile cu prietenii. Inca lucram la ele.
           </Text>
         )}
         {sheet === 'settings' && (
@@ -113,6 +151,13 @@ export default function Home() {
               onPress={() => {
                 setSheet(null);
                 router.push('/(app)/avatar-edit');
+              }}
+            />
+            <SheetItem
+              label="Bratara mea"
+              onPress={() => {
+                setSheet(null);
+                router.push('/(app)/link-bracelet');
               }}
             />
             <SheetItem
@@ -195,33 +240,32 @@ function GearIcon() {
   );
 }
 
-function ActionPill({
-  label,
-  onPress,
-  primary,
-}: {
-  label: string;
-  onPress: () => void;
-  primary?: boolean;
-}) {
+function SparklesIcon() {
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionPill,
-        primary ? styles.actionPillPrimary : styles.actionPillSecondary,
-        pressed && styles.actionPillPressed,
-      ]}
-    >
-      <Text
-        style={[
-          styles.actionPillText,
-          primary ? styles.actionPillTextPrimary : styles.actionPillTextSecondary,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"
+        fill="#FFFFFF"
+      />
+      <Path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z" fill="#FFFFFF" />
+    </Svg>
+  );
+}
+
+// Capul prietenului dintr-un SVG full-body (viewBox 762×1400). Containerul
+// patrat decupeaza partea de sus (capul), restul corpului ramane in afara.
+function FriendAvatar({ svg }: { svg: string | null }) {
+  const SIZE = 48;
+  if (!svg) {
+    return <View style={[styles.friendAvatar, styles.friendAvatarFallback]} />;
+  }
+  // SVG-ul e 762:1400. Daca latimea = SIZE, inaltimea totala = SIZE * 1400/762.
+  // Containerul ramane SIZE×SIZE → afiseaza doar capul (raportul cap = 762/1400).
+  const fullHeight = Math.round(SIZE * (1400 / 762));
+  return (
+    <View style={[styles.friendAvatar, { width: SIZE, height: SIZE }]}>
+      <SvgXml xml={svg} width={SIZE} height={fullHeight} />
+    </View>
   );
 }
 
@@ -320,29 +364,22 @@ const styles = StyleSheet.create({
 
   scene: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  actionRow: { flexDirection: 'row', gap: 10 },
-  actionPill: {
-    flex: 1,
-    paddingVertical: 13,
-    borderRadius: 999,
+  playButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 10,
+    backgroundColor: colors.accent,
+    paddingVertical: 18,
+    borderRadius: 999,
     shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  actionPillPrimary: { backgroundColor: colors.accent },
-  actionPillSecondary: {
-    backgroundColor: colors.card,
-    borderWidth: 2,
-    borderColor: colors.text,
-  },
-  actionPillPressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
-  actionPillText: { fontSize: 15, fontWeight: '700' },
-  actionPillTextPrimary: { color: '#FFFFFF' },
-  actionPillTextSecondary: { color: colors.text },
+  playButtonPressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
+  playButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
 
   errorText: { color: colors.danger, textAlign: 'center', fontWeight: '600' },
 
@@ -372,4 +409,25 @@ const styles = StyleSheet.create({
   sheetItemPressed: { opacity: 0.55 },
   sheetItemLabel: { color: colors.text, fontSize: 16, fontWeight: '600' },
   sheetItemLabelDanger: { color: colors.danger },
+  friendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  friendAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: colors.cardAlt,
+    alignItems: 'center',
+  },
+  friendAvatarFallback: { backgroundColor: colors.border },
+  friendInfo: { flex: 1, gap: 2 },
+  friendName: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  friendLevel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
 });
