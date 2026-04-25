@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { Item } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound, serverError } from '../lib/errors.js';
+import { badRequest, notFound } from '../lib/errors.js';
 import {
   AVATAR_INCLUDE,
   DEFAULT_SLUGS,
@@ -119,21 +119,12 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
     });
     if (!user) throw notFound('user_not_found', 'User not found');
 
+    // Avatarul se creeaza explicit prin PATCH la finalul flow-ului de onboarding,
+    // nu lazy aici. Mobilul foloseste 404 ca semnal "porneste editorul de creare".
     let avatar = user.avatar;
-    if (!avatar) {
-      // Bootstrap avatar default. Necesita ca seed-ul sa fi rulat — daca un
-      // slug default lipseste, e bug de configurare (500), nu user error.
-      const bySlug = await fetchItemsBySlug(Object.values(DEFAULT_SLUGS));
-      const { items, missing } = resolveSlots(DEFAULT_SLUGS, bySlug);
-      if (missing.length) throw serverError('seed_incomplete', `Missing default items: ${missing.join(', ')}`);
+    if (!avatar) throw notFound('avatar_not_found', 'Avatar not created yet');
 
-      const svg = renderAvatarSvg(items);
-      const svgBlink = renderAvatarBlinkSvg(items);
-      avatar = await prisma.avatar.create({
-        data: { userId: user.id, svg, svgBlink, ...itemsToFkData(items) },
-        include: AVATAR_INCLUDE,
-      });
-    } else if (!avatar.svgBlink) {
+    if (!avatar.svgBlink) {
       // Backfill lazy pentru avataruri create inainte de coloana svgBlink:
       // re-randam frame-ul de blink din item-urile echipate curent.
       const equipped = equippedBySlot(avatar);
@@ -229,7 +220,9 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
       })),
     }));
 
-    res.json({ level: user.level, types: responseTypes });
+    // defaultPicks e starting state pt editorul de creare (cand user-ul inca
+    // nu are avatar in DB) — mobile foloseste asta pe flow-ul de onboarding.
+    res.json({ level: user.level, types: responseTypes, defaultPicks: DEFAULT_SLUGS });
   } catch (e) {
     next(e);
   }
