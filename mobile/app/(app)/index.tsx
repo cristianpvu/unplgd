@@ -1,10 +1,11 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
+import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { Button } from '../../src/ui/Button';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
@@ -13,8 +14,20 @@ import { colors } from '../../src/theme/colors';
 export default function Home() {
   const { signOut } = useAuth();
   const { data: me, isPending, error } = useQuery({ queryKey: ['me'], queryFn: getMe });
-  const { data: avatar } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
+  const { data: avatar, error: avatarError } = useQuery({
+    queryKey: ['avatar'],
+    queryFn: getMyAvatar,
+    retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 2,
+  });
   const avatarRef = useRef<AvatarHeadHandle>(null);
+
+  // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
+  // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
+  useEffect(() => {
+    if (avatarError instanceof ApiError && avatarError.status === 404) {
+      router.replace('/(app)/avatar-edit?firstTime=1');
+    }
+  }, [avatarError]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -41,25 +54,22 @@ export default function Home() {
           {isPending && <ActivityIndicator color={colors.accent} />}
           {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
           {me && (
-            <>
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>{me.xp}</Text>
-                  <Text style={styles.statLabel}>XP total</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statBox}>
-                  <Text style={styles.statValue}>0</Text>
-                  <Text style={styles.statLabel}>Prieteni</Text>
-                </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <Text style={styles.statValue}>{me.xp}</Text>
+                <Text style={styles.statLabel}>XP total</Text>
               </View>
-              <Text style={styles.placeholder}>
-                Mascota si prietenii tai apar aici cand adaugam urmatoarele feature-uri.
-              </Text>
-            </>
+              <View style={styles.statDivider} />
+              <View style={styles.statBox}>
+                <Text style={styles.statValue}>0</Text>
+                <Text style={styles.statLabel}>Prieteni</Text>
+              </View>
+            </View>
           )}
         </View>
 
+        <Button label="Scaneaza un prieten" onPress={() => router.push('/(app)/scan-friend')} />
+        <Button label="Bratara mea" variant="secondary" onPress={() => router.push('/(app)/link-bracelet')} />
         <Button label="Iesi din cont" variant="secondary" onPress={signOut} />
       </View>
     </SafeAreaView>

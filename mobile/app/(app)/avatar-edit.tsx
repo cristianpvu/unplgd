@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AvatarHead } from '../../src/avatar/AvatarHead';
 import type { AvatarPicks, Slot } from '../../src/avatar/catalog';
@@ -14,12 +14,22 @@ import {
   type AvatarResponse,
   type CatalogType,
 } from '../../src/api/avatar';
+import { ApiError } from '../../src/api/client';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
 
 export default function AvatarEdit() {
   const qc = useQueryClient();
-  const { data, isPending } = useQuery({ queryKey: ['avatar'], queryFn: getMyAvatar });
+  const { firstTime } = useLocalSearchParams<{ firstTime?: string }>();
+  const isFirstTime = firstTime === '1';
+  const { data, isPending, error } = useQuery({
+    queryKey: ['avatar'],
+    queryFn: getMyAvatar,
+    // Pe flow-ul de onboarding 404 e starea normala — nu retry, lasam UI-ul
+    // sa porneasca din catalog.defaultPicks.
+    retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 2,
+  });
+  const noAvatarYet = error instanceof ApiError && error.status === 404;
   // Catalogul vine separat ca sa cache-uim aspectele pe termen lung — se
   // schimba doar la deploy nou (seed), nu la fiecare salvare.
   const { data: catalog } = useQuery({
@@ -35,11 +45,14 @@ export default function AvatarEdit() {
   const previewSeq = useRef(0);
 
   useEffect(() => {
-    if (data && !picks) {
+    if (picks) return;
+    if (data) {
       setPicks(data.picks);
       setPreviewSvg(data.svg);
+    } else if (noAvatarYet && catalog) {
+      setPicks(catalog.defaultPicks);
     }
-  }, [data, picks]);
+  }, [data, picks, noAvatarYet, catalog]);
 
   useEffect(() => {
     if (catalog && !activeSlot && catalog.types.length > 0) {
@@ -48,15 +61,18 @@ export default function AvatarEdit() {
   }, [catalog, activeSlot]);
 
   const dirty = useMemo(() => {
-    if (!data || !picks) return false;
+    if (!picks) return false;
+    // Daca user-ul inca n-are avatar in DB, save-ul e singurul mod de a-l crea
+    // — orice picks valide sunt "dirty" (apasarea butonului trebuie sa salveze).
+    if (!data) return true;
     return JSON.stringify(picks) !== JSON.stringify(data.picks);
   }, [data, picks]);
 
   // Debounced live preview: every change schedules a render call ~250ms later;
   // a sequence number drops out-of-order responses (older PATCH-back races).
   useEffect(() => {
-    if (!picks || !data) return;
-    if (JSON.stringify(picks) === JSON.stringify(data.picks)) {
+    if (!picks) return;
+    if (data && JSON.stringify(picks) === JSON.stringify(data.picks)) {
       setPreviewSvg(data.svg);
       return;
     }
@@ -75,7 +91,8 @@ export default function AvatarEdit() {
     mutationFn: (next: AvatarPicks) => updateMyAvatar(next),
     onSuccess: (resp: AvatarResponse) => {
       qc.setQueryData(['avatar'], resp);
-      router.back();
+      if (isFirstTime) router.replace('/(app)/link-bracelet?firstTime=1');
+      else router.back();
     },
     onError: (err: any) => {
       Alert.alert('Salvare esuata', err?.message ?? 'Incearca din nou');
@@ -91,15 +108,19 @@ export default function AvatarEdit() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
-        </Pressable>
-        <Text style={styles.title}>Personalizeaza</Text>
+        {isFirstTime ? (
+          <View style={{ width: 44 }} />
+        ) : (
+          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+            <Text style={styles.back}>←</Text>
+          </Pressable>
+        )}
+        <Text style={styles.title}>{isFirstTime ? 'Creeaza-ti avatarul' : 'Personalizeaza'}</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <View style={styles.previewBox}>
-        {isPending || !picks ? (
+        {(isPending && !noAvatarYet) || !picks ? (
           <ActivityIndicator color={colors.accent} />
         ) : (
           <AvatarHead svg={previewSvg} height={240} />
@@ -173,7 +194,13 @@ export default function AvatarEdit() {
 
       <View style={styles.footer}>
         <Button
-          label={save.isPending ? 'Se salveaza…' : 'Salveaza'}
+          label={
+            save.isPending
+              ? 'Se salveaza…'
+              : isFirstTime
+                ? 'Creeaza avatarul'
+                : 'Salveaza'
+          }
           onPress={() => picks && dirty && save.mutate(picks)}
           disabled={!dirty || save.isPending}
         />

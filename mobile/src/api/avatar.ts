@@ -27,6 +27,7 @@ export type CatalogType = {
 export type CatalogResponse = {
   level: number;
   types: CatalogType[];
+  defaultPicks: AvatarPicks;
 };
 
 export function getMyAvatar() {
