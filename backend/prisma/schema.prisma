@@ -29,8 +29,21 @@ model User {
   interactionsAsB     DailyInteraction[] @relation("InteractionFriend")
   xpTransactions      XpTransaction[]
   avatar              Avatar?
+  bracelet            NfcBracelet?
 
   @@index([email])
+}
+
+// Legare cont <-> bratara NFC. UID-ul tag-ului (hardcodat de fabrica, citit la
+// scanare) e unic per user. MVP: o bratara per cont; re-provisioning-ul
+// suprascrie inregistrarea existenta.
+model NfcBracelet {
+  id            String   @id @default(cuid())
+  uid           String   @unique
+  userId        String   @unique
+  provisionedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Catalogul de iteme. ItemType = slotul (skin, hair, top...), Item = optiunea

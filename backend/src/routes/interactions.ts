@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { requireAuth } from '../middleware/auth.js';
 import { checkinRateLimit } from '../middleware/rateLimit.js';
-import { badRequest, forbidden } from '../lib/errors.js';
+import { badRequest, forbidden, notFound } from '../lib/errors.js';
 
 export const interactionsRouter = Router();
 interactionsRouter.use(requireAuth);
@@ -91,3 +91,102 @@ function startOfDayUTC(): Date {
   const d = new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
+
+const scanSchema = z.object({
+  uid: z.string().min(4).max(64).regex(/^[0-9a-fA-F:]+$/, 'UID hex invalid'),
+});
+
+// Flow unificat scan bratara: gaseste user-ul dupa UID, creeaza prietenia (auto
+// ACCEPTED — tap-ul fizic = consimtamant) la prima intalnire si check-in zilnic
+// dupa. Toate award-urile XP sunt idempotente (unique pe XpTransaction), deci
+// re-run-uri sigure. Acelasi rate limit ca /checkin (anti-abuz XP).
+interactionsRouter.post('/scan', checkinRateLimit, async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { uid } = scanSchema.parse(req.body);
+    const normalizedUid = uid.toLowerCase().replace(/:/g, '');
+
+    const bracelet = await prisma.nfcBracelet.findUnique({
+      where: { uid: normalizedUid },
+      include: { user: { select: { id: true, name: true, level: true, xp: true } } },
+    });
+    if (!bracelet) throw notFound('bracelet_not_found', 'Bratara nu este inregistrata');
+
+    const friendUserId = bracelet.userId;
+    if (friendUserId === me) throw badRequest('self_scan', 'Nu te poti scana pe tine');
+
+    const today = startOfDayUTC();
+
+    const result = await prisma.$transaction(async (tx) => {
+      let friendship = await tx.friendship.findFirst({
+        where: {
+          OR: [
+            { requesterId: me, receiverId: friendUserId },
+            { requesterId: friendUserId, receiverId: me },
+          ],
+        },
+      });
+
+      let friendshipCreated = false;
+      if (!friendship) {
+        friendship = await tx.friendship.create({
+          data: {
+            requesterId: me,
+            receiverId: friendUserId,
+            status: FriendshipStatus.ACCEPTED,
+            connectedVia: InteractionMethod.nfc,
+            acceptedAt: new Date(),
+          },
+        });
+        friendshipCreated = true;
+        await Promise.all([
+          awardXp(me, XP_REWARDS.FRIENDSHIP_NEW, 'friendship_new', friendship.id, 'Prieten nou', tx),
+          awardXp(friendUserId, XP_REWARDS.FRIENDSHIP_NEW, 'friendship_new', friendship.id, 'Prieten nou', tx),
+        ]);
+      } else if (friendship.status !== FriendshipStatus.ACCEPTED) {
+        // Pending sau respinsa anterior — scanul fizic o forteaza la ACCEPTED.
+        friendship = await tx.friendship.update({
+          where: { id: friendship.id },
+          data: {
+            status: FriendshipStatus.ACCEPTED,
+            connectedVia: InteractionMethod.nfc,
+            acceptedAt: new Date(),
+          },
+        });
+      }
+
+      const existing = await tx.dailyInteraction.findFirst({
+        where: {
+          date: today,
+          OR: [
+            { userId: me, friendId: friendUserId },
+            { userId: friendUserId, friendId: me },
+          ],
+        },
+      });
+
+      let interactionCreated = false;
+      if (!existing) {
+        const [a, b] = await Promise.all([
+          tx.dailyInteraction.create({
+            data: { userId: me, friendId: friendUserId, date: today, method: InteractionMethod.nfc },
+          }),
+          tx.dailyInteraction.create({
+            data: { userId: friendUserId, friendId: me, date: today, method: InteractionMethod.nfc },
+          }),
+        ]);
+        await Promise.all([
+          awardXp(me, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', a.id, 'Interactiune zilnica', tx),
+          awardXp(friendUserId, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', b.id, 'Interactiune zilnica', tx),
+        ]);
+        interactionCreated = true;
+      }
+
+      return { friend: bracelet.user, friendshipCreated, interactionCreated };
+    });
+
+    res.status(201).json(result);
+  } catch (e) {
+    next(e);
+  }
+});
