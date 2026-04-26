@@ -47,6 +47,9 @@ export default function StoryCreate() {
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<FinalStory | null>(null);
   const [kbOpen, setKbOpen] = useState(false);
+  // Pastram draft-ul pre-existent cand pornim STT, ca live transcript-ul sa
+  // se concateneze in spate fara sa stearga ce a tastat user-ul deja.
+  const sttBaseRef = useRef('');
 
   // Citim cu voce introul la mount.
   useEffect(() => {
@@ -201,8 +204,13 @@ export default function StoryCreate() {
           <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
             <MicButton
               disabled={send.isPending}
+              onStart={() => {
+                sttBaseRef.current = draft;
+              }}
               onTranscript={(text) => {
-                setDraft((d) => (d ? `${d} ${text}` : text));
+                const base = sttBaseRef.current;
+                const sep = base && !base.endsWith(' ') ? ' ' : '';
+                setDraft(base + sep + text);
               }}
             />
             <TextInput

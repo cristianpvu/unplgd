@@ -45,6 +45,7 @@ export default function StoryVerify() {
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<VerifyDoneState | null>(null);
   const [kbOpen, setKbOpen] = useState(false);
+  const sttBaseRef = useRef('');
 
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -189,8 +190,13 @@ export default function StoryVerify() {
           <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
             <MicButton
               disabled={send.isPending}
+              onStart={() => {
+                sttBaseRef.current = draft;
+              }}
               onTranscript={(text) => {
-                setDraft((d) => (d ? `${d} ${text}` : text));
+                const base = sttBaseRef.current;
+                const sep = base && !base.endsWith(' ') ? ' ' : '';
+                setDraft(base + sep + text);
               }}
             />
             <TextInput

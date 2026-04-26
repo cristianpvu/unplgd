@@ -32,12 +32,6 @@ const SOCIAL: GameCard[] = [
   },
 ];
 
-const SOLO: GameCard[] = [
-  { key: 'quiz', emoji: '❓', title: 'Quiz rapid', subtitle: '10 intrebari', bg: '#FFF1C2', soon: true },
-  { key: 'memory', emoji: '🧠', title: 'Memorie', subtitle: 'Tine minte', bg: '#E8F8E1', soon: true },
-  { key: 'draw', emoji: '🎨', title: 'Desen', subtitle: 'Cu AI-ul', bg: '#F0E4FF', soon: true },
-];
-
 export default function Play() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -64,9 +58,6 @@ export default function Play() {
             </View>
           </View>
           <View style={styles.heroText}>
-            <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeText}>NOU</Text>
-            </View>
             <Text style={styles.heroTitle}>Spune o poveste</Text>
             <Text style={styles.heroSubtitle}>
               Inventeaza o poveste cu Buddy si spune-o unui prieten.
@@ -74,23 +65,6 @@ export default function Play() {
           </View>
         </Pressable>
 
-        <Section title="Joaca cu prietenii">
-          <View style={styles.grid}>
-            {SOCIAL.map((g) => (
-              <GameTile key={g.key} game={g} />
-            ))}
-          </View>
-        </Section>
-
-        <Section title="Solo">
-          <View style={styles.grid}>
-            {SOLO.map((g) => (
-              <GameTile key={g.key} game={g} />
-            ))}
-          </View>
-        </Section>
-
-        <Text style={styles.footer}>Mai multe joculete in curand 🎮</Text>
       </ScrollView>
     </SafeAreaView>
   );

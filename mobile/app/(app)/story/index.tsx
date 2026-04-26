@@ -40,7 +40,6 @@ export default function StoryHub() {
             pressed && !createdToday && styles.cardPressed,
           ]}
         >
-          <Text style={styles.cardEmoji}>📖</Text>
           <Text style={styles.cardTitle}>Creeaza poveste</Text>
           <Text style={styles.cardSubtitle}>
             {createdToday
@@ -62,7 +61,6 @@ export default function StoryHub() {
               <Text style={styles.badgeText}>{inboxCount}</Text>
             </View>
           )}
-          <Text style={styles.cardEmoji}>👂</Text>
           <Text style={styles.cardTitle}>Mi-a povestit cineva</Text>
           <Text style={styles.cardSubtitle}>
             {inbox.isPending

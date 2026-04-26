@@ -57,6 +57,14 @@ export type SttHandle = {
   stop: () => void;
 };
 
+export function isSttAvailable(): boolean {
+  try {
+    return ExpoSpeechRecognitionModule.isRecognitionAvailable();
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureMicPermission(): Promise<boolean> {
   const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
   return granted;
@@ -64,8 +72,12 @@ export async function ensureMicPermission(): Promise<boolean> {
 
 export async function startListening(opts: {
   onResult: (text: string) => void;
-  onError?: (err: string) => void;
+  onInterim?: (text: string) => void;
+  onError?: (err: string, message?: string) => void;
+  lang?: string;
 }): Promise<SttHandle> {
+  const lang = opts.lang ?? 'ro-RO';
+
   // Cleanup orice sesiune anterioara
   try {
     ExpoSpeechRecognitionModule.stop();
@@ -73,37 +85,80 @@ export async function startListening(opts: {
     // nimic in progres
   }
 
-  const resultSub = ExpoSpeechRecognitionModule.addListener(
-    'result',
-    (e: ExpoSpeechRecognitionResultEvent) => {
-      if (!e.isFinal) return;
-      const transcript = e.results[0]?.transcript?.trim();
-      if (transcript) opts.onResult(transcript);
-    },
-  );
+  // Sesiunea poate emite evenimente intarziate dupa ce am decis ca s-a incheiat
+  // (ex: result final + end care vine dupa, sau result-uri buffered). Folosim
+  // `closed` ca poarta — odata true, nimic nu mai pleaca catre consumer.
+  let closed = false;
+  let lastTranscript = '';
+  const removeAll = () => {
+    if (closed) return;
+    closed = true;
+    subs.forEach((s) => s.remove());
+  };
 
-  const errorSub = ExpoSpeechRecognitionModule.addListener('error', (e) => {
-    opts.onError?.(e.error ?? 'unknown');
-  });
+  const subs = [
+    ExpoSpeechRecognitionModule.addListener('end', () => {
+      // Daca avem un transcript salvat dar n-a venit ca event final, il trimitem.
+      if (!closed && lastTranscript) {
+        opts.onResult(lastTranscript);
+      }
+      removeAll();
+    }),
+    ExpoSpeechRecognitionModule.addListener('nomatch', () => {
+      if (closed) return;
+      opts.onError?.('nomatch', 'Buddy n-a inteles ce ai zis. Mai incearca.');
+      removeAll();
+    }),
+    ExpoSpeechRecognitionModule.addListener(
+      'result',
+      (e: ExpoSpeechRecognitionResultEvent) => {
+        if (closed) return;
+        const transcript = e.results[0]?.transcript?.trim();
+        if (!transcript) return;
+        lastTranscript = transcript;
+        if (e.isFinal) {
+          opts.onResult(transcript);
+          lastTranscript = '';
+          // Inchidem imediat dupa final ca event-uri buffered (interim
+          // intarziate, end ulterior) sa nu rescrie draft-ul cu valori stale.
+          removeAll();
+        } else {
+          opts.onInterim?.(transcript);
+        }
+      },
+    ),
+    ExpoSpeechRecognitionModule.addListener('error', (e) => {
+      if (closed) return;
+      opts.onError?.(e.error ?? 'unknown', e.message);
+      removeAll();
+    }),
+  ];
 
+  // User-initiated stop: cere engine-ului sa termine si sa returneze final.
+  // Inchidem poarta IMEDIAT (fara removeAll) pana arrives final result, ca
+  // events stale sa nu mai fie procesate. Hard removal dupa 2s fallback.
   const cleanup = () => {
-    resultSub.remove();
-    errorSub.remove();
     try {
       ExpoSpeechRecognitionModule.stop();
     } catch {
       // ignore
     }
+    setTimeout(removeAll, 2000);
   };
 
-  ExpoSpeechRecognitionModule.start({
-    lang: 'ro-RO',
-    interimResults: false,
-    maxAlternatives: 1,
-    continuous: false,
-    requiresOnDeviceRecognition: false,
-    addsPunctuation: false,
-  });
+  try {
+    ExpoSpeechRecognitionModule.start({
+      lang,
+      interimResults: true,
+      maxAlternatives: 1,
+      continuous: false,
+      requiresOnDeviceRecognition: false,
+      addsPunctuation: false,
+    });
+  } catch (err) {
+    removeAll();
+    opts.onError?.('start_failed', String(err));
+  }
 
   return { stop: cleanup };
 }

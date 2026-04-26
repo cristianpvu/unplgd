@@ -2,19 +2,26 @@ import { useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   ensureMicPermission,
+  isSttAvailable,
   startListening,
   type SttHandle,
 } from '../lib/speech';
 import { colors } from '../theme/colors';
 
 type Props = {
-  onTranscript: (text: string) => void;
+  // Apelat pentru fiecare rezultat (intermediar + final). isFinal indica ultimul.
+  onTranscript: (text: string, isFinal: boolean) => void;
+  // Apelat la pornirea sesiunii — chat-ul foloseste asta sa salveze base draft-ul.
+  onStart?: () => void;
   disabled?: boolean;
 };
 
-export function MicButton({ onTranscript, disabled }: Props) {
+export function MicButton({ onTranscript, onStart, disabled }: Props) {
   const [listening, setListening] = useState(false);
   const handleRef = useRef<SttHandle | null>(null);
+  // Sesiunea curenta — incrementam la fiecare start, callback-urile verifica
+  // sa nu vina dintr-o sesiune veche (events buffered, intarziati pe Android).
+  const sessionRef = useRef(0);
 
   useEffect(() => {
     return () => {
@@ -23,6 +30,13 @@ export function MicButton({ onTranscript, disabled }: Props) {
   }, []);
 
   async function start() {
+    if (!isSttAvailable()) {
+      Alert.alert(
+        'STT indisponibil',
+        'Modulul nativ nu e legat. Trebuie un prebuild + rebuild al app-ului dupa ce am adaugat plugin-ul.',
+      );
+      return;
+    }
     const granted = await ensureMicPermission();
     if (!granted) {
       Alert.alert(
@@ -31,18 +45,30 @@ export function MicButton({ onTranscript, disabled }: Props) {
       );
       return;
     }
+    sessionRef.current += 1;
+    const sid = sessionRef.current;
     setListening(true);
+    onStart?.();
     handleRef.current = await startListening({
-      onResult: (text) => {
-        setListening(false);
-        handleRef.current?.stop();
-        handleRef.current = null;
-        onTranscript(text);
+      onInterim: (text) => {
+        if (sid !== sessionRef.current) return;
+        onTranscript(text, false);
       },
-      onError: () => {
+      onResult: (text) => {
+        if (sid !== sessionRef.current) return;
         setListening(false);
-        handleRef.current?.stop();
         handleRef.current = null;
+        onTranscript(text, true);
+        // Marcam sesiunea inchisa ca event-uri intarziate (end, interim
+        // buffered) sa fie ignorate complet.
+        sessionRef.current += 1;
+      },
+      onError: (code, message) => {
+        if (sid !== sessionRef.current) return;
+        setListening(false);
+        handleRef.current = null;
+        sessionRef.current += 1;
+        Alert.alert('Recunoasterea n-a mers', `[${code}] ${message ?? ''}`);
       },
     });
   }
@@ -51,6 +77,8 @@ export function MicButton({ onTranscript, disabled }: Props) {
     handleRef.current?.stop();
     handleRef.current = null;
     setListening(false);
+    // Inchide sesiunea: orice event intarziat e ignorat de gard.
+    sessionRef.current += 1;
   }
 
   return (
