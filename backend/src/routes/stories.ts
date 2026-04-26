@@ -151,7 +151,42 @@ storiesRouter.post('/', async (req, res, next) => {
     await appendChatTurn(cacheKey, userTurn);
     await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
 
-    res.json({ reply: replyText });
+    // TTS pe replica curenta a pet-ului. Best-effort, nu blocheaza response-ul.
+    let replyAudioUrl: string | null = null;
+    try {
+      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      replyAudioUrl = tts.urlPath;
+    } catch (err) {
+      req.log.error({ err }, 'tts.reply_failed');
+    }
+
+    res.json({ reply: replyText, replyAudioUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /stories/tts — sintetizeaza un text arbitrar cu vocea pet-ului user-ului.
+// Folosit de mobile pentru replicile hardcodate (intro etc.) si orice text
+// scurt pe care vrem sa-l auzim cu vocea premium, nu cu OS-TTS-ul.
+const ttsSchema = z.object({
+  text: z.string().trim().min(1).max(500),
+});
+
+storiesRouter.post('/tts', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const { text } = ttsSchema.parse(req.body);
+
+    const pet = await ensureDefaultPet(userId).then((p) =>
+      prisma.pet.findUniqueOrThrow({
+        where: { id: p.id },
+        include: { species: true },
+      }),
+    );
+
+    const tts = await synthesizeTts(text, pet.species.voiceId);
+    res.json({ audioUrl: tts.urlPath, provider: tts.provider });
   } catch (e) {
     next(e);
   }
@@ -543,7 +578,15 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
     await appendChatTurn(cacheKey, userTurn);
     await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
 
-    res.json({ reply: replyText });
+    let replyAudioUrl: string | null = null;
+    try {
+      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      replyAudioUrl = tts.urlPath;
+    } catch (err) {
+      req.log.error({ err }, 'tts.verify_reply_failed');
+    }
+
+    res.json({ reply: replyText, replyAudioUrl });
   } catch (e) {
     next(e);
   }

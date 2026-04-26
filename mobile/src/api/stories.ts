@@ -14,8 +14,8 @@ export type FinalStory = Story & {
 };
 
 export type CreateChatResponse =
-  | { reply: string; finalStory?: undefined }
-  | { reply?: undefined; finalStory: FinalStory };
+  | { reply: string; replyAudioUrl: string | null; finalStory?: undefined }
+  | { reply?: undefined; replyAudioUrl?: undefined; finalStory: FinalStory };
 
 export type InboxItem = {
   storyId: string;
@@ -39,7 +39,7 @@ export type ClaimDetails = {
 };
 
 export type VerifyChatResponse =
-  | { reply: string; done?: undefined }
+  | { reply: string; replyAudioUrl: string | null; done?: undefined }
   | {
       done: true;
       status: 'VERIFIED' | 'FAILED' | 'ATTEMPTING';
@@ -89,5 +89,12 @@ export function postVerifyAnswer(claimId: string, message: string) {
   return api<VerifyChatResponse>(`/stories/claims/${claimId}/answer`, {
     method: 'POST',
     body: { message },
+  });
+}
+
+export function ttsSynthesize(text: string) {
+  return api<{ audioUrl: string; provider: 'eleven' | 'edge' }>('/stories/tts', {
+    method: 'POST',
+    body: { text },
   });
 }

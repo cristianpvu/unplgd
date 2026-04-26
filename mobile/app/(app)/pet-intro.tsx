@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { ensureMicPermission, speakDevice, stopDevice } from '../../src/lib/speech';
+import {
+  ensureMicPermission,
+  playPetVoice,
+  speakDevice,
+  stopDevice,
+  stopRemoteAudio,
+} from '../../src/lib/speech';
+import { absoluteAudioUrl, ttsSynthesize } from '../../src/api/stories';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
 
@@ -13,8 +20,22 @@ export default function PetIntro() {
   const [granted, setGranted] = useState<boolean | null>(null);
 
   useEffect(() => {
-    speakDevice(INTRO_TEXT);
-    return () => stopDevice();
+    let cancelled = false;
+    (async () => {
+      try {
+        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+        if (cancelled) return;
+        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+      } catch {
+        if (cancelled) return;
+        speakDevice(INTRO_TEXT);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopDevice();
+      void stopRemoteAudio();
+    };
   }, []);
 
   async function askPermission() {

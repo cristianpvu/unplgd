@@ -19,11 +19,12 @@ import {
   postCreateChat,
   resetCreateDraft,
   absoluteAudioUrl,
+  ttsSynthesize,
   type FinalStory,
 } from '../../../src/api/stories';
 import { ApiError } from '../../../src/api/client';
 import {
-  playRemoteAudio,
+  playPetVoice,
   speakDevice,
   stopDevice,
   stopRemoteAudio,
@@ -51,10 +52,23 @@ export default function StoryCreate() {
   // se concateneze in spate fara sa stearga ce a tastat user-ul deja.
   const sttBaseRef = useRef('');
 
-  // Citim cu voce introul la mount.
+  // Citim cu voce introul la mount — TTS server-side (ElevenLabs) cu fallback
+  // pe device daca pica. Cache-ul backend serveste mereu acelasi MP3 pt acelasi
+  // text + voce, deci e gratis dupa primul play.
   useEffect(() => {
-    speakDevice(INTRO_TEXT);
+    let cancelled = false;
+    (async () => {
+      try {
+        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+        if (cancelled) return;
+        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+      } catch {
+        if (cancelled) return;
+        speakDevice(INTRO_TEXT);
+      }
+    })();
     return () => {
+      cancelled = true;
       stopDevice();
       void stopRemoteAudio();
     };
@@ -94,20 +108,14 @@ export default function StoryCreate() {
           Alert.alert('TTS provider', story.ttsProvider);
         }
 
-        // Vocea pet-ului citeste povestea finala via TTS server-side
-        const audio = absoluteAudioUrl(story.bodyAudioUrl);
-        if (audio) {
-          void playRemoteAudio(audio).catch(() => speakDevice(story.body));
-        } else {
-          speakDevice(story.body);
-        }
+        void playPetVoice(story.body, absoluteAudioUrl(story.bodyAudioUrl));
       } else if ('reply' in resp && resp.reply) {
         const reply = resp.reply;
         setBubbles((b) => [
           ...b,
           { id: `p-${Date.now()}`, role: 'pet', text: reply },
         ]);
-        speakDevice(reply);
+        void playPetVoice(reply, absoluteAudioUrl(resp.replyAudioUrl));
       }
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
@@ -122,12 +130,17 @@ export default function StoryCreate() {
 
   const reset = useMutation({
     mutationFn: () => resetCreateDraft(),
-    onSuccess: () => {
+    onSuccess: async () => {
       setBubbles([INTRO_BUBBLE]);
       setFinal(null);
       stopDevice();
-      void stopRemoteAudio();
-      speakDevice(INTRO_TEXT);
+      await stopRemoteAudio();
+      try {
+        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+      } catch {
+        speakDevice(INTRO_TEXT);
+      }
     },
   });
 
@@ -192,9 +205,7 @@ export default function StoryCreate() {
           <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
             <Pressable
               onPress={() => {
-                const audio = absoluteAudioUrl(final.bodyAudioUrl);
-                if (audio) void playRemoteAudio(audio).catch(() => speakDevice(final.body));
-                else speakDevice(final.body);
+                void playPetVoice(final.body, absoluteAudioUrl(final.bodyAudioUrl));
               }}
               style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
             >

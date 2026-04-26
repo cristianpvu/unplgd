@@ -5,8 +5,9 @@ import {
   type ExpoSpeechRecognitionResultEvent,
 } from 'expo-speech-recognition';
 
-// Layer 1 — TTS pe device (expo-speech). Folosit pentru replicile pet-ului
-// in chat-uri (intrebari, feedback). Latency 0, fara cost. Voce nativa OS.
+// Layer 1 — TTS pe device (expo-speech). Fallback cand audio remote pica.
+// In conditii normale NU il chemam direct — folosim playPetVoice care prefera
+// audio-ul de la backend (ElevenLabs).
 export function speakDevice(text: string) {
   Speech.stop();
   Speech.speak(text, { language: 'ro-RO', pitch: 1.05, rate: 1.0 });
@@ -14,6 +15,23 @@ export function speakDevice(text: string) {
 
 export function stopDevice() {
   Speech.stop();
+}
+
+// Helper unificat — folosit peste tot pe ecranele de poveste. Daca avem URL
+// remote (de la backend, deja generat de ElevenLabs sau Edge cu cache), il
+// redam. Daca pica fetch-ul sau nu avem URL, cadem pe expo-speech.
+export async function playPetVoice(text: string, audioUrl: string | null) {
+  stopDevice();
+  await stopRemoteAudio();
+  if (audioUrl) {
+    try {
+      await playRemoteAudio(audioUrl);
+      return;
+    } catch {
+      // fall through la device speak
+    }
+  }
+  speakDevice(text);
 }
 
 // Layer 2 — playback MP3 server-side (Edge TTS prin backend). Folosit pentru

@@ -19,10 +19,11 @@ import {
   getClaim,
   postVerifyAnswer,
   absoluteAudioUrl,
+  ttsSynthesize,
   type VerifyChatResponse,
 } from '../../../../src/api/stories';
 import {
-  playRemoteAudio,
+  playPetVoice,
   speakDevice,
   stopDevice,
   stopRemoteAudio,
@@ -70,13 +71,24 @@ export default function StoryVerify() {
   // dupa ce trimitem PRIMUL mesaj. Aratam un placeholder de start ca user-ul
   // sa stie ca trebuie sa scrie ceva ("ok, sunt gata!").
   useEffect(() => {
+    let cancelled = false;
     if (claimQuery.data && bubbles.length === 0) {
       const author = claimQuery.data.claim.story.author.name;
       const intro = `${author} mi-a zis ca ti-a spus o poveste! Hai sa vedem cat ai retinut. Cand esti gata, scrie-mi.`;
       setBubbles([{ id: 'intro', role: 'pet', text: intro }]);
-      speakDevice(intro);
+      (async () => {
+        try {
+          const { audioUrl } = await ttsSynthesize(intro);
+          if (cancelled) return;
+          await playPetVoice(intro, absoluteAudioUrl(audioUrl));
+        } catch {
+          if (cancelled) return;
+          speakDevice(intro);
+        }
+      })();
     }
     return () => {
+      cancelled = true;
       stopDevice();
       void stopRemoteAudio();
     };
@@ -100,13 +112,11 @@ export default function StoryVerify() {
           Alert.alert('TTS provider', resp.ttsProvider);
         }
 
-        const audio = absoluteAudioUrl(resp.summaryAudioUrl);
-        if (audio) void playRemoteAudio(audio).catch(() => speakDevice(resp.summary));
-        else speakDevice(resp.summary);
+        void playPetVoice(resp.summary, absoluteAudioUrl(resp.summaryAudioUrl));
       } else if ('reply' in resp && resp.reply) {
         const reply = resp.reply;
         setBubbles((b) => [...b, { id: `p-${Date.now()}`, role: 'pet', text: reply }]);
-        speakDevice(reply);
+        void playPetVoice(reply, absoluteAudioUrl(resp.replyAudioUrl));
       }
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
