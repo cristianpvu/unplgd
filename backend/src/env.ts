@@ -14,6 +14,15 @@ const schema = z.object({
   // Director cache MP3-uri TTS. Static-served prin Express. In prod sub volum
   // persistent; cleanup-ul se face manual sau prin cron (LRU pe atime).
   TTS_CACHE_DIR: z.string().default('./tts-cache'),
+  // Provider TTS — 'eleven' (calitate naturala, plata) sau 'edge' (gratis,
+  // robotic). Daca eleven pica sau lipseste API key, fallback automat la edge.
+  TTS_PROVIDER: z.enum(['eleven', 'edge']).default('edge'),
+  ELEVENLABS_API_KEY: z.string().optional(),
+  // Voice ID din ElevenLabs Voice Library (string opaque). Default global daca
+  // pet-urile inca nu au voce proprie per specie.
+  ELEVENLABS_VOICE_ID: z.string().optional(),
+  // Model ElevenLabs — multilingual v2 are calitate top pe romana cu accent.
+  ELEVENLABS_MODEL: z.string().default('eleven_multilingual_v2'),
 });
 
 const parsed = schema.safeParse(process.env);

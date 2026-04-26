@@ -49,6 +49,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
       TTS_CACHE_DIR: /data/tts-cache
+      TTS_PROVIDER: ${TTS_PROVIDER:-edge}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-}
+      ELEVENLABS_MODEL: ${ELEVENLABS_MODEL:-eleven_multilingual_v2}
     volumes:
       - unplgd_tts_cache:/data/tts-cache
     ports:
