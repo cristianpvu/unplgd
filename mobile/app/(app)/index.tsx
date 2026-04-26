@@ -93,7 +93,13 @@ export default function Home() {
         </Pressable>
 
         {isPending && <ActivityIndicator color={colors.accent} />}
-        {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
+        {error && (
+          <Text style={styles.errorText}>
+            {error instanceof ApiError
+              ? `[${error.status}] ${error.code ?? ''} — ${error.message}`
+              : (error as Error).message}
+          </Text>
+        )}
 
         <Pressable
           onPress={() => router.push('/(app)/play')}

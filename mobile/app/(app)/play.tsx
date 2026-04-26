@@ -36,7 +36,6 @@ const SOLO: GameCard[] = [
   { key: 'quiz', emoji: '❓', title: 'Quiz rapid', subtitle: '10 intrebari', bg: '#FFF1C2', soon: true },
   { key: 'memory', emoji: '🧠', title: 'Memorie', subtitle: 'Tine minte', bg: '#E8F8E1', soon: true },
   { key: 'draw', emoji: '🎨', title: 'Desen', subtitle: 'Cu AI-ul', bg: '#F0E4FF', soon: true },
-  { key: 'story', emoji: '📖', title: 'Poveste', subtitle: 'Spune-mi una', bg: '#FFE0CC', soon: true },
 ];
 
 export default function Play() {
@@ -55,11 +54,11 @@ export default function Play() {
         showsVerticalScrollIndicator={false}
       >
         <Pressable
-          onPress={() => Alert.alert('In curand', 'Prietenul tau AI vine in curand!')}
+          onPress={() => router.push('/(app)/story')}
           style={({ pressed }) => [styles.heroCard, pressed && styles.cardPressed]}
         >
           <View style={styles.heroIconWrap}>
-            <Text style={styles.heroEmoji}>🤖</Text>
+            <Text style={styles.heroEmoji}>📖</Text>
             <View style={styles.heroSparkle}>
               <SparklesIcon />
             </View>
@@ -68,9 +67,9 @@ export default function Play() {
             <View style={styles.heroBadge}>
               <Text style={styles.heroBadgeText}>NOU</Text>
             </View>
-            <Text style={styles.heroTitle}>Prietenul tau AI</Text>
+            <Text style={styles.heroTitle}>Spune o poveste</Text>
             <Text style={styles.heroSubtitle}>
-              Vorbeste, joaca-te si invata cu un buddy mereu pregatit.
+              Inventeaza o poveste cu Buddy si spune-o unui prieten.
             </Text>
           </View>
         </Pressable>

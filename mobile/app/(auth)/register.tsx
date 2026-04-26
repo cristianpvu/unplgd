@@ -26,7 +26,7 @@ export default function Register() {
     mutationFn: register,
     onSuccess: async ({ token }) => {
       await signIn(token);
-      router.replace('/(app)/avatar-edit?firstTime=1');
+      router.replace('/(app)/pet-intro');
     },
     onError: (e: unknown) => {
       setError(e instanceof ApiError ? e.message : 'Ceva nu a mers. Incearca din nou.');
