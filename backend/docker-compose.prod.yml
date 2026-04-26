@@ -46,6 +46,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      TTS_CACHE_DIR: /data/tts-cache
+    volumes:
+      - unplgd_tts_cache:/data/tts-cache
     ports:
       - "127.0.0.1:4001:4000"
     networks: [unplgd_net]
@@ -53,6 +58,7 @@ services:
 volumes:
   unplgd_postgres_prod_data:
   unplgd_redis_prod_data:
+  unplgd_tts_cache:
 
 networks:
   unplgd_net:
