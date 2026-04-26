@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,6 +40,7 @@ const INTRO_BUBBLE: ChatBubble = { id: 'intro', role: 'pet', text: INTRO_TEXT };
 
 export default function StoryCreate() {
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [bubbles, setBubbles] = useState<ChatBubble[]>([INTRO_BUBBLE]);
   const [draft, setDraft] = useState('');
@@ -114,7 +115,7 @@ export default function StoryCreate() {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
@@ -140,8 +141,8 @@ export default function StoryCreate() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={8}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
       >
         <ScrollView
           ref={scrollRef}
@@ -161,7 +162,7 @@ export default function StoryCreate() {
         </ScrollView>
 
         {final ? (
-          <View style={styles.finalActions}>
+          <View style={[styles.finalActions, { paddingBottom: 14 + insets.bottom }]}>
             <Pressable
               onPress={() => {
                 const audio = absoluteAudioUrl(final.bodyAudioUrl);
@@ -180,7 +181,7 @@ export default function StoryCreate() {
             </Pressable>
           </View>
         ) : (
-          <View style={styles.inputRow}>
+          <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
             <MicButton
               disabled={send.isPending}
               onTranscript={(text) => {

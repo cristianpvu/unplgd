@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -38,6 +38,7 @@ type VerifyDoneState = Extract<VerifyChatResponse, { done: true }>;
 export default function StoryVerify() {
   const { claimId } = useLocalSearchParams<{ claimId: string }>();
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState('');
@@ -103,7 +104,7 @@ export default function StoryVerify() {
 
   if (claimQuery.isPending) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <ActivityIndicator color={colors.accent} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
@@ -111,7 +112,7 @@ export default function StoryVerify() {
 
   if (claimQuery.error || !claimQuery.data) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <View style={styles.headerRow}>
           <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
             <Text style={styles.back}>←</Text>
@@ -127,7 +128,7 @@ export default function StoryVerify() {
   const claim = claimQuery.data.claim;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
@@ -140,8 +141,8 @@ export default function StoryVerify() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={8}
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
       >
         <ScrollView
           ref={scrollRef}
@@ -161,7 +162,7 @@ export default function StoryVerify() {
         </ScrollView>
 
         {final ? (
-          <View style={styles.finalActions}>
+          <View style={[styles.finalActions, { paddingBottom: 14 + insets.bottom }]}>
             <Pressable
               onPress={() => router.replace('/(app)/story')}
               style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
@@ -170,7 +171,7 @@ export default function StoryVerify() {
             </Pressable>
           </View>
         ) : (
-          <View style={styles.inputRow}>
+          <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
             <MicButton
               disabled={send.isPending}
               onTranscript={(text) => {
