@@ -96,6 +96,8 @@ export default function StoryVerify() {
 
         if (resp.ttsError) {
           Alert.alert('TTS error', resp.ttsError);
+        } else if (resp.ttsProvider) {
+          Alert.alert('TTS provider', resp.ttsProvider);
         }
 
         const audio = absoluteAudioUrl(resp.summaryAudioUrl);

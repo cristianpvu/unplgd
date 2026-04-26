@@ -123,9 +123,12 @@ storiesRouter.post('/', async (req, res, next) => {
 
       // TTS pe body — vocea pet-ului.
       let bodyAudioUrl: string | null = null;
+      let ttsProvider: string | null = null;
       let ttsError: string | null = null;
       try {
-        bodyAudioUrl = await synthesizeTts(json.body, pet.species.voiceId);
+        const tts = await synthesizeTts(json.body, pet.species.voiceId);
+        bodyAudioUrl = tts.urlPath;
+        ttsProvider = tts.provider;
       } catch (err) {
         req.log.error({ err }, 'tts.story_body_failed');
         ttsError = err instanceof Error ? err.message : String(err);
@@ -137,6 +140,7 @@ storiesRouter.post('/', async (req, res, next) => {
           title: story.title,
           body: story.body,
           bodyAudioUrl,
+          ttsProvider,
           ttsError,
         },
       });
@@ -509,9 +513,12 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
 
       // TTS pe summary — pet-ul lui B "vorbeste" la inchidere.
       let summaryAudioUrl: string | null = null;
+      let ttsProvider: string | null = null;
       let ttsError: string | null = null;
       try {
-        summaryAudioUrl = await synthesizeTts(json.summary, pet.species.voiceId);
+        const tts = await synthesizeTts(json.summary, pet.species.voiceId);
+        summaryAudioUrl = tts.urlPath;
+        ttsProvider = tts.provider;
       } catch (err) {
         req.log.error({ err }, 'tts.verify_summary_failed');
         ttsError = err instanceof Error ? err.message : String(err);
@@ -523,6 +530,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
         score: json.score,
         summary: json.summary,
         summaryAudioUrl,
+        ttsProvider,
         ttsError,
         perFact: json.perFact,
         canRetry: nextStatus === 'ATTEMPTING',

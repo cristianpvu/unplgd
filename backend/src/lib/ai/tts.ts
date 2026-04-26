@@ -10,6 +10,18 @@ import { logger } from '../logger.js';
 // server.ts.
 export const TTS_URL_PREFIX = '/tts-cache';
 
+// Boot diagnostic — arata in log-uri exact ce TTS e activ. Util cand env
+// var-urile par sa nu ajunga la container (typo, restart lipsa, etc.)
+logger.info(
+  {
+    provider: env.TTS_PROVIDER,
+    hasElevenKey: !!env.ELEVENLABS_API_KEY,
+    hasElevenVoice: !!env.ELEVENLABS_VOICE_ID,
+    elevenModel: env.ELEVENLABS_MODEL,
+  },
+  'tts.config',
+);
+
 let cacheDirReady: Promise<void> | null = null;
 async function ensureCacheDir() {
   if (!cacheDirReady) {
@@ -34,14 +46,17 @@ async function fileExists(path: string) {
   }
 }
 
+export type TtsResult = {
+  urlPath: string;
+  provider: 'eleven' | 'edge';
+};
+
 /**
- * Sintetizeaza textul si returneaza URL-ul MP3 cache-uit. Dispatcher intre
- * provideri — preferinta `TTS_PROVIDER`, fallback automat la Edge daca pica.
- *
- * `voiceId` e voicea din DB-ul pet-ului (ex: ro-RO-EmilNeural pt Edge). Pt
- * ElevenLabs folosim `ELEVENLABS_VOICE_ID` din env (override global).
+ * Sintetizeaza textul si returneaza URL-ul MP3 cache-uit + provider-ul folosit.
+ * Dispatcher pe `TTS_PROVIDER`. Erorile propaga (fara fallback silentios) ca
+ * sa fie vizibile in dev.
  */
-export async function synthesizeTts(text: string, voiceId: string): Promise<string> {
+export async function synthesizeTts(text: string, voiceId: string): Promise<TtsResult> {
   if (env.TTS_PROVIDER === 'eleven') {
     if (!env.ELEVENLABS_API_KEY) {
       throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_API_KEY lipseste');
@@ -49,10 +64,11 @@ export async function synthesizeTts(text: string, voiceId: string): Promise<stri
     if (!env.ELEVENLABS_VOICE_ID) {
       throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_VOICE_ID lipseste');
     }
-    // Lasam erorile sa propage — vrem sa vedem ce pica, fara fallback silentios.
-    return synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
+    const urlPath = await synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
+    return { urlPath, provider: 'eleven' };
   }
-  return synthesizeEdge(text, voiceId);
+  const urlPath = await synthesizeEdge(text, voiceId);
+  return { urlPath, provider: 'edge' };
 }
 
 async function synthesizeEdge(text: string, voiceId: string): Promise<string> {

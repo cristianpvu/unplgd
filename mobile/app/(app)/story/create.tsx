@@ -89,6 +89,9 @@ export default function StoryCreate() {
 
         if (story.ttsError) {
           Alert.alert('TTS error', story.ttsError);
+        } else if (story.ttsProvider) {
+          // Diagnostic vizibil cat lucram la TTS — sa vedem cu ce vorbeste.
+          Alert.alert('TTS provider', story.ttsProvider);
         }
 
         // Vocea pet-ului citeste povestea finala via TTS server-side
