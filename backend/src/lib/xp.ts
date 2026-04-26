@@ -5,6 +5,10 @@ import { xpToLevel } from './level.js';
 export const XP_REWARDS = {
   FRIENDSHIP_NEW: 100,
   DAILY_INTERACTION: 20,
+  // Poveste — XP scaleaza cu scor (3..5). Sub 3 = nu primesc XP.
+  // Author primeste mai mult ca a creat + povestit; listener mai putin.
+  STORY_TOLD_BY_SCORE: { 3: 60, 4: 70, 5: 80 } as Record<number, number>,
+  STORY_LISTENED_BY_SCORE: { 3: 20, 4: 25, 5: 30 } as Record<number, number>,
 } as const;
 
 type Tx = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];

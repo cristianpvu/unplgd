@@ -7,6 +7,10 @@ const schema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(16),
+  ANTHROPIC_API_KEY: z.string().min(1),
+  // Modelul Claude folosit la chat-uri (story create/verify). Default = sonnet.
+  // Pt dev/loc poti folosi haiku (mai ieftin) prin override in .env.
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
 });
 
 const parsed = schema.safeParse(process.env);
