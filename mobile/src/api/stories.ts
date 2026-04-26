@@ -9,6 +9,7 @@ export type Story = {
 
 export type FinalStory = Story & {
   bodyAudioUrl: string | null;
+  ttsError?: string | null;
 };
 
 export type CreateChatResponse =
@@ -44,6 +45,7 @@ export type VerifyChatResponse =
       score: number;
       summary: string;
       summaryAudioUrl: string | null;
+      ttsError?: string | null;
       perFact: { q: string; given: string; correct: boolean }[];
       canRetry: boolean;
       xp: { listener: number; author: number };

@@ -94,6 +94,10 @@ export default function StoryVerify() {
         qc.invalidateQueries({ queryKey: ['stories', 'inbox'] });
         qc.invalidateQueries({ queryKey: ['me'] });
 
+        if (resp.ttsError) {
+          Alert.alert('TTS error', resp.ttsError);
+        }
+
         const audio = absoluteAudioUrl(resp.summaryAudioUrl);
         if (audio) void playRemoteAudio(audio).catch(() => speakDevice(resp.summary));
         else speakDevice(resp.summary);

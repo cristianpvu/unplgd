@@ -121,13 +121,14 @@ storiesRouter.post('/', async (req, res, next) => {
       });
       await clearChatHistory(cacheKey);
 
-      // TTS pe body — vocea pet-ului. Best-effort: daca pica TTS, returnam
-      // tot povestea (mobile foloseste expo-speech ca fallback).
+      // TTS pe body — vocea pet-ului.
       let bodyAudioUrl: string | null = null;
+      let ttsError: string | null = null;
       try {
         bodyAudioUrl = await synthesizeTts(json.body, pet.species.voiceId);
       } catch (err) {
-        req.log.warn({ err }, 'tts.story_body_failed');
+        req.log.error({ err }, 'tts.story_body_failed');
+        ttsError = err instanceof Error ? err.message : String(err);
       }
 
       res.status(201).json({
@@ -136,6 +137,7 @@ storiesRouter.post('/', async (req, res, next) => {
           title: story.title,
           body: story.body,
           bodyAudioUrl,
+          ttsError,
         },
       });
       return;
@@ -507,10 +509,12 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
 
       // TTS pe summary — pet-ul lui B "vorbeste" la inchidere.
       let summaryAudioUrl: string | null = null;
+      let ttsError: string | null = null;
       try {
         summaryAudioUrl = await synthesizeTts(json.summary, pet.species.voiceId);
       } catch (err) {
-        req.log.warn({ err }, 'tts.verify_summary_failed');
+        req.log.error({ err }, 'tts.verify_summary_failed');
+        ttsError = err instanceof Error ? err.message : String(err);
       }
 
       res.json({
@@ -519,6 +523,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
         score: json.score,
         summary: json.summary,
         summaryAudioUrl,
+        ttsError,
         perFact: json.perFact,
         canRetry: nextStatus === 'ATTEMPTING',
         xp: { listener: xpListener, author: xpAuthor },

@@ -87,6 +87,10 @@ export default function StoryCreate() {
         ]);
         qc.invalidateQueries({ queryKey: ['stories', 'mine'] });
 
+        if (story.ttsError) {
+          Alert.alert('TTS error', story.ttsError);
+        }
+
         // Vocea pet-ului citeste povestea finala via TTS server-side
         const audio = absoluteAudioUrl(story.bodyAudioUrl);
         if (audio) {

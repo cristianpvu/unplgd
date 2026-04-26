@@ -42,17 +42,15 @@ async function fileExists(path: string) {
  * ElevenLabs folosim `ELEVENLABS_VOICE_ID` din env (override global).
  */
 export async function synthesizeTts(text: string, voiceId: string): Promise<string> {
-  if (
-    env.TTS_PROVIDER === 'eleven' &&
-    env.ELEVENLABS_API_KEY &&
-    env.ELEVENLABS_VOICE_ID
-  ) {
-    try {
-      return await synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
-    } catch (err) {
-      logger.warn({ err }, 'tts.eleven_failed_fallback_edge');
-      // fall through la Edge ca fallback
+  if (env.TTS_PROVIDER === 'eleven') {
+    if (!env.ELEVENLABS_API_KEY) {
+      throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_API_KEY lipseste');
     }
+    if (!env.ELEVENLABS_VOICE_ID) {
+      throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_VOICE_ID lipseste');
+    }
+    // Lasam erorile sa propage — vrem sa vedem ce pica, fara fallback silentios.
+    return synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
   }
   return synthesizeEdge(text, voiceId);
 }
