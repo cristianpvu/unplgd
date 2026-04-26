@@ -16,6 +16,7 @@ import {
   loadChatHistory,
 } from '../lib/ai/chatContext.js';
 import { extractJsonBlock } from '../lib/ai/jsonExtract.js';
+import { synthesizeTts } from '../lib/ai/tts.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
 
@@ -120,11 +121,21 @@ storiesRouter.post('/', async (req, res, next) => {
       });
       await clearChatHistory(cacheKey);
 
+      // TTS pe body — vocea pet-ului. Best-effort: daca pica TTS, returnam
+      // tot povestea (mobile foloseste expo-speech ca fallback).
+      let bodyAudioUrl: string | null = null;
+      try {
+        bodyAudioUrl = await synthesizeTts(json.body, pet.species.voiceId);
+      } catch (err) {
+        req.log.warn({ err }, 'tts.story_body_failed');
+      }
+
       res.status(201).json({
         finalStory: {
           id: story.id,
           title: story.title,
           body: story.body,
+          bodyAudioUrl,
         },
       });
       return;
@@ -494,11 +505,20 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
 
       await clearChatHistory(cacheKey);
 
+      // TTS pe summary — pet-ul lui B "vorbeste" la inchidere.
+      let summaryAudioUrl: string | null = null;
+      try {
+        summaryAudioUrl = await synthesizeTts(json.summary, pet.species.voiceId);
+      } catch (err) {
+        req.log.warn({ err }, 'tts.verify_summary_failed');
+      }
+
       res.json({
         done: true,
         status: nextStatus,
         score: json.score,
         summary: json.summary,
+        summaryAudioUrl,
         perFact: json.perFact,
         canRetry: nextStatus === 'ATTEMPTING',
         xp: { listener: xpListener, author: xpAuthor },

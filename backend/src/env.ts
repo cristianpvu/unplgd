@@ -11,6 +11,9 @@ const schema = z.object({
   // Modelul Claude folosit la chat-uri (story create/verify). Default = sonnet.
   // Pt dev/loc poti folosi haiku (mai ieftin) prin override in .env.
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
+  // Director cache MP3-uri TTS. Static-served prin Express. In prod sub volum
+  // persistent; cleanup-ul se face manual sau prin cron (LRU pe atime).
+  TTS_CACHE_DIR: z.string().default('./tts-cache'),
 });
 
 const parsed = schema.safeParse(process.env);
