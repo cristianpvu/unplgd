@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { hashPassword, verifyPassword } from '../lib/hash.js';
 import { signToken } from '../lib/jwt.js';
+import { ensureDefaultPet } from '../lib/pet.js';
 import { badRequest, conflict, unauthorized } from '../lib/errors.js';
 
 export const authRouter = Router();
@@ -28,6 +29,8 @@ authRouter.post('/register', async (req, res, next) => {
 
     // Avatarul se creeaza lazy la primul GET /me/avatar — separa concernurile
     // (auth nu cunoaste catalogul) si tine register-ul rapid (fara render SVG).
+    // Pet-ul se creeaza acum (lookup specie default = 1 query, ieftin) ca
+    // mobile sa-l aiba garantat la primul GET /me/pet, fara branch lazy.
     const user = await prisma.user.create({
       data: {
         email: body.email,
@@ -36,6 +39,8 @@ authRouter.post('/register', async (req, res, next) => {
         passwordHash: await hashPassword(body.password),
       },
     });
+
+    await ensureDefaultPet(user.id);
 
     res.status(201).json({
       token: signToken(user.id),

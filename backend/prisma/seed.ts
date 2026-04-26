@@ -222,6 +222,28 @@ const TYPES: SeedType[] = [
   },
 ];
 
+// Pet species — catalog pentru AI buddy. MVP: doar caine "Buddy" (default).
+// Iteratiile viitoare adauga pisica, dragon etc. cu voci distincte.
+// `voiceId` = identificator Microsoft Edge TTS (ro-RO neural voices).
+type SeedSpecies = {
+  slug: string;
+  name: string;
+  voiceId: string;
+  systemHint: string;
+  isDefault: boolean;
+};
+
+const SPECIES: SeedSpecies[] = [
+  {
+    slug: 'dog',
+    name: 'Catelus',
+    voiceId: 'ro-RO-EmilNeural',
+    systemHint:
+      'Esti un catelus jucaus si dragalas. Vorbesti scurt, vesel, dai labute. Folosesti diminutive ("povestioara", "prietenul meu"). Te entuziasmezi la lucruri noi.',
+    isDefault: true,
+  },
+];
+
 async function main() {
   for (const [typeIdx, type] of TYPES.entries()) {
     const typeRow = await prisma.itemType.upsert({
@@ -252,8 +274,16 @@ async function main() {
     }
   }
 
+  for (const species of SPECIES) {
+    await prisma.petSpecies.upsert({
+      where: { slug: species.slug },
+      create: species,
+      update: species,
+    });
+  }
+
   const counts = await prisma.item.count();
-  console.log(`Seed complete: ${TYPES.length} types, ${counts} items`);
+  console.log(`Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species`);
 }
 
 main()

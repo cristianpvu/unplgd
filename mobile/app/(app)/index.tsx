@@ -19,7 +19,7 @@ import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { colors } from '../../src/theme/colors';
 
-type SheetKind = 'friends' | 'settings' | 'play' | null;
+type SheetKind = 'friends' | 'settings' | null;
 
 // Mirror al curbei din backend (lib/level.ts): level = 1 + floor(sqrt(xp/100)).
 // Tinem calculul aici ca sa nu mai facem un round-trip pt afisaj.
@@ -96,7 +96,7 @@ export default function Home() {
         {error && <Text style={styles.errorText}>Nu am putut incarca profilul</Text>}
 
         <Pressable
-          onPress={() => setSheet('play')}
+          onPress={() => router.push('/(app)/play')}
           style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
         >
           <Text style={styles.playButtonText}>Hai la joaca!</Text>
@@ -105,9 +105,7 @@ export default function Home() {
 
       <BottomSheet
         visible={sheet !== null}
-        title={
-          sheet === 'friends' ? 'Prietenii mei' : sheet === 'settings' ? 'Setari' : 'Hai la joaca'
-        }
+        title={sheet === 'friends' ? 'Prietenii mei' : 'Setari'}
         onClose={() => setSheet(null)}
       >
         {sheet === 'friends' && (
@@ -138,11 +136,6 @@ export default function Home() {
               }}
             />
           </View>
-        )}
-        {sheet === 'play' && (
-          <Text style={styles.sheetEmpty}>
-            Aici vor aparea provocarile, AI-ul tau si jocurile cu prietenii. Inca lucram la ele.
-          </Text>
         )}
         {sheet === 'settings' && (
           <View style={styles.sheetList}>
@@ -236,18 +229,6 @@ function GearIcon() {
         strokeWidth={2}
         strokeLinejoin="round"
       />
-    </Svg>
-  );
-}
-
-function SparklesIcon() {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"
-        fill="#FFFFFF"
-      />
-      <Path d="M19 14l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z" fill="#FFFFFF" />
     </Svg>
   );
 }
