@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -43,6 +44,20 @@ export default function StoryVerify() {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<VerifyDoneState | null>(null);
+  const [kbOpen, setKbOpen] = useState(false);
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
+    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    return () => {
+      sShow.remove();
+      sHide.remove();
+    };
+  }, []);
+
+  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
 
   const claimQuery = useQuery({
     queryKey: ['stories', 'claim', claimId],
@@ -142,7 +157,7 @@ export default function StoryVerify() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior="padding"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           ref={scrollRef}
@@ -162,7 +177,7 @@ export default function StoryVerify() {
         </ScrollView>
 
         {final ? (
-          <View style={[styles.finalActions, { paddingBottom: 14 + insets.bottom }]}>
+          <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
             <Pressable
               onPress={() => router.replace('/(app)/story')}
               style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
@@ -171,7 +186,7 @@ export default function StoryVerify() {
             </Pressable>
           </View>
         ) : (
-          <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
+          <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
             <MicButton
               disabled={send.isPending}
               onTranscript={(text) => {

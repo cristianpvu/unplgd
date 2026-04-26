@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -45,6 +46,7 @@ export default function StoryCreate() {
   const [bubbles, setBubbles] = useState<ChatBubble[]>([INTRO_BUBBLE]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<FinalStory | null>(null);
+  const [kbOpen, setKbOpen] = useState(false);
 
   // Citim cu voce introul la mount.
   useEffect(() => {
@@ -54,6 +56,21 @@ export default function StoryCreate() {
       void stopRemoteAudio();
     };
   }, []);
+
+  // Track keyboard ca sa eliminam padding-ul bottom inset cand e deschisa
+  // (altfel input ramane suspendat deasupra tastaturii cu spatiu gol).
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
+    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    return () => {
+      sShow.remove();
+      sHide.remove();
+    };
+  }, []);
+
+  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
 
   const send = useMutation({
     mutationFn: (msg: string) => postCreateChat(msg),
@@ -142,7 +159,7 @@ export default function StoryCreate() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior="padding"
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
+        keyboardVerticalOffset={0}
       >
         <ScrollView
           ref={scrollRef}
@@ -162,7 +179,7 @@ export default function StoryCreate() {
         </ScrollView>
 
         {final ? (
-          <View style={[styles.finalActions, { paddingBottom: 14 + insets.bottom }]}>
+          <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
             <Pressable
               onPress={() => {
                 const audio = absoluteAudioUrl(final.bodyAudioUrl);
@@ -181,7 +198,7 @@ export default function StoryCreate() {
             </Pressable>
           </View>
         ) : (
-          <View style={[styles.inputRow, { paddingBottom: 10 + insets.bottom }]}>
+          <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
             <MicButton
               disabled={send.isPending}
               onTranscript={(text) => {
