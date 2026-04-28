@@ -219,6 +219,37 @@ storiesRouter.get('/mine', async (req, res, next) => {
   }
 });
 
+storiesRouter.get('/by-friend/:friendId', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { friendId } = req.params;
+    if (!friendId) throw badRequest('missing_id', 'friendId lipsa');
+
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: 'ACCEPTED',
+        OR: [
+          { requesterId: me, receiverId: friendId },
+          { requesterId: friendId, receiverId: me },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!friendship) {
+      throw forbidden('not_friends', 'Nu sunteti prieteni');
+    }
+
+    const stories = await prisma.story.findMany({
+      where: { authorId: friendId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, body: true, createdAt: true },
+    });
+    res.json({ stories });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /stories/inbox — pentru fiecare prieten cu poveste creata in ultimele 3
 // zile pe care eu nu am verificat-o, returnez ultima poveste a lui + meta.
 storiesRouter.get('/inbox', async (req, res, next) => {
