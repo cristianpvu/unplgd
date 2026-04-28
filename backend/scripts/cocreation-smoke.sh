@@ -105,7 +105,7 @@ step "4. Creez poveste pt A direct in DB"
 STORY_TITLE="Dragonul albastru smoke"
 STORY_BODY="A fost odata un dragon albastru pe nume Aldo, care traia intr-o pestera de gheata. Avea aripi argintii si lasa urme stralucitoare cand zbura. Intr-o zi a intalnit un copil curajos si au devenit prieteni."
 STORY_ID=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$PG_CONTAINER" \
-  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A -c "
+  psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -qtAc "
     INSERT INTO \"Story\" (id, \"authorId\", title, body, \"keyFacts\")
     VALUES (
       gen_random_uuid()::text,
@@ -115,7 +115,7 @@ STORY_ID=$(docker exec -e PGPASSWORD="$POSTGRES_PASSWORD" "$PG_CONTAINER" \
       '[]'::jsonb
     )
     RETURNING id;
-  ")
+  " 2>/dev/null | head -n1 | tr -d '[:space:]')
 [[ -n "$STORY_ID" ]] || fail "Insert story esuat"
 ok "STORY=$STORY_ID"
 
