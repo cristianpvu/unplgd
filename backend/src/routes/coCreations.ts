@@ -1,4 +1,4 @@
-import { Router, json as expressJson } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -17,10 +17,8 @@ coCreationsRouter.use(requireAuth);
 
 const SESSION_TTL_MIN = 30;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
-
-// Body limit ridicat doar pe acest router (default global e 100kb). Pozele
-// sunt in base64 ~33% bloat fata de raw → 4mb leeway pt 3mb raw.
-const submitJson = expressJson({ limit: '5mb' });
+// NB: body parser-ul cu limita ridicata e configurat in server.ts (largeJson),
+// se aplica pe match-ul `/co-creations/:id/submit` inainte de cel global.
 
 const startSchema = z.object({
   friendId: z.string().min(1),
@@ -227,9 +225,7 @@ coCreationsRouter.post('/start', async (req, res, next) => {
   }
 });
 
-// POST /co-creations/:id/submit — body { image (base64), mimeType }.
-// Returneaza imediat 202 PROCESSING; mobile face polling pe GET.
-coCreationsRouter.post('/:id/submit', submitJson, async (req, res, next) => {
+coCreationsRouter.post('/:id/submit', async (req, res, next) => {
   try {
     const me = req.userId!;
     const { id } = req.params;

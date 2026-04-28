@@ -26,6 +26,14 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(cors());
+
+const largeJson = express.json({ limit: '6mb' });
+app.use((req, res, next) => {
+  if (req.method === 'POST' && /^\/co-creations\/[^/]+\/submit$/.test(req.path)) {
+    return largeJson(req, res, next);
+  }
+  return next();
+});
 app.use(express.json({ limit: '100kb' }));
 app.use(pinoHttp({ logger }));
 
