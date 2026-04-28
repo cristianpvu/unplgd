@@ -13,6 +13,7 @@ import { interactionsRouter } from './routes/interactions.js';
 import { avatarRouter } from './routes/avatar.js';
 import { braceletRouter } from './routes/bracelet.js';
 import { storiesRouter } from './routes/stories.js';
+import { coCreationsRouter } from './routes/coCreations.js';
 import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
@@ -41,6 +42,7 @@ app.use('/interactions', interactionsRouter);
 app.use(avatarRouter);
 app.use(braceletRouter);
 app.use('/stories', storiesRouter);
+app.use('/co-creations', coCreationsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);

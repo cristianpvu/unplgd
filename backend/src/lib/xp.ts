@@ -9,6 +9,10 @@ export const XP_REWARDS = {
   // Author primeste mai mult ca a creat + povestit; listener mai putin.
   STORY_TOLD_BY_SCORE: { 3: 60, 4: 70, 5: 80 } as Record<number, number>,
   STORY_LISTENED_BY_SCORE: { 3: 20, 4: 25, 5: 30 } as Record<number, number>,
+  // Co-creatie acceptata de AI — egal pt amandoi (act creativ comun, nu rol-uri
+  // diferite ca la story). Se acorda DOAR la status=COMPLETED, niciodata
+  // inainte de validare AI.
+  CO_CREATION: 80,
 } as const;
 
 type Tx = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];

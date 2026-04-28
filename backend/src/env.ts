@@ -23,6 +23,18 @@ const schema = z.object({
   ELEVENLABS_VOICE_ID: z.string().optional(),
   // Model ElevenLabs — multilingual v2 are calitate top pe romana cu accent.
   ELEVENLABS_MODEL: z.string().default('eleven_multilingual_v2'),
+  // GCP — folosit pt co-creatii (storage poze + Vertex AI Imagen). Service
+  // account JSON fie ca path la fisier (GOOGLE_APPLICATION_CREDENTIALS-style),
+  // fie ca string JSON inline (util in Docker secrets). Daca lipsesc, ruta
+  // /co-creations e dezactivata la boot (vezi server.ts).
+  GCP_PROJECT_ID: z.string().optional(),
+  GCP_BUCKET: z.string().optional(),
+  GCP_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  GCP_SERVICE_ACCOUNT_FILE: z.string().optional(),
+  // Locatie Vertex AI — Imagen 3 e disponibil in us-central1, europe-west4.
+  // Default us-central1 (cea mai stabila + cea mai larga acoperire de modele).
+  VERTEX_LOCATION: z.string().default('us-central1'),
+  IMAGEN_MODEL: z.string().default('imagen-3.0-generate-002'),
 });
 
 const parsed = schema.safeParse(process.env);

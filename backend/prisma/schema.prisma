@@ -33,6 +33,8 @@ model User {
   pet                 Pet?
   stories             Story[]
   storyClaims         StoryClaim[]
+  coCreationsAsA      CoCreation[]      @relation("CoCreationUserA")
+  coCreationsAsB      CoCreation[]      @relation("CoCreationUserB")
 
   @@index([email])
 }
@@ -230,8 +232,9 @@ model Story {
   keyFacts  Json
   createdAt DateTime @default(now())
 
-  author User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  claims StoryClaim[]
+  author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  claims      StoryClaim[]
+  coCreations CoCreation[]
 
   @@index([authorId, createdAt])
 }
@@ -262,6 +265,52 @@ model StoryClaim {
 
   @@unique([storyId, listenerId])
   @@index([listenerId, status])
+}
+
+// Sesiune de co-creatie: doi copii fizic impreuna aleg o poveste (a unuia
+// dintre ei) si deseneaza pe hartie. Submit poza desenului → Claude vision
+// valideaza ca match-uieste scena povestii si ca e potrivit varstei. Daca
+// trece, Vertex AI Imagen genereaza o ilustratie digitala "transpusa" inspirata
+// din desen + povestire. Album entry vizibil ambilor.
+//
+// userA  = initiatorul (cel care a pornit sesiunea, scaneaza NFC).
+// userB  = celalalt copil (NFC tag scanat).
+// storyId = una din povestile lui userA SAU userB (validat la /start).
+// expiresAt = startedAt + 30min; dupa, /submit refuza si seteaza EXPIRED.
+// originalImageKey/aiImageKey = chei GCS, signed URLs generate la GET.
+enum CoCreationStatus {
+  ACTIVE     // start trimis, asteapta submit poza
+  PROCESSING // poza primita, ruleaza validare + image gen async
+  COMPLETED  // valid + AI image gata, aparut in album
+  REJECTED   // AI a refuzat (off-topic / continut nepotrivit)
+  EXPIRED    // 30 min fara submit
+  FAILED     // eroare interna pipeline (Imagen / GCS down)
+}
+
+model CoCreation {
+  id               String   @id @default(cuid())
+  userAId          String
+  userBId          String
+  storyId          String
+  startedAt        DateTime @default(now())
+  expiresAt        DateTime
+  submittedById    String?
+  submittedAt      DateTime?
+  originalImageKey String?
+  aiImageKey       String?
+  aiValid          Boolean?
+  aiFeedback       String?
+  status           CoCreationStatus @default(ACTIVE)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  userA User  @relation("CoCreationUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User  @relation("CoCreationUserB", fields: [userBId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([userAId, status])
+  @@index([userBId, status])
+  @@index([storyId])
 }
 
 model XpTransaction {
