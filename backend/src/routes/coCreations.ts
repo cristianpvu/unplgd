@@ -315,47 +315,6 @@ coCreationsRouter.get('/active', async (req, res, next) => {
   }
 });
 
-// GET /co-creations/album — albumul user-ului (toate co-creatiile COMPLETED).
-// Definit INAINTE de GET /:id altfel `/album` matcheaza ca id.
-coCreationsRouter.get('/album', async (req, res, next) => {
-  try {
-    const me = req.userId!;
-    const list = await prisma.coCreation.findMany({
-      where: {
-        status: 'COMPLETED',
-        OR: [{ userAId: me }, { userBId: me }],
-      },
-      orderBy: { submittedAt: 'desc' },
-      include: {
-        story: { select: { id: true, title: true } },
-        userA: { select: { id: true, name: true } },
-        userB: { select: { id: true, name: true } },
-      },
-    });
-
-    const items = await Promise.all(
-      list.map(async (c) => {
-        const [originalImageUrl, aiImageUrl] = await Promise.all([
-          c.originalImageKey ? getSignedUrl(c.originalImageKey).catch(() => null) : null,
-          c.aiImageKey ? getSignedUrl(c.aiImageKey).catch(() => null) : null,
-        ]);
-        return {
-          id: c.id,
-          submittedAt: c.submittedAt,
-          story: c.story,
-          participants: [c.userA, c.userB],
-          originalImageUrl,
-          aiImageUrl,
-        };
-      }),
-    );
-
-    res.json({ items });
-  } catch (e) {
-    next(e);
-  }
-});
-
 // GET /co-creations/:id — polling state (PROCESSING → COMPLETED/REJECTED/FAILED).
 coCreationsRouter.get('/:id', async (req, res, next) => {
   try {
