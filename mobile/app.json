@@ -20,7 +20,9 @@
         "NFCReaderUsageDescription": "Unplgd foloseste NFC pentru a conecta prieteni si a colectiona pet-uri prin carduri.",
         "NSBluetoothAlwaysUsageDescription": "Unplgd foloseste Bluetooth pentru a detecta prieteni din apropiere.",
         "NSMicrophoneUsageDescription": "Buddy te asculta cand creezi povesti sau le spui — vocea ramane pe telefon.",
-        "NSSpeechRecognitionUsageDescription": "Recunoastem vocea ta ca sa o transformam in text pentru Buddy."
+        "NSSpeechRecognitionUsageDescription": "Recunoastem vocea ta ca sa o transformam in text pentru Buddy.",
+        "NSCameraUsageDescription": "Folosim camera ca sa fotografiezi desenul tau si sa-l transformam intr-o ilustratie magica.",
+        "NSPhotoLibraryUsageDescription": "Alegi din galerie poza desenului pe care vrei sa-l trimiti."
       }
     },
     "android": {
@@ -61,7 +63,14 @@
         }
       ],
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Alegi din galerie poza desenului pe care vrei sa-l trimiti.",
+          "cameraPermission": "Folosim camera ca sa fotografiezi desenul tau si sa-l transformam intr-o ilustratie magica."
+        }
+      ]
     ]
   }
 }

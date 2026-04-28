@@ -65,6 +65,29 @@ export default function Play() {
           </View>
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/(app)/co-create')}
+          style={({ pressed }) => [
+            styles.heroCard,
+            { backgroundColor: colors.secondary },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          <View style={styles.heroIconWrap}>
+            <Text style={styles.heroEmoji}>🎨</Text>
+            <View style={styles.heroSparkle}>
+              <SparklesIcon />
+            </View>
+          </View>
+          <View style={styles.heroText}>
+            <Text style={styles.heroTitle}>Deseneaza impreuna</Text>
+            <Text style={styles.heroSubtitle}>
+              Cu un prieten alaturi, desenati o scena dintr-o poveste si AI-ul o transforma in
+              ilustratie magica.
+            </Text>
+          </View>
+        </Pressable>
+
       </ScrollView>
     </SafeAreaView>
   );

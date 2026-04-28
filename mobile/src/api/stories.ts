@@ -73,6 +73,10 @@ export function listMyStories() {
   return api<{ stories: Story[] }>('/stories/mine');
 }
 
+export function listFriendStories(friendId: string) {
+  return api<{ stories: Story[] }>(`/stories/by-friend/${friendId}`);
+}
+
 export function listInbox() {
   return api<{ items: InboxItem[] }>('/stories/inbox');
 }
