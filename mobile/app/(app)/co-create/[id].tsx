@@ -256,7 +256,14 @@ function CompletedView({ session }: { session: CoCreation }) {
         </View>
       )}
 
-      <Button label="Vezi albumul" onPress={() => router.replace('/(app)/co-create/album')} />
+      <Button
+        label="Vezi profilul tau"
+        onPress={() => {
+          const meId = getMyId();
+          if (meId) router.replace(`/(app)/profile/${meId}`);
+          else router.replace('/(app)/');
+        }}
+      />
       <Button label="Inapoi acasa" variant="secondary" onPress={() => router.replace('/(app)/')} />
     </ScrollView>
   );

@@ -124,7 +124,14 @@ export default function Home() {
               <Text style={styles.sheetEmpty}>Inca nu ai prieteni adaugati.</Text>
             )}
             {friendsQuery.data?.friends.map((f) => (
-              <View key={f.friendshipId} style={styles.friendRow}>
+              <Pressable
+                key={f.friendshipId}
+                onPress={() => {
+                  setSheet(null);
+                  router.push(`/(app)/profile/${f.user.id}`);
+                }}
+                style={({ pressed }) => [styles.friendRow, pressed && styles.friendRowPressed]}
+              >
                 <FriendAvatar svg={f.user.avatarSvg} />
                 <View style={styles.friendInfo}>
                   <Text style={styles.friendName} numberOfLines={1}>
@@ -132,7 +139,8 @@ export default function Home() {
                   </Text>
                   <Text style={styles.friendLevel}>Lvl {f.user.level} · {f.user.xp} XP</Text>
                 </View>
-              </View>
+                <Text style={styles.friendChevron}>›</Text>
+              </Pressable>
             ))}
             <SheetItem
               label="Adauga prieten"
@@ -146,10 +154,10 @@ export default function Home() {
         {sheet === 'settings' && (
           <View style={styles.sheetList}>
             <SheetItem
-              label="Personalizeaza avatar"
+              label="Profilul meu"
               onPress={() => {
                 setSheet(null);
-                router.push('/(app)/avatar-edit');
+                if (me?.id) router.push(`/(app)/profile/${me.id}`);
               }}
             />
             <SheetItem
@@ -405,6 +413,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  friendRowPressed: { opacity: 0.55 },
+  friendChevron: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
   friendAvatar: {
     width: 48,
     height: 48,

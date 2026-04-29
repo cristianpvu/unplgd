@@ -2,22 +2,19 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { getActiveCoCreation, getAlbum } from '../../../src/api/coCreations';
+import { getActiveCoCreation } from '../../../src/api/coCreations';
+import { getMe } from '../../../src/api/me';
 import { colors } from '../../../src/theme/colors';
 
 export default function CoCreateHub() {
+  const me = useQuery({ queryKey: ['me'], queryFn: getMe });
   const active = useQuery({
     queryKey: ['co-creations', 'active'],
     queryFn: getActiveCoCreation,
     // Refetch des cand ecranul e deschis (activ poate aparea/disparea repede)
     staleTime: 5_000,
   });
-  const album = useQuery({
-    queryKey: ['co-creations', 'album'],
-    queryFn: getAlbum,
-  });
 
-  const albumCount = album.data?.items.length ?? 0;
   const activeSession = active.data?.active;
 
   return (
@@ -62,23 +59,6 @@ export default function CoCreateHub() {
           </Pressable>
         )}
 
-        <Pressable
-          onPress={() => router.push('/(app)/co-create/album')}
-          style={({ pressed }) => [styles.albumCard, pressed && styles.cardPressed]}
-        >
-          <Text style={styles.albumEmoji}>📔</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.albumTitle}>Albumul nostru</Text>
-            <Text style={styles.albumSub}>
-              {album.isPending
-                ? '...'
-                : albumCount === 0
-                  ? 'Inca nu aveti desene'
-                  : `${albumCount} ${albumCount === 1 ? 'desen' : 'desene'}`}
-            </Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

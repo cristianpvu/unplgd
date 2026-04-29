@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -10,14 +10,24 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { getAlbum, type AlbumItem } from '../../../src/api/coCreations';
-import { colors } from '../../../src/theme/colors';
+import { getUserCoCreations, type CoCreationAlbumItem } from '../../../../../src/api/users';
+import { colors } from '../../../../../src/theme/colors';
 
-export default function CoCreateAlbum() {
-  const album = useQuery({ queryKey: ['co-creations', 'album'], queryFn: getAlbum });
-  const [open, setOpen] = useState<AlbumItem | null>(null);
+export default function ProfileAlbum() {
+  const { id, friendId } = useLocalSearchParams<{ id: string; friendId: string }>();
+  const cocreations = useQuery({
+    queryKey: ['users', id, 'co-creations'],
+    queryFn: () => getUserCoCreations(id!),
+    enabled: !!id,
+  });
+  const [open, setOpen] = useState<CoCreationAlbumItem | null>(null);
+
+  const album = useMemo(
+    () => cocreations.data?.albums.find((a) => a.partner.id === friendId),
+    [cocreations.data, friendId],
+  );
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -25,32 +35,29 @@ export default function CoCreateAlbum() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Albumul nostru</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {album ? `cu ${album.partner.name}` : 'Album'}
+        </Text>
         <View style={{ width: 44 }} />
       </View>
 
-      {album.isPending && (
+      {cocreations.isPending && (
         <View style={styles.center}>
           <ActivityIndicator color={colors.accent} />
         </View>
       )}
 
-      {album.data?.items.length === 0 && (
+      {cocreations.data && !album && (
         <View style={styles.center}>
           <Text style={styles.bigIcon}>📔</Text>
-          <Text style={styles.empty}>
-            Inca nu aveti desene salvate. Faceti unul impreuna cu un prieten!
-          </Text>
+          <Text style={styles.empty}>Albumul nu mai exista.</Text>
         </View>
       )}
 
-      {album.data && album.data.items.length > 0 && (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
-        >
+      {album && (
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           <View style={styles.grid}>
-            {album.data.items.map((item) => (
+            {album.items.map((item) => (
               <Pressable
                 key={item.id}
                 onPress={() => setOpen(item)}
@@ -63,9 +70,6 @@ export default function CoCreateAlbum() {
                 )}
                 <Text style={styles.tileTitle} numberOfLines={1}>
                   {item.story.title}
-                </Text>
-                <Text style={styles.tileMeta} numberOfLines={1}>
-                  {item.participants.map((p) => p.name).join(' + ')}
                 </Text>
               </Pressable>
             ))}
@@ -155,7 +159,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
 
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
@@ -175,11 +179,10 @@ const styles = StyleSheet.create({
   tileImg: { width: '100%', aspectRatio: 1, borderRadius: 12, backgroundColor: colors.cardAlt },
   tilePlaceholder: { backgroundColor: colors.border },
   tileTitle: { color: colors.text, fontSize: 13, fontWeight: '800' },
-  tileMeta: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 8 },
   bigIcon: { fontSize: 60, marginBottom: 8 },
-  empty: { color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center' },
+  empty: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
 
   modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.7)' },
   modalWrap: { flex: 1 },

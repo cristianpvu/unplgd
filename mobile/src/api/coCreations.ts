@@ -33,15 +33,6 @@ export type CoCreation = {
   participants: CoCreationParticipant[];
 };
 
-export type AlbumItem = {
-  id: string;
-  submittedAt: string | null;
-  story: { id: string; title: string };
-  participants: CoCreationParticipant[];
-  originalImageUrl: string | null;
-  aiImageUrl: string | null;
-};
-
 export function startCoCreation(friendId: string, storyId: string) {
   return api<CoCreation>('/co-creations/start', {
     method: 'POST',
@@ -66,10 +57,6 @@ export function getCoCreation(id: string) {
 
 export function getActiveCoCreation() {
   return api<{ active: CoCreation | null }>('/co-creations/active');
-}
-
-export function getAlbum() {
-  return api<{ items: AlbumItem[] }>('/co-creations/album');
 }
 
 export function cancelCoCreation(id: string) {
