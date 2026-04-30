@@ -6,6 +6,7 @@ import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { requireAuth } from '../middleware/auth.js';
 import { checkinRateLimit } from '../middleware/rateLimit.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { resolveTokens, BLE_TOKEN_HEX_LEN } from '../lib/bleToken.js';
 
 export const interactionsRouter = Router();
 interactionsRouter.use(requireAuth);
@@ -186,6 +187,51 @@ interactionsRouter.post('/scan', checkinRateLimit, async (req, res, next) => {
     });
 
     res.status(201).json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+const bleResolveSchema = z.object({
+  tokens: z
+    .array(z.string().length(BLE_TOKEN_HEX_LEN).regex(/^[0-9a-fA-F]+$/))
+    .min(1)
+    .max(50),
+});
+
+// Rezolva token-uri BLE vazute la userId-uri (cu name+level pt UI debug).
+// In etapa 1 nu acordam XP — doar mapare. Etapa 4 va adauga pair detection
+// (durata >= 10 min) si award.
+interactionsRouter.post('/ble-resolve', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { tokens } = bleResolveSchema.parse(req.body);
+    const map = await resolveTokens(tokens);
+
+    // Eliminam propriul userId din rezultate (auto-detectie nu conteaza).
+    const otherUserIds = [...new Set([...map.values()].filter((id) => id !== me))];
+
+    const users = otherUserIds.length
+      ? await prisma.user.findMany({
+          where: { id: { in: otherUserIds } },
+          select: { id: true, name: true, level: true },
+        })
+      : [];
+    const usersById = new Map(users.map((u) => [u.id, u]));
+
+    const resolved: Array<{
+      token: string;
+      userId: string;
+      name: string;
+      level: number;
+    }> = [];
+    for (const [token, userId] of map.entries()) {
+      if (userId === me) continue;
+      const u = usersById.get(userId);
+      if (u) resolved.push({ token, userId: u.id, name: u.name, level: u.level });
+    }
+
+    res.json({ resolved });
   } catch (e) {
     next(e);
   }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { notFound } from '../lib/errors.js';
+import { getOrCreateDailyToken } from '../lib/bleToken.js';
 
 export const meRouter = Router();
 
@@ -18,6 +19,15 @@ meRouter.get('/', requireAuth, async (req, res, next) => {
       level: user.level,
       createdAt: user.createdAt,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+meRouter.get('/ble-token', requireAuth, async (req, res, next) => {
+  try {
+    const token = await getOrCreateDailyToken(req.userId!);
+    res.json({ token });
   } catch (e) {
     next(e);
   }
