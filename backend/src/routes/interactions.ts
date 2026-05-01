@@ -199,9 +199,9 @@ const bleResolveSchema = z.object({
     .max(50),
 });
 
-// Rezolva token-uri BLE vazute la userId-uri (cu name+level pt UI debug).
-// In etapa 1 nu acordam XP — doar mapare. Etapa 4 va adauga pair detection
-// (durata >= 10 min) si award.
+// Rezolva token-uri BLE vazute la userId-uri + flag isFriend (mobile foloseste
+// flagul ca sa porneasca pair-detection-ul de co-walk doar pe prieteni
+// acceptati, evitand POST-uri inutile catre /co-walk).
 interactionsRouter.post('/ble-resolve', async (req, res, next) => {
   try {
     const me = req.userId!;
@@ -211,27 +211,130 @@ interactionsRouter.post('/ble-resolve', async (req, res, next) => {
     // Eliminam propriul userId din rezultate (auto-detectie nu conteaza).
     const otherUserIds = [...new Set([...map.values()].filter((id) => id !== me))];
 
-    const users = otherUserIds.length
-      ? await prisma.user.findMany({
-          where: { id: { in: otherUserIds } },
-          select: { id: true, name: true, level: true },
-        })
-      : [];
+    const [users, friendships] = otherUserIds.length
+      ? await Promise.all([
+          prisma.user.findMany({
+            where: { id: { in: otherUserIds } },
+            select: { id: true, name: true, level: true },
+          }),
+          prisma.friendship.findMany({
+            where: {
+              status: FriendshipStatus.ACCEPTED,
+              OR: [
+                { requesterId: me, receiverId: { in: otherUserIds } },
+                { receiverId: me, requesterId: { in: otherUserIds } },
+              ],
+            },
+            select: { requesterId: true, receiverId: true },
+          }),
+        ])
+      : [[], []];
     const usersById = new Map(users.map((u) => [u.id, u]));
+    const friendIds = new Set<string>();
+    for (const f of friendships) {
+      friendIds.add(f.requesterId === me ? f.receiverId : f.requesterId);
+    }
 
     const resolved: Array<{
       token: string;
       userId: string;
       name: string;
       level: number;
+      isFriend: boolean;
     }> = [];
     for (const [token, userId] of map.entries()) {
       if (userId === me) continue;
       const u = usersById.get(userId);
-      if (u) resolved.push({ token, userId: u.id, name: u.name, level: u.level });
+      if (u) {
+        resolved.push({
+          token,
+          userId: u.id,
+          name: u.name,
+          level: u.level,
+          isFriend: friendIds.has(u.id),
+        });
+      }
     }
 
     res.json({ resolved });
+  } catch (e) {
+    next(e);
+  }
+});
+
+const coWalkSchema = z.object({
+  friendUserId: z.string().cuid(),
+  durationSec: z.number().int().min(600).max(86_400),
+  startedAt: z.string().datetime(),
+});
+
+// Co-walk = 10+ min de prezenta sustinuta BLE intre 2 prieteni. Mobile detecteaza
+// pe device si POST-eaza la finalul ferestrei. Idempotent prin XpTransaction
+// unique (userId, "co_walk", "<dateUTC>_<sortedPair>") — max 1 award/zi/perechie
+// indiferent de cate ori re-trimite mobilul.
+interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { friendUserId, durationSec, startedAt } = coWalkSchema.parse(req.body);
+    if (friendUserId === me) throw badRequest('self_cowalk', 'Nu te poti co-walka cu tine');
+
+    const friendship = await prisma.friendship.findFirst({
+      where: {
+        status: FriendshipStatus.ACCEPTED,
+        OR: [
+          { requesterId: me, receiverId: friendUserId },
+          { requesterId: friendUserId, receiverId: me },
+        ],
+      },
+    });
+    if (!friendship) throw forbidden('not_friends', 'Nu sunteti prieteni');
+
+    const today = startOfDayUTC();
+    const dateStr = today.toISOString().slice(0, 10);
+    const sortedPair = [me, friendUserId].sort().join('_');
+    const cowalkSourceId = `${dateStr}_${sortedPair}`;
+
+    const result = await prisma.$transaction(async (tx) => {
+      // DailyInteraction face dublu rol (stats zilnice + 20 XP DAILY_INTERACTION),
+      // pe care il acordam si la co-walk daca nu a fost deja triggered de NFC azi.
+      const existing = await tx.dailyInteraction.findFirst({
+        where: {
+          date: today,
+          OR: [
+            { userId: me, friendId: friendUserId },
+            { userId: friendUserId, friendId: me },
+          ],
+        },
+      });
+
+      let dailyAwarded = false;
+      if (!existing) {
+        const [a, b] = await Promise.all([
+          tx.dailyInteraction.create({
+            data: { userId: me, friendId: friendUserId, date: today, method: InteractionMethod.ble },
+          }),
+          tx.dailyInteraction.create({
+            data: { userId: friendUserId, friendId: me, date: today, method: InteractionMethod.ble },
+          }),
+        ]);
+        await Promise.all([
+          awardXp(me, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', a.id, 'Interactiune zilnica', tx),
+          awardXp(friendUserId, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', b.id, 'Interactiune zilnica', tx),
+        ]);
+        dailyAwarded = true;
+      }
+
+      // Co-walk XP separat de daily interaction — recompensa pt 10 min impreuna,
+      // valabila si daca au tap-uit deja bratara azi.
+      const [meXp, friendXp] = await Promise.all([
+        awardXp(me, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, `Co-walk ${durationSec}s`, tx),
+        awardXp(friendUserId, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, `Co-walk ${durationSec}s`, tx),
+      ]);
+
+      return { dailyAwarded, me: meXp, friend: friendXp, durationSec, startedAt };
+    });
+
+    res.status(201).json(result);
   } catch (e) {
     next(e);
   }

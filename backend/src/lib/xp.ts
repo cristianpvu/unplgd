@@ -13,6 +13,9 @@ export const XP_REWARDS = {
   // diferite ca la story). Se acorda DOAR la status=COMPLETED, niciodata
   // inainte de validare AI.
   CO_CREATION: 80,
+  // Co-walk BLE — 10 min minim de prezenta sustinuta cu un prieten. Idempotent
+  // pe (userId, "co_walk", "<dateUTC>_<sortedPair>") deci max 1 award/zi/perechie.
+  CO_WALK: 50,
 } as const;
 
 type Tx = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
