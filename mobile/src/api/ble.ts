@@ -31,6 +31,8 @@ export function postCoWalk(args: {
   friendUserId: string;
   durationSec: number;
   startedAt: string;
+  stepsMe: number;
+  rssiStdDev: number;
 }): Promise<CoWalkResult> {
   return api<CoWalkResult>('/interactions/co-walk', { method: 'POST', body: args });
 }

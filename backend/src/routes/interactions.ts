@@ -261,11 +261,15 @@ interactionsRouter.post('/ble-resolve', async (req, res, next) => {
     next(e);
   }
 });
+const COWALK_MIN_STEPS = 200;
+const COWALK_MIN_RSSI_STDDEV = 1.5;
 
 const coWalkSchema = z.object({
   friendUserId: z.string().cuid(),
   durationSec: z.number().int().min(600).max(86_400),
   startedAt: z.string().datetime(),
+  stepsMe: z.number().int().min(COWALK_MIN_STEPS).max(100_000),
+  rssiStdDev: z.number().min(COWALK_MIN_RSSI_STDDEV).max(40),
 });
 
 // Co-walk = 10+ min de prezenta sustinuta BLE intre 2 prieteni. Mobile detecteaza
@@ -275,7 +279,9 @@ const coWalkSchema = z.object({
 interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => {
   try {
     const me = req.userId!;
-    const { friendUserId, durationSec, startedAt } = coWalkSchema.parse(req.body);
+    const { friendUserId, durationSec, startedAt, stepsMe, rssiStdDev } = coWalkSchema.parse(
+      req.body,
+    );
     if (friendUserId === me) throw badRequest('self_cowalk', 'Nu te poti co-walka cu tine');
 
     const friendship = await prisma.friendship.findFirst({
@@ -325,10 +331,12 @@ interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => 
       }
 
       // Co-walk XP separat de daily interaction — recompensa pt 10 min impreuna,
-      // valabila si daca au tap-uit deja bratara azi.
+      // valabila si daca au tap-uit deja bratara azi. Description-ul e folosit
+      // ca audit trail pentru semnalele anti-cheat (pasi + rssi stddev).
+      const audit = `Co-walk ${durationSec}s steps=${stepsMe} rssiStd=${rssiStdDev.toFixed(2)}`;
       const [meXp, friendXp] = await Promise.all([
-        awardXp(me, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, `Co-walk ${durationSec}s`, tx),
-        awardXp(friendUserId, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, `Co-walk ${durationSec}s`, tx),
+        awardXp(me, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, audit, tx),
+        awardXp(friendUserId, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, audit, tx),
       ]);
 
       return { dailyAwarded, me: meXp, friend: friendXp, durationSec, startedAt };

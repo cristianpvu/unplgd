@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BleAdvertise: any = require('react-native-ble-advertise').default;
 import Beacon, { type Beacon as DetectedBeacon } from 'react-native-beacon-kit';
+import { Pedometer } from 'expo-sensors';
 import {
   UNPLGD_PROXIMITY_UUID,
   UNPLGD_REGION_IDENTIFIER,
@@ -11,6 +12,10 @@ import {
   TICK_INTERVAL_MS,
   COWALK_MIN_DURATION_MS,
   COWALK_RESUME_GAP_MS,
+  COWALK_MIN_STEPS,
+  COWALK_MIN_RSSI_STDDEV_DBM,
+  COWALK_MIN_RSSI_SAMPLES,
+  RSSI_SAMPLES_CAP,
 } from './constants';
 import { getMyBleToken, resolveBleTokens, postCoWalk, type CoWalkResult } from '../api/ble';
 
@@ -31,6 +36,12 @@ export type CoWalkSession = {
   startedAt: number;
   lastSeenAt: number;
   committed: boolean;
+  // Snapshot al contorului de pasi cumulativ la deschiderea sesiunii. La commit
+  // calculam delta vs contorul curent ca dovada ca userul nostru s-a miscat.
+  startStepCount: number;
+  // Ring-buffer cu samples RSSI pe durata sesiunii. La commit calculam stddev:
+  // o valoare prea plata indica telefoane stationare lipite (ex. lasate pe masa).
+  rssiSamples: number[];
 };
 
 export type CoWalkEvent =
@@ -70,6 +81,13 @@ function majorMinorToToken(major: number, minor: number): string {
   return `${m}${n}`;
 }
 
+function stdDev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
 class PresenceEngine {
   private myToken: string | null = null;
   private peers = new Map<string, Peer>();
@@ -83,6 +101,11 @@ class PresenceEngine {
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private resolveTimer: ReturnType<typeof setInterval> | null = null;
   private rangedSub: { remove: () => void } | null = null;
+  private pedometerSub: { remove: () => void } | null = null;
+  private pedometerAvailable = false;
+  // Cumulativ de la subscribe-ul curent; sesiunile snapshoot-uiesc la creare
+  // si calculeaza delta la commit.
+  private myStepCount = 0;
 
   isRunning() {
     return this.running;
@@ -108,6 +131,17 @@ class PresenceEngine {
     this.running = true;
 
     await this.loadCommittedToday();
+
+    // Pedometer porneste inainte de scan pentru ca prima sesiune sa aiba un
+    // startStepCount sincronizat. Daca device-ul nu suporta (simulator, Android
+    // sub 4.4), engine-ul scaneaza dar nu valideaza co-walks — emit failed la commit.
+    this.pedometerAvailable = await Pedometer.isAvailableAsync().catch(() => false);
+    this.myStepCount = 0;
+    if (this.pedometerAvailable) {
+      this.pedometerSub = Pedometer.watchStepCount((result) => {
+        this.myStepCount = result.steps;
+      });
+    }
 
     const { token } = await getMyBleToken();
     this.myToken = token;
@@ -168,6 +202,12 @@ class PresenceEngine {
     try {
       await BleAdvertise.stopBroadcast();
     } catch {}
+    if (this.pedometerSub) {
+      this.pedometerSub.remove();
+      this.pedometerSub = null;
+    }
+    this.pedometerAvailable = false;
+    this.myStepCount = 0;
     this.peers.clear();
     this.sessions.clear();
     this.myToken = null;
@@ -230,7 +270,14 @@ class PresenceEngine {
       if (this.committedToday.has(peer.userId)) continue;
       const existing = this.sessions.get(peer.userId);
       if (existing) {
-        if (peer.lastSeenAt > existing.lastSeenAt) existing.lastSeenAt = peer.lastSeenAt;
+        if (peer.lastSeenAt > existing.lastSeenAt) {
+          existing.lastSeenAt = peer.lastSeenAt;
+          // Esantion RSSI per tick (1Hz). Daca peer-ul a re-aparut dupa un gap
+          // <RESUME, acelasi peer object e reconstruit cu rssi proaspat — sample-ul
+          // reflecta acel moment. Cap-ul previne crestere nelimitata pe sesiuni lungi.
+          existing.rssiSamples.push(peer.rssi);
+          if (existing.rssiSamples.length > RSSI_SAMPLES_CAP) existing.rssiSamples.shift();
+        }
       } else {
         this.sessions.set(peer.userId, {
           userId: peer.userId,
@@ -238,6 +285,8 @@ class PresenceEngine {
           startedAt: peer.firstSeenAt,
           lastSeenAt: peer.lastSeenAt,
           committed: false,
+          startStepCount: this.myStepCount,
+          rssiSamples: [peer.rssi],
         });
       }
     }
@@ -271,11 +320,37 @@ class PresenceEngine {
   private async commitCoWalk(s: CoWalkSession) {
     const startedAtIso = new Date(s.startedAt).toISOString();
     const durationSec = Math.floor((s.lastSeenAt - s.startedAt) / 1000);
+    const steps = Math.max(0, this.myStepCount - s.startStepCount);
+    const rssiStdDev = stdDev(s.rssiSamples);
+
+    // Anti-cheat local: dropam sesiunea inainte sa lovim backend-ul daca semnalele
+    // de miscare sunt slabe. Backend-ul aplica acelasi check (defense in depth) —
+    // local-ul economiseste un round-trip si ofera feedback UX imediat.
+    const reject = (reason: string) => {
+      this.sessions.delete(s.userId);
+      this.fireEvent({ type: 'failed', userId: s.userId, name: s.name, durationSec, error: reason });
+      this.inflightCommits.delete(s.userId);
+    };
+    if (!this.pedometerAvailable) {
+      return reject('Contorul de pasi indisponibil pe acest device');
+    }
+    if (steps < COWALK_MIN_STEPS) {
+      return reject(`Pasi insuficienti (${steps} < ${COWALK_MIN_STEPS})`);
+    }
+    if (
+      s.rssiSamples.length < COWALK_MIN_RSSI_SAMPLES ||
+      rssiStdDev < COWALK_MIN_RSSI_STDDEV_DBM
+    ) {
+      return reject(`Proximitate prea statica (rssi stddev ${rssiStdDev.toFixed(2)} dBm)`);
+    }
+
     try {
       const result = await postCoWalk({
         friendUserId: s.userId,
         durationSec,
         startedAt: startedAtIso,
+        stepsMe: steps,
+        rssiStdDev: Number(rssiStdDev.toFixed(3)),
       });
       s.committed = true;
       this.committedToday.add(s.userId);

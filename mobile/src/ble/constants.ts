@@ -28,3 +28,24 @@ export const COWALK_MIN_DURATION_MS = 10 * 60 * 1000;
 // dar fereastra de co-walk continua daca reapare in <90s (acopera buzunarele
 // si interferentele scurte).
 export const COWALK_RESUME_GAP_MS = 90_000;
+
+// Anti-cheat: minim de pasi (ai userului curent) in fereastra de co-walk.
+// 200 pasi in 10 min = ~150-200m, sub un copil care merge normal in pauza.
+// Pragul respinge cazul "telefoanele lasate impreuna pe masa". Identic cu
+// pragul aplicat de backend (defense in depth).
+export const COWALK_MIN_STEPS = 200;
+
+// Anti-cheat: minim deviation standard al RSSI samples in sesiune. Telefoane
+// lipite stationar au RSSI plat (stddev sub 0.5 dBm). Telefoane in miscare
+// relativa naturala (corp, obstacole, alti oameni) variaza vizibil.
+export const COWALK_MIN_RSSI_STDDEV_DBM = 1.5;
+
+// Cate samples RSSI cerem minim ca sa consideram stddev-ul semnificativ.
+// La 1Hz (TICK_INTERVAL_MS) o sesiune de 10 min produce ~600 samples; cerem
+// 30 minim ca sa nu validam un walk pe baza unui burst scurt.
+export const COWALK_MIN_RSSI_SAMPLES = 30;
+
+// Memory bound pe ring-buffer-ul de samples per sesiune. La 1 sample/sec,
+// 1200 = 20 min — depaseste durata minima cu marja confortabila pentru
+// sesiuni mai lungi.
+export const RSSI_SAMPLES_CAP = 1200;

@@ -21,6 +21,7 @@
         "NSBluetoothAlwaysUsageDescription": "Unplgd foloseste Bluetooth pentru a detecta prieteni din apropiere.",
         "NSLocationWhenInUseUsageDescription": "Unplgd foloseste locatia pentru a detecta prieteni din apropiere prin BLE.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Unplgd foloseste locatia pentru a detecta prieteni din apropiere prin BLE.",
+        "NSMotionUsageDescription": "Folosim contorul de pasi al telefonului pentru a confirma ca ati mers efectiv impreuna in timpul co-walk-ului.",
         "NSMicrophoneUsageDescription": "Buddy te asculta cand creezi povesti sau le spui — vocea ramane pe telefon.",
         "NSSpeechRecognitionUsageDescription": "Recunoastem vocea ta ca sa o transformam in text pentru Buddy.",
         "NSCameraUsageDescription": "Folosim camera ca sa fotografiezi desenul tau si sa-l transformam intr-o ilustratie magica.",
@@ -40,6 +41,7 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.RECORD_AUDIO"
       ]
     },
