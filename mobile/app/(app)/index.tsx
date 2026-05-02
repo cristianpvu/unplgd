@@ -168,6 +168,13 @@ export default function Home() {
               }}
             />
             <SheetItem
+              label="BLE debug"
+              onPress={() => {
+                setSheet(null);
+                router.push('/(app)/ble-debug');
+              }}
+            />
+            <SheetItem
               label="Iesi din cont"
               danger
               onPress={() => {
