@@ -11,22 +11,19 @@
  *   6. Creeaza sesiune ACTIVE: split zone, spawn monsters, totul atomic
  *   7. Printeaza sessionId + lista de monstri (lat/lng + tip + nume)
  *
- * Usage (din container):
- *   docker exec -it unplgd_backend npx tsx scripts/test-hunt.ts \
+ * Usage (in container, dupa rebuild):
+ *   docker exec -it unplgd_backend node dist/scripts/test-hunt.js \
  *     office@dinedroid.com 44.4360 26.0935
- *
- * Sau cu env (acelasi efect):
- *   docker exec -e HOST_EMAIL=office@dinedroid.com -e LAT=44.4360 -e LNG=26.0935 \
- *     unplgd_backend npx tsx scripts/test-hunt.ts
  */
 
 import { hash } from 'bcryptjs';
-import { HuntStatus, type Polygon, type MultiPolygon } from '@prisma/client';
-import { prisma } from '../src/lib/prisma.js';
-import { getParksNear } from '../src/lib/hunt/overpass.js';
-import { splitPolygonIntoZones, zoneAreaSqm } from '../src/lib/hunt/zones.js';
-import { assignTeamsRandomly } from '../src/lib/hunt/teamAssign.js';
-import { generateSpawns } from '../src/lib/hunt/spawn.js';
+import { HuntStatus } from '@prisma/client';
+import type { Polygon, MultiPolygon } from 'geojson';
+import { prisma } from '../lib/prisma.js';
+import { getParksNear } from '../lib/hunt/overpass.js';
+import { splitPolygonIntoZones, zoneAreaSqm } from '../lib/hunt/zones.js';
+import { assignTeamsRandomly } from '../lib/hunt/teamAssign.js';
+import { generateSpawns } from '../lib/hunt/spawn.js';
 
 const args = process.argv.slice(2);
 const HOST_EMAIL = args[0] ?? process.env.HOST_EMAIL;
