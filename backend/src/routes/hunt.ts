@@ -27,6 +27,7 @@ import { judgeRiddleAnswer, judgeCountingAnswer } from '../lib/hunt/judge.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
+import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -278,6 +279,7 @@ huntRouter.post('/sessions/:id/join', async (req, res, next) => {
       update: {},
     });
 
+    emitHuntUpdate(id, 'lobby_changed');
     res.json({ joined: true });
   } catch (e) {
     next(e);
@@ -308,6 +310,7 @@ huntRouter.post('/sessions/:id/leave', async (req, res, next) => {
     await prisma.huntLobbyMember.deleteMany({
       where: { sessionId: id, userId: me },
     });
+    emitHuntUpdate(id, 'lobby_changed');
     res.json({ left: true });
   } catch (e) {
     next(e);
@@ -407,6 +410,7 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
       return { session: updated, totalCount };
     });
 
+    emitHuntUpdate(id, 'started');
     res.json({
       sessionId: id,
       status: result.session.status,
@@ -442,6 +446,7 @@ huntRouter.post('/sessions/:id/cancel', async (req, res, next) => {
       where: { id },
       data: { status: HuntStatus.CANCELLED, endedAt: new Date() },
     });
+    emitHuntUpdate(id, 'cancelled');
     res.json({ cancelled: true });
   } catch (e) {
     next(e);
@@ -856,6 +861,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       include: { challenge: true },
     });
 
+    emitHuntUpdate(id, 'monster_engaged');
     res.json({
       monsterId: mid,
       monster: {
@@ -943,6 +949,7 @@ huntRouter.post(
         },
       });
 
+      emitHuntUpdate(id, 'run_answered');
       res.json({
         correct: result.correct,
         feedback: result.feedback,
@@ -1029,6 +1036,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/finalize', async (req, res, next) =
           },
         }),
       ]);
+      emitHuntUpdate(id, 'monster_finalized');
       res.json({
         status: MonsterStatus.DEFEATED,
         pointsAwarded: points,
@@ -1039,6 +1047,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/finalize', async (req, res, next) =
         where: { id: mid },
         data: { status: MonsterStatus.ESCAPED },
       });
+      emitHuntUpdate(id, 'monster_finalized');
       res.json({
         status: MonsterStatus.ESCAPED,
         pointsAwarded: 0,
@@ -1201,6 +1210,7 @@ huntRouter.post('/sessions/:id/end', async (req, res, next) => {
       where: { id },
       data: { status: HuntStatus.COMPLETED, endedAt: new Date() },
     });
+    emitHuntUpdate(id, 'ended');
     res.json({ ended: true });
   } catch (e) {
     next(e);

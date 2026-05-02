@@ -1,10 +1,12 @@
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
 import { pinoHttp } from 'pino-http';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
+import { initIO } from './lib/socket/io.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { meRouter } from './routes/me.js';
@@ -59,8 +61,10 @@ app.use('/hunt', huntRouter);
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);
 
-const server = app.listen(env.PORT, () => {
-  logger.info(`unplgd backend listening on http://localhost:${env.PORT}`);
+const server = createServer(app);
+initIO(server);
+server.listen(env.PORT, () => {
+  logger.info(`unplgd backend listening on http://localhost:${env.PORT} (with socket.io)`);
 });
 
 async function shutdown(signal: string) {
