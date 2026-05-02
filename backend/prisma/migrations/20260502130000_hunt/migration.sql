@@ -41,6 +41,7 @@ ALTER TABLE "ParkContent" ADD CONSTRAINT "ParkContent_parkId_fkey" FOREIGN KEY (
 -- CreateTable HuntChallenge
 CREATE TABLE "HuntChallenge" (
     "id" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
     "type" "ChallengeType" NOT NULL,
     "prompt" TEXT NOT NULL,
     "expected" TEXT NOT NULL,
@@ -52,6 +53,7 @@ CREATE TABLE "HuntChallenge" (
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "HuntChallenge_pkey" PRIMARY KEY ("id")
 );
+CREATE UNIQUE INDEX "HuntChallenge_slug_key" ON "HuntChallenge"("slug");
 CREATE INDEX "HuntChallenge_type_ageMin_ageMax_active_idx" ON "HuntChallenge"("type", "ageMin", "ageMax", "active");
 
 -- CreateTable HuntSession

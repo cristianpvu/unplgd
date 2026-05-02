@@ -398,6 +398,9 @@ enum ChallengeType {
 
 model HuntChallenge {
   id          String        @id @default(cuid())
+  // Slug stabil pentru seed idempotent — re-rularea seed-ului doar updateaza
+  // prompt/expected, nu creeaza duplicate.
+  slug        String        @unique
   type        ChallengeType
   prompt      String        // text afisat copilului
   // riddle: "expected" e raspunsul corect (semantic match);

@@ -1,15 +1,30 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type { Polygon, MultiPolygon } from 'geojson';
-import { FriendshipStatus, HuntStatus } from '@prisma/client';
+import {
+  ChallengeOutcome,
+  ChallengeType,
+  FriendshipStatus,
+  HuntStatus,
+  MonsterStatus,
+  type MonsterType,
+  Prisma,
+} from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { getParksNear, pointInPark } from '../lib/hunt/overpass.js';
 import { splitPolygonIntoZones, zoneAreaSqm } from '../lib/hunt/zones.js';
 import { assignTeamsRandomly } from '../lib/hunt/teamAssign.js';
-import { generateSpawns } from '../lib/hunt/spawn.js';
+import {
+  generateSpawns,
+  MONSTER_POINTS,
+  MONSTER_CHALLENGES_PER_MEMBER,
+} from '../lib/hunt/spawn.js';
 import { resolveTokens } from '../lib/bleToken.js';
+import { distanceMeters, warmthForDistance, bearingDegrees } from '../lib/hunt/warmth.js';
+import { judgeRiddleAnswer, judgeCountingAnswer } from '../lib/hunt/judge.js';
+import { awardXp, XP_REWARDS } from '../lib/xp.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -501,6 +516,631 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
     next(e);
   }
 });
+
+// Pragul in metri pentru a "descoperi" un monstru (engage). Sub el AR-ul se
+// poate deschide pt lupta.
+const ENGAGE_DISTANCE_M = 8;
+
+// Fereastra de fight: 90 sec de la engage pana la finalize. Daca toate
+// challenge-urile NU sunt CORRECT in interval, monstrul scapa.
+const FIGHT_WINDOW_MS = 90_000;
+
+// Helper: marcheaza ESCAPED monstrii ENGAGED a caror fereastra a expirat.
+// Ruleaza in interiorul finalize-ului si lazy in heartbeat — fara cron.
+async function expireEngagedMonsters(sessionId: string, now: Date): Promise<void> {
+  const expired = await prisma.huntMonster.findMany({
+    where: {
+      sessionId,
+      status: MonsterStatus.ENGAGED,
+      expiresAt: { lt: now },
+    },
+    select: { id: true },
+  });
+  if (expired.length === 0) return;
+  await prisma.huntMonster.updateMany({
+    where: { id: { in: expired.map((m) => m.id) } },
+    data: { status: MonsterStatus.ESCAPED },
+  });
+}
+
+// Auto-complete: daca endsAt e in trecut, marcam COMPLETED. Lazy la fiecare
+// heartbeat / GET. Returneaza true daca s-a tranzitionat acum.
+async function autoCompleteIfExpired(
+  sessionId: string,
+  endsAt: Date | null,
+  status: HuntStatus,
+  now: Date,
+): Promise<boolean> {
+  if (status !== HuntStatus.ACTIVE || !endsAt || endsAt > now) return false;
+  await prisma.huntSession.update({
+    where: { id: sessionId },
+    data: { status: HuntStatus.COMPLETED, endedAt: now },
+  });
+  return true;
+}
+
+// POST /hunt/sessions/:id/heartbeat
+// Mobile trimite GPS-ul curent la fiecare ~5 sec. Backend valideaza ca user-ul
+// e in zona echipei lui, calculeaza warmth pentru cel mai apropiat monstru
+// HIDDEN si returneaza scor + time remaining + monstri ENGAGED in echipa
+// (pt UI sincronizat intre teammates).
+const heartbeatSchema = z.object({
+  lat: z.number().gte(-90).lte(90),
+  lng: z.number().gte(-180).lte(180),
+});
+
+huntRouter.post('/sessions/:id/heartbeat', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id } = req.params;
+    if (!id) throw badRequest('missing_id', 'sessionId lipsa');
+    const { lat, lng } = heartbeatSchema.parse(req.body);
+
+    const session = await prisma.huntSession.findUnique({
+      where: { id },
+      include: {
+        park: { select: { polygon: true } },
+        teams: {
+          include: {
+            members: { where: { userId: me }, select: { userId: true } },
+          },
+        },
+      },
+    });
+    if (!session) throw notFound('session_not_found', 'Sesiune inexistenta');
+
+    const now = new Date();
+    const justCompleted = await autoCompleteIfExpired(
+      session.id,
+      session.endsAt,
+      session.status,
+      now,
+    );
+    if (session.status !== HuntStatus.ACTIVE && !justCompleted) {
+      throw conflict('not_active', 'Sesiunea nu e activa');
+    }
+    if (justCompleted) {
+      res.json({ status: HuntStatus.COMPLETED, autoCompleted: true });
+      return;
+    }
+
+    const myTeam = session.teams.find((t) => t.members.length > 0);
+    if (!myTeam) throw forbidden('not_member', 'Nu participi la aceasta sesiune');
+
+    // Validari fizice (warning-uri, nu erori): user in parc, in zona lui.
+    const inPark = pointInPark(lat, lng, session.park.polygon);
+    const myZone = JSON.parse(myTeam.zone) as Polygon | MultiPolygon;
+    const inZone = pointInPark(lat, lng, JSON.stringify(myZone));
+
+    await expireEngagedMonsters(session.id, now);
+
+    // Cel mai apropiat monstru HIDDEN din zona echipei mele. Folosit pentru
+    // sageata busola + warmth bucket. NU includem ENGAGED ca sa nu spam-uim
+    // warmth-ul "very_hot" cand un monstru e deja in lupta.
+    const hiddenInMyZone = await prisma.huntMonster.findMany({
+      where: { sessionId: id, teamId: myTeam.id, status: MonsterStatus.HIDDEN },
+      select: { id: true, lat: true, lng: true, type: true },
+    });
+
+    let nearestDist = Infinity;
+    let nearestBearing: number | null = null;
+    let nearestType: MonsterType | null = null;
+    for (const m of hiddenInMyZone) {
+      const d = distanceMeters(lat, lng, m.lat, m.lng);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearestBearing = bearingDegrees(lat, lng, m.lat, m.lng);
+        nearestType = m.type;
+      }
+    }
+
+    const warmth = nearestDist === Infinity ? 'cold' : warmthForDistance(nearestDist);
+
+    // Daca user-ul e in raza de engage si exista un monstru, expunem id-ul si
+    // pozitia exacta (pt AR-ul mobile sa-l randeze). Asta inlocuieste un
+    // endpoint /discover separat — heartbeat-ul deserveste si rolul ala.
+    let revealMonster: { id: string; lat: number; lng: number; type: MonsterType } | null = null;
+    if (nearestDist <= ENGAGE_DISTANCE_M) {
+      const closest = hiddenInMyZone.reduce<typeof hiddenInMyZone[number] | null>((best, m) => {
+        const d = distanceMeters(lat, lng, m.lat, m.lng);
+        if (!best) return m;
+        const bestD = distanceMeters(lat, lng, best.lat, best.lng);
+        return d < bestD ? m : best;
+      }, null);
+      if (closest) {
+        revealMonster = {
+          id: closest.id,
+          lat: closest.lat,
+          lng: closest.lng,
+          type: closest.type,
+        };
+      }
+    }
+
+    // Monstri ENGAGED in echipa mea — UI sincron intre teammates.
+    const engagedInMyTeam = await prisma.huntMonster.findMany({
+      where: {
+        sessionId: id,
+        teamId: myTeam.id,
+        status: MonsterStatus.ENGAGED,
+      },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        loreShort: true,
+        engagedAt: true,
+        expiresAt: true,
+      },
+    });
+
+    res.json({
+      status: HuntStatus.ACTIVE,
+      timeRemainingSec: session.endsAt
+        ? Math.max(0, Math.floor((session.endsAt.getTime() - now.getTime()) / 1000))
+        : 0,
+      inPark,
+      inZone,
+      warmth,
+      // Bearing si type ajuta UI sa coloreze sageata si sa indice monstrul.
+      // NU expunem distanta sau pozitia exacta cat warmth nu e very_hot.
+      nearestBearing: warmth === 'cold' ? null : nearestBearing,
+      nearestType,
+      revealMonster,
+      engagedMonsters: engagedInMyTeam,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /hunt/sessions/:id/monsters/:mid/engage
+// User declanseaza lupta cu un monstru cand e la <ENGAGE_DISTANCE_M. Generam
+// challenge runs per teammate dupa tipul monstrului. Idempotent: re-apel
+// returneaza challenge-urile existente.
+const engageSchema = z.object({
+  lat: z.number().gte(-90).lte(90),
+  lng: z.number().gte(-180).lte(180),
+});
+
+huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id, mid } = req.params;
+    if (!id || !mid) throw badRequest('missing_id', 'id-uri lipsa');
+    const { lat, lng } = engageSchema.parse(req.body);
+
+    const monster = await prisma.huntMonster.findUnique({
+      where: { id: mid },
+      include: {
+        session: { select: { id: true, status: true, endsAt: true } },
+        team: {
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, name: true, birthDate: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!monster || monster.session.id !== id) {
+      throw notFound('monster_not_found', 'Monstru inexistent');
+    }
+    if (monster.session.status !== HuntStatus.ACTIVE) {
+      throw conflict('not_active', 'Sesiunea nu e activa');
+    }
+    if (!monster.team) {
+      throw badRequest('monster_no_team', 'Monstru fara echipa atribuita');
+    }
+    const myMembership = monster.team.members.find((m) => m.userId === me);
+    if (!myMembership) {
+      throw forbidden('not_my_team', 'Acest monstru e pe zona altei echipe');
+    }
+    if (monster.status === MonsterStatus.DEFEATED || monster.status === MonsterStatus.ESCAPED) {
+      throw conflict('monster_closed', 'Monstrul a fost deja rezolvat');
+    }
+
+    const dist = distanceMeters(lat, lng, monster.lat, monster.lng);
+    if (dist > ENGAGE_DISTANCE_M) {
+      throw badRequest('too_far', `Apropie-te (esti la ${Math.round(dist)}m)`);
+    }
+
+    // Idempotent: daca e deja ENGAGED, returnam runs existente.
+    if (monster.status === MonsterStatus.ENGAGED) {
+      const existing = await prisma.huntChallengeRun.findMany({
+        where: { monsterId: mid },
+        include: { challenge: true },
+      });
+      res.json({
+        monsterId: mid,
+        engagedAt: monster.engagedAt,
+        expiresAt: monster.expiresAt,
+        runs: existing.map((r) => buildRunDto(r, me)),
+      });
+      return;
+    }
+
+    // Generam challenge runs. challengesPerMember din spawn.ts (1/2/3 dupa
+    // tipul monstrului). Selector pe varsta: pentru fiecare member calculam
+    // varsta si filtram challenge-urile care se potrivesc.
+    const perMember = MONSTER_CHALLENGES_PER_MEMBER[monster.type];
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + FIGHT_WINDOW_MS);
+
+    const runsToCreate: Prisma.HuntChallengeRunCreateManyInput[] = [];
+    for (const member of monster.team.members) {
+      const age = ageFromBirthDate(member.user.birthDate);
+      const candidates = await prisma.huntChallenge.findMany({
+        where: {
+          active: true,
+          ageMin: { lte: age },
+          ageMax: { gte: age },
+          // Pentru monstri de tip rosu/gold cerem dificultate >=2.
+          difficulty: monster.type === 'red' || monster.type === 'gold' ? { gte: 2 } : undefined,
+        },
+        select: { id: true },
+      });
+      if (candidates.length === 0) {
+        throw badRequest(
+          'no_challenges_for_age',
+          `Nu am gasit challenge-uri pentru varsta ${age}`,
+        );
+      }
+      // Shuffle si ia primele perMember.
+      const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+      for (let i = 0; i < perMember; i++) {
+        const c = shuffled[i % shuffled.length]!;
+        runsToCreate.push({
+          monsterId: mid,
+          userId: member.userId,
+          challengeId: c.id,
+        });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.huntMonster.update({
+        where: { id: mid },
+        data: {
+          status: MonsterStatus.ENGAGED,
+          engagedAt: now,
+          expiresAt,
+        },
+      });
+      await tx.huntChallengeRun.createMany({
+        data: runsToCreate,
+        skipDuplicates: true,
+      });
+    });
+
+    const runs = await prisma.huntChallengeRun.findMany({
+      where: { monsterId: mid },
+      include: { challenge: true },
+    });
+
+    res.json({
+      monsterId: mid,
+      monster: {
+        type: monster.type,
+        name: monster.name,
+        loreShort: monster.loreShort,
+      },
+      engagedAt: now,
+      expiresAt,
+      runs: runs.map((r) => buildRunDto(r, me)),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /hunt/sessions/:id/monsters/:mid/runs/:runId/answer
+// User submit-eaza raspunsul lui la propriul challenge run. Pentru riddle:
+// Claude judging. Pentru counting: comparator numeric. Photo se va rezolva
+// in faza 4 cu vision API.
+const answerSchema = z.object({
+  answer: z.string().trim().min(1).max(500),
+});
+
+huntRouter.post(
+  '/sessions/:id/monsters/:mid/runs/:runId/answer',
+  async (req, res, next) => {
+    try {
+      const me = req.userId!;
+      const { id, mid, runId } = req.params;
+      if (!id || !mid || !runId) throw badRequest('missing_id', 'id-uri lipsa');
+      const { answer } = answerSchema.parse(req.body);
+
+      const run = await prisma.huntChallengeRun.findUnique({
+        where: { id: runId },
+        include: {
+          challenge: true,
+          monster: { select: { id: true, sessionId: true, status: true, expiresAt: true } },
+        },
+      });
+      if (!run || run.monsterId !== mid || run.monster.sessionId !== id) {
+        throw notFound('run_not_found', 'Challenge inexistent');
+      }
+      if (run.userId !== me) throw forbidden('not_your_run', 'Nu e challenge-ul tau');
+      if (run.outcome !== ChallengeOutcome.PENDING) {
+        throw conflict('already_answered', 'Ai raspuns deja la acest challenge');
+      }
+      if (run.monster.status !== MonsterStatus.ENGAGED) {
+        throw conflict('monster_not_engaged', 'Lupta nu e activa');
+      }
+      const now = new Date();
+      if (run.monster.expiresAt && run.monster.expiresAt < now) {
+        // Marcam ESCAPED inainte sa raspundem cu eroare.
+        await prisma.huntMonster.update({
+          where: { id: mid },
+          data: { status: MonsterStatus.ESCAPED },
+        });
+        throw conflict('time_up', 'Monstrul a scapat — timpul s-a scurs');
+      }
+
+      let result: { correct: boolean; feedback: string };
+      if (run.challenge.type === ChallengeType.riddle) {
+        result = await judgeRiddleAnswer(
+          run.challenge.prompt,
+          run.challenge.expected,
+          answer,
+        );
+      } else if (run.challenge.type === ChallengeType.counting) {
+        result = judgeCountingAnswer(run.challenge.expected, answer);
+      } else {
+        // photo — Phase 4. Pentru moment refuzam grupand cu eroare clara.
+        throw badRequest(
+          'photo_not_implemented',
+          'Photo challenges urmeaza in versiunea urmatoare',
+        );
+      }
+
+      await prisma.huntChallengeRun.update({
+        where: { id: runId },
+        data: {
+          outcome: result.correct ? ChallengeOutcome.CORRECT : ChallengeOutcome.WRONG,
+          answer,
+          feedback: result.feedback,
+          finishedAt: now,
+        },
+      });
+
+      res.json({
+        correct: result.correct,
+        feedback: result.feedback,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+// POST /hunt/sessions/:id/monsters/:mid/finalize
+// Cand toata echipa a raspuns la toate challenge-urile, aceasta ruta calculeaza
+// outcome-ul si acorda puncte daca toate sunt CORRECT. Idempotent prin
+// HuntMonsterDefeat unique pe monsterId.
+huntRouter.post('/sessions/:id/monsters/:mid/finalize', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id, mid } = req.params;
+    if (!id || !mid) throw badRequest('missing_id', 'id-uri lipsa');
+
+    const monster = await prisma.huntMonster.findUnique({
+      where: { id: mid },
+      include: {
+        session: { select: { id: true, status: true } },
+        team: {
+          include: {
+            members: { select: { userId: true } },
+          },
+        },
+        runs: true,
+      },
+    });
+    if (!monster || monster.session.id !== id) {
+      throw notFound('monster_not_found', 'Monstru inexistent');
+    }
+    if (!monster.team) throw badRequest('no_team', 'Monstru fara echipa');
+    if (!monster.team.members.some((m) => m.userId === me)) {
+      throw forbidden('not_my_team', 'Nu esti in echipa monstrului');
+    }
+    if (monster.status === MonsterStatus.DEFEATED || monster.status === MonsterStatus.ESCAPED) {
+      // Idempotent — returnam state-ul curent.
+      const defeat = await prisma.huntMonsterDefeat.findUnique({ where: { monsterId: mid } });
+      res.json({
+        status: monster.status,
+        pointsAwarded: defeat?.pointsAwarded ?? 0,
+      });
+      return;
+    }
+    if (monster.status !== MonsterStatus.ENGAGED) {
+      throw conflict('monster_not_engaged', 'Lupta nu a fost pornita');
+    }
+
+    const allCorrect =
+      monster.runs.length > 0 && monster.runs.every((r) => r.outcome === ChallengeOutcome.CORRECT);
+    const anyDone = monster.runs.every((r) => r.outcome !== ChallengeOutcome.PENDING);
+    if (!anyDone) {
+      throw conflict('runs_pending', 'Mai sunt challenge-uri neraspunse');
+    }
+
+    const now = new Date();
+    if (allCorrect) {
+      const points = MONSTER_POINTS[monster.type];
+      const durationMs = monster.engagedAt
+        ? now.getTime() - monster.engagedAt.getTime()
+        : 0;
+      await prisma.$transaction([
+        prisma.huntMonster.update({
+          where: { id: mid },
+          data: { status: MonsterStatus.DEFEATED },
+        }),
+        prisma.huntMonsterDefeat.create({
+          data: {
+            monsterId: mid,
+            teamId: monster.team.id,
+            pointsAwarded: points,
+            durationMs,
+          },
+        }),
+        prisma.huntTeam.update({
+          where: { id: monster.team.id },
+          data: {
+            score: { increment: points },
+            monstersDefeated: { increment: 1 },
+          },
+        }),
+      ]);
+      res.json({
+        status: MonsterStatus.DEFEATED,
+        pointsAwarded: points,
+        durationMs,
+      });
+    } else {
+      await prisma.huntMonster.update({
+        where: { id: mid },
+        data: { status: MonsterStatus.ESCAPED },
+      });
+      res.json({
+        status: MonsterStatus.ESCAPED,
+        pointsAwarded: 0,
+      });
+    }
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /hunt/sessions/:id/results
+// Leaderboard final + acordare XP rank-based (idempotent prin XpTransaction).
+// Acceseaza orice participant. Daca sesiunea inca e ACTIVE dar endsAt e in
+// trecut, auto-completeaza.
+huntRouter.get('/sessions/:id/results', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id } = req.params;
+    if (!id) throw badRequest('missing_id', 'sessionId lipsa');
+
+    const session = await prisma.huntSession.findUnique({
+      where: { id },
+      include: {
+        teams: {
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, name: true, avatar: { select: { svg: true } } } },
+              },
+            },
+          },
+          orderBy: [{ score: 'desc' }, { monstersDefeated: 'desc' }],
+        },
+      },
+    });
+    if (!session) throw notFound('session_not_found', 'Sesiune inexistenta');
+
+    const now = new Date();
+    await autoCompleteIfExpired(session.id, session.endsAt, session.status, now);
+
+    const refreshed = await prisma.huntSession.findUniqueOrThrow({
+      where: { id },
+      select: { status: true, startedAt: true, endedAt: true },
+    });
+    if (refreshed.status !== HuntStatus.COMPLETED) {
+      throw conflict('not_completed', 'Sesiunea nu s-a terminat inca');
+    }
+
+    const allUserIds = session.teams.flatMap((t) => t.members.map((m) => m.userId));
+    if (!allUserIds.includes(me)) {
+      throw forbidden('not_member', 'Nu ai participat la aceasta sesiune');
+    }
+
+    // Acordare XP rank-based — ruleaza o singura data per (user, sessionId)
+    // prin unique constraint pe XpTransaction.
+    const ranks = session.teams; // deja sortate desc
+    const teamRanks = new Map<string, number>();
+    ranks.forEach((t, i) => teamRanks.set(t.id, i));
+
+    const xpAwards: Array<{ userId: string; amount: number; rank: number }> = [];
+    for (const team of session.teams) {
+      const rank = teamRanks.get(team.id) ?? 999;
+      const amount =
+        rank === 0
+          ? XP_REWARDS.HUNT_RANK_1
+          : rank === 1
+            ? XP_REWARDS.HUNT_RANK_2
+            : rank === 2
+              ? XP_REWARDS.HUNT_RANK_3
+              : XP_REWARDS.HUNT_PARTICIPATION;
+      for (const member of team.members) {
+        await awardXp(
+          member.userId,
+          amount,
+          'hunt_rank',
+          id,
+          `Hunt rank ${rank + 1}`,
+        );
+        xpAwards.push({ userId: member.userId, amount, rank: rank + 1 });
+      }
+    }
+
+    res.json({
+      sessionId: id,
+      startedAt: refreshed.startedAt,
+      endedAt: refreshed.endedAt,
+      teams: session.teams.map((t, idx) => ({
+        rank: idx + 1,
+        id: t.id,
+        name: t.name,
+        score: t.score,
+        monstersDefeated: t.monstersDefeated,
+        members: t.members.map((m) => ({
+          id: m.userId,
+          name: m.user.name,
+          avatarSvg: m.user.avatar?.svg ?? null,
+        })),
+      })),
+      myXp: xpAwards
+        .filter((a) => a.userId === me)
+        .map((a) => ({ amount: a.amount, rank: a.rank }))[0] ?? null,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Helper: build DTO pentru un challenge run. Ascundem `expected` ca user sa
+// nu primeasca raspunsul in payload. Marcam `mine: true` cand runId-ul e al
+// userului care intreaba.
+type RunWithChallenge = Prisma.HuntChallengeRunGetPayload<{
+  include: { challenge: true };
+}>;
+
+function buildRunDto(run: RunWithChallenge, me: string) {
+  return {
+    id: run.id,
+    userId: run.userId,
+    mine: run.userId === me,
+    challenge: {
+      id: run.challenge.id,
+      type: run.challenge.type,
+      prompt: run.challenge.prompt,
+      difficulty: run.challenge.difficulty,
+    },
+    outcome: run.outcome,
+    feedback: run.feedback,
+    finishedAt: run.finishedAt,
+  };
+}
+
+function ageFromBirthDate(birthDate: Date): number {
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const m = now.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age--;
+  return Math.max(0, age);
+}
 
 // POST /hunt/sessions/:id/end
 // Force-end de host. Auto-end la timeout va fi gestionat de un cron simplu

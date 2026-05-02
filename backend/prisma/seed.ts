@@ -233,6 +233,66 @@ type SeedSpecies = {
   isDefault: boolean;
 };
 
+type SeedChallenge = {
+  slug: string;
+  type: 'riddle' | 'counting';
+  prompt: string;
+  expected: string;
+  ageMin: number;
+  ageMax: number;
+  themeTags?: string;
+  difficulty?: number;
+};
+
+// Bank de challenge-uri pentru hunt. Riddles + counting (photo va fi adaugat
+// in faza 4 cu Claude vision). Slug-urile sunt stabile — la re-seed, prompt-ul
+// se updateaza dar id-ul DB ramane (idempotent).
+const CHALLENGES: SeedChallenge[] = [
+  // ===== Riddles age 6-9 (difficulty 1) =====
+  { slug: 'r-a69-001', type: 'riddle', prompt: 'Ce zboara dar nu are aripi?', expected: 'timpul', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'r-a69-002', type: 'riddle', prompt: 'Are dinti dar nu mananca, ce e?', expected: 'pieptenul', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'r-a69-003', type: 'riddle', prompt: 'Ce are doua roti si nu are motor?', expected: 'bicicleta', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'transport' },
+  { slug: 'r-a69-004', type: 'riddle', prompt: 'Are coada lunga, miorlaie si prinde soareci. Ce e?', expected: 'pisica', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'r-a69-005', type: 'riddle', prompt: 'Cum se numeste puiul caprioarei?', expected: 'iedul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,padure' },
+  { slug: 'r-a69-006', type: 'riddle', prompt: 'Inot in apa, am solzi si fara mine pescarul ramane trist. Ce sunt?', expected: 'pestele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'apa,animale' },
+  { slug: 'r-a69-007', type: 'riddle', prompt: 'Are 4 picioare, latra si pazeste casa. Cine e?', expected: 'cainele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'r-a69-008', type: 'riddle', prompt: 'Cad din cer si sunt albe. Ce sunt?', expected: 'fulgii de zapada', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'iarna' },
+  { slug: 'r-a69-009', type: 'riddle', prompt: 'Are coaja, semburi si e dulce. Ce fruct e?', expected: 'cireasa', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'fructe' },
+  { slug: 'r-a69-010', type: 'riddle', prompt: 'Iese din fata cand strigi tare. Ce e?', expected: 'ecoul', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'r-a69-011', type: 'riddle', prompt: 'Are aripi, ciripeste, sta in copac. Cine e?', expected: 'pasarea', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,cer' },
+  { slug: 'r-a69-012', type: 'riddle', prompt: 'Dimineata se ridica, seara se culca. Cine e?', expected: 'soarele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'cer' },
+  { slug: 'r-a69-013', type: 'riddle', prompt: 'Ne luminam in noapte cu el. Ce e?', expected: 'becul', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'r-a69-014', type: 'riddle', prompt: 'Are corn pe frunte, e magic si zboara prin povesti. Ce e?', expected: 'unicornul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'fantastic' },
+  { slug: 'r-a69-015', type: 'riddle', prompt: 'Sare din floare in floare si face miere. Cine e?', expected: 'albina', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,flori' },
+
+  // ===== Riddles age 10-14 (difficulty 2) =====
+  { slug: 'r-a14-001', type: 'riddle', prompt: 'Are pagini, dar nu intoarce singura. Ce e?', expected: 'cartea', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-002', type: 'riddle', prompt: 'Curge dar nu e apa, ne tine in viata si trece prin inima. Ce e?', expected: 'sangele', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-003', type: 'riddle', prompt: 'Cu cat iei mai multa, cu atat las mai mult in spate. Ce sunt?', expected: 'pasi', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-004', type: 'riddle', prompt: 'Sunt mereu in fata ta dar nu ma poti atinge. Ce sunt?', expected: 'viitorul', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-005', type: 'riddle', prompt: 'Cresc dar nu sunt vie, am varf dar nu sunt creion. Ce sunt?', expected: 'muntele', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'natura' },
+  { slug: 'r-a14-006', type: 'riddle', prompt: 'Are chei dar nu deschide nimic. Ce e?', expected: 'pianul', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-007', type: 'riddle', prompt: 'Cad fara sa ma lovesc, sunt blanda si racoresc. Ce sunt?', expected: 'ploaia', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,apa' },
+  { slug: 'r-a14-008', type: 'riddle', prompt: 'Are limba dar nu vorbeste. Ce e?', expected: 'pantoful', ageMin: 10, ageMax: 14, difficulty: 2 },
+  { slug: 'r-a14-009', type: 'riddle', prompt: 'Ce planeta e cunoscuta drept "planeta rosie"?', expected: 'marte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
+  { slug: 'r-a14-010', type: 'riddle', prompt: 'Cate continente are Pamantul?', expected: 'sapte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'r-a14-011', type: 'riddle', prompt: 'Ce metal e folosit pentru fire electrice?', expected: 'cupru', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
+  { slug: 'r-a14-012', type: 'riddle', prompt: 'Care e cel mai lung rau din Romania?', expected: 'dunarea', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
+  { slug: 'r-a14-013', type: 'riddle', prompt: 'Cum se numeste fenomenul cand luna acopera soarele?', expected: 'eclipsa', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'cer,stiinta' },
+  { slug: 'r-a14-014', type: 'riddle', prompt: 'Cate inimi are caracatita?', expected: 'trei', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'animale,apa' },
+  { slug: 'r-a14-015', type: 'riddle', prompt: 'Cum se cheama puiul vulpii?', expected: 'puiul de vulpe', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'animale,padure' },
+
+  // ===== Counting (toate varstele) =====
+  { slug: 'c-001', type: 'counting', prompt: 'Atinge ecranul de exact 5 ori', expected: '5', ageMin: 6, ageMax: 14, difficulty: 1 },
+  { slug: 'c-002', type: 'counting', prompt: 'Atinge ecranul de exact 7 ori', expected: '7', ageMin: 6, ageMax: 14, difficulty: 1 },
+  { slug: 'c-003', type: 'counting', prompt: 'Atinge ecranul de exact 10 ori', expected: '10', ageMin: 6, ageMax: 14, difficulty: 1 },
+  { slug: 'c-004', type: 'counting', prompt: 'Atinge ecranul de exact 12 ori', expected: '12', ageMin: 8, ageMax: 14, difficulty: 2 },
+  { slug: 'c-005', type: 'counting', prompt: 'Atinge ecranul de exact 8 ori', expected: '8', ageMin: 6, ageMax: 14, difficulty: 1 },
+  { slug: 'c-006', type: 'counting', prompt: 'Atinge ecranul de exact 15 ori', expected: '15', ageMin: 9, ageMax: 14, difficulty: 2 },
+  { slug: 'c-007', type: 'counting', prompt: 'Atinge ecranul de exact 3 ori', expected: '3', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'c-008', type: 'counting', prompt: 'Atinge ecranul de exact 6 ori', expected: '6', ageMin: 6, ageMax: 14, difficulty: 1 },
+];
+
 const SPECIES: SeedSpecies[] = [
   {
     slug: 'dog',
@@ -282,8 +342,35 @@ async function main() {
     });
   }
 
+  for (const ch of CHALLENGES) {
+    await prisma.huntChallenge.upsert({
+      where: { slug: ch.slug },
+      create: {
+        slug: ch.slug,
+        type: ch.type,
+        prompt: ch.prompt,
+        expected: ch.expected,
+        ageMin: ch.ageMin,
+        ageMax: ch.ageMax,
+        themeTags: ch.themeTags ?? '',
+        difficulty: ch.difficulty ?? 1,
+      },
+      update: {
+        type: ch.type,
+        prompt: ch.prompt,
+        expected: ch.expected,
+        ageMin: ch.ageMin,
+        ageMax: ch.ageMax,
+        themeTags: ch.themeTags ?? '',
+        difficulty: ch.difficulty ?? 1,
+      },
+    });
+  }
+
   const counts = await prisma.item.count();
-  console.log(`Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species`);
+  console.log(
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species, ${CHALLENGES.length} hunt challenges`,
+  );
 }
 
 main()

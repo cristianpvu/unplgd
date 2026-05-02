@@ -16,6 +16,12 @@ export const XP_REWARDS = {
   // Co-walk BLE — 10 min minim de prezenta sustinuta cu un prieten. Idempotent
   // pe (userId, "co_walk", "<dateUTC>_<sortedPair>") deci max 1 award/zi/perechie.
   CO_WALK: 50,
+  // Hunt outdoor: rank 1/2/3 + participation pt ultimii. Idempotent pe
+  // (userId, "hunt_rank", sessionId).
+  HUNT_RANK_1: 100,
+  HUNT_RANK_2: 60,
+  HUNT_RANK_3: 30,
+  HUNT_PARTICIPATION: 10,
 } as const;
 
 type Tx = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
