@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -47,6 +48,7 @@ type Props = {
 
 export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClose }: Props) {
   const qc = useQueryClient();
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [engaged, setEngaged] = useState<EngageResponse | null>(null);
   const [tapCount, setTapCount] = useState(0);
@@ -170,7 +172,7 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
       )}
 
       <View style={styles.overlay}>
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.timer}>
             {remainingSec > 0 ? `${remainingSec}s` : 'Timpul a expirat'}
           </Text>
@@ -188,7 +190,7 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
           )}
         </Animated.View>
 
-        <View style={styles.bottomCard}>
+        <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 18 }]}>
           {currentRun ? (
             <ChallengePanel
               run={currentRun}
@@ -353,8 +355,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    paddingTop: 60,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   timer: {
     color: '#FFFFFF',
@@ -401,8 +403,7 @@ const styles = StyleSheet.create({
   bottomCard: {
     backgroundColor: 'rgba(15,15,18,0.92)',
     paddingHorizontal: 18,
-    paddingVertical: 18,
-    paddingBottom: 32,
+    paddingTop: 18,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
   },

@@ -13,16 +13,21 @@ import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Location from 'expo-location';
 import { SvgXml } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   listParksNearby,
   createSession,
   listLobbiesNearby,
   joinSession,
+  devQuickHere,
+  getDevEnabled,
   type HuntPark,
   type HuntLobbyNearbyItem,
 } from '../../../src/api/hunt';
 import { presence } from '../../../src/ble/presence';
 import { colors } from '../../../src/theme/colors';
+
+const DEV_MODE_KEY = 'hunt:devMode';
 
 const DURATION_OPTIONS: { sec: number; label: string }[] = [
   { sec: 900, label: '15 min' },
@@ -37,8 +42,29 @@ export default function HuntEntry() {
   const [selectedParkId, setSelectedParkId] = useState<string | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number>(1800);
   const [bleTokens, setBleTokens] = useState<string[]>([]);
+  const [devMode, setDevMode] = useState(false);
 
-  // Cere permisiunea + ia GPS-ul curent o singura data la mount.
+  // Verific daca server-ul are HUNT_DEV_MODE=true. Daca nu, toggle-ul nu
+  // apare deloc — protectie ca user obisnuit pe productie sa nu-l vada.
+  const devEnabledQuery = useQuery({
+    queryKey: ['hunt', 'dev-enabled'],
+    queryFn: getDevEnabled,
+    staleTime: 1000 * 60 * 30,
+  });
+
+  // Persist toggle local intre sesiuni.
+  useEffect(() => {
+    (async () => {
+      const v = await AsyncStorage.getItem(DEV_MODE_KEY);
+      if (v === '1') setDevMode(true);
+    })();
+  }, []);
+  useEffect(() => {
+    void AsyncStorage.setItem(DEV_MODE_KEY, devMode ? '1' : '0');
+  }, [devMode]);
+
+  // Cere permisiunea + ia GPS-ul curent. Strategie: intai last-known
+  // (instant), apoi fresh in background ca sa actualizam fara sa blocam UI.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -47,6 +73,10 @@ export default function HuntEntry() {
         if (!perm.granted) {
           if (!cancelled) setLocError('Trebuie sa permiti accesul la locatie');
           return;
+        }
+        const last = await Location.getLastKnownPositionAsync({ maxAge: 60_000 });
+        if (last && !cancelled) {
+          setCoords({ lat: last.coords.latitude, lng: last.coords.longitude });
         }
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         if (cancelled) return;
@@ -75,9 +105,10 @@ export default function HuntEntry() {
   }, []);
 
   const parksQuery = useQuery({
-    queryKey: ['hunt', 'parks', coords?.lat, coords?.lng],
+    queryKey: ['hunt', 'parks', coords?.lat?.toFixed(3), coords?.lng?.toFixed(3)],
     queryFn: () => listParksNearby(coords!.lat, coords!.lng),
     enabled: !!coords,
+    staleTime: 5 * 60 * 1000,
   });
 
   const lobbiesQuery = useQuery({
@@ -96,7 +127,7 @@ export default function HuntEntry() {
         lng: coords!.lng,
       }),
     onSuccess: (resp) => {
-      qc.invalidateQueries({ queryKey: ['hunt'] });
+      qc.invalidateQueries({ queryKey: ['hunt', 'session', resp.sessionId] });
       router.push(`/(app)/hunt/${resp.sessionId}`);
     },
     onError: (err: any) => {
@@ -107,11 +138,22 @@ export default function HuntEntry() {
   const joinMut = useMutation({
     mutationFn: (sessionId: string) => joinSession(sessionId),
     onSuccess: (_resp, sessionId) => {
-      qc.invalidateQueries({ queryKey: ['hunt'] });
+      qc.invalidateQueries({ queryKey: ['hunt', 'session', sessionId] });
       router.push(`/(app)/hunt/${sessionId}`);
     },
     onError: (err: any) => {
       Alert.alert('Hopa', err?.message ?? 'Nu am putut intra in lobby');
+    },
+  });
+
+  const devQuickMut = useMutation({
+    mutationFn: () => devQuickHere(coords!.lat, coords!.lng),
+    onSuccess: (resp) => {
+      qc.invalidateQueries({ queryKey: ['hunt', 'session', resp.sessionId] });
+      router.push(`/(app)/hunt/${resp.sessionId}`);
+    },
+    onError: (err: any) => {
+      Alert.alert('Hopa', err?.message ?? 'Nu am putut porni sesiunea de test');
     },
   });
 
@@ -122,10 +164,48 @@ export default function HuntEntry() {
           <Text style={styles.back}>←</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Vanatoare in parc</Text>
-        <View style={{ width: 44 }} />
+        {devEnabledQuery.data?.enabled ? (
+          <Pressable
+            onPress={() => setDevMode((v) => !v)}
+            hitSlop={8}
+            style={[styles.devToggle, devMode && styles.devToggleOn]}
+          >
+            <Text style={[styles.devToggleText, devMode && styles.devToggleTextOn]}>DEV</Text>
+          </Pressable>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
+        {devMode && (
+          <Section title="Mod test (dev)">
+            <Text style={styles.muted}>
+              Creeaza o sesiune fictiva la coords tale curente cu monstri la 4-13m. AR-ul porneste
+              imediat ce intri in sesiune — fara sa fii in parc adevarat.
+            </Text>
+            {locError ? (
+              <Text style={styles.error}>{locError}</Text>
+            ) : !coords ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : (
+              <Pressable
+                onPress={() => devQuickMut.mutate()}
+                disabled={devQuickMut.isPending}
+                style={({ pressed }) => [
+                  styles.startBtn,
+                  devQuickMut.isPending && styles.startBtnDisabled,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                <Text style={styles.startText}>
+                  {devQuickMut.isPending ? 'Se creeaza...' : 'Porneste sesiune de test aici'}
+                </Text>
+              </Pressable>
+            )}
+          </Section>
+        )}
+
         <Section title="Lobby-uri din jur">
           {bleTokens.length === 0 ? (
             <Text style={styles.muted}>
@@ -319,6 +399,20 @@ const styles = StyleSheet.create({
   },
   back: { color: colors.text, fontSize: 22, fontWeight: '700' },
   headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+
+  devToggle: {
+    width: 44,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  devToggleOn: { backgroundColor: '#FF9F1C', borderColor: '#FF9F1C' },
+  devToggleText: { color: colors.textMuted, fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
+  devToggleTextOn: { color: '#FFFFFF' },
 
   scroll: { padding: 16, gap: 16 },
   section: { gap: 10 },

@@ -7,6 +7,10 @@ export type ChallengeOutcome = 'PENDING' | 'CORRECT' | 'WRONG' | 'SKIPPED';
 export type ChallengeType = 'riddle' | 'photo' | 'counting';
 export type Warmth = 'cold' | 'cool' | 'warm' | 'hot' | 'very_hot';
 
+export type GeoJsonPolygon =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] };
+
 export type HuntPark = {
   id: string;
   osmId: string;
@@ -31,7 +35,7 @@ export type HuntTeamDto = {
   score: number;
   monstersDefeated: number;
   memberCount: number;
-  zone: unknown | null;
+  zone: GeoJsonPolygon | null;
   members: { id: string; name: string; avatarSvg: string | null }[];
 };
 
@@ -61,6 +65,7 @@ export type HuntSessionState =
       park: { id: string; name: string };
       host: { id: string; name: string; avatarSvg: string | null };
       monsterCount: number;
+      parkPolygon: GeoJsonPolygon;
       teams: HuntTeamDto[];
       myTeamId: string | null;
     };
@@ -90,6 +95,8 @@ export type HeartbeatResponse =
         type: MonsterType;
         name: string;
         loreShort: string;
+        lat: number;
+        lng: number;
         engagedAt: string;
         expiresAt: string;
       }>;
@@ -233,4 +240,20 @@ export function endSession(sessionId: string) {
 
 export function getResults(sessionId: string) {
   return api<HuntResultsResponse>(`/hunt/sessions/${sessionId}/results`);
+}
+
+// Dev mode — creeaza pe loc sesiune de test cu parc fictiv + 3 demo + monstri
+// la 4-13m. Functioneaza doar daca backend-ul ruleaza cu HUNT_DEV_MODE=true.
+export function devQuickHere(lat: number, lng: number) {
+  return api<{
+    sessionId: string;
+    parkName: string;
+    monsterCount: number;
+    teamCount: number;
+    endsAt: string;
+  }>('/hunt/dev/quick-here', { method: 'POST', body: { lat, lng } });
+}
+
+export function getDevEnabled() {
+  return api<{ enabled: boolean }>('/hunt/dev/enabled');
 }

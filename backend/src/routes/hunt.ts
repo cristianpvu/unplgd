@@ -528,6 +528,7 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
     res.json({
       ...base,
       monsterCount: session.monsterCount,
+      parkPolygon: JSON.parse(session.park.polygon),
       teams: session.teams.map((t) => ({
         id: t.id,
         name: t.name,
@@ -689,7 +690,8 @@ huntRouter.post('/sessions/:id/heartbeat', async (req, res, next) => {
       }
     }
 
-    // Monstri ENGAGED in echipa mea — UI sincron intre teammates.
+    // Monstri ENGAGED in echipa mea — UI sincron intre teammates. Includem lat/lng
+    // pentru a-i randa pe harta (sunt deja revelati prin engage).
     const engagedInMyTeam = await prisma.huntMonster.findMany({
       where: {
         sessionId: id,
@@ -701,6 +703,8 @@ huntRouter.post('/sessions/:id/heartbeat', async (req, res, next) => {
         type: true,
         name: true,
         loreShort: true,
+        lat: true,
+        lng: true,
         engagedAt: true,
         expiresAt: true,
       },

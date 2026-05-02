@@ -26,6 +26,7 @@ import {
 } from '../../../../src/api/hunt';
 import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
+import { HuntMap } from '../../../../src/hunt/HuntMap';
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const SESSION_POLL_INTERVAL_MS = 3_000;
@@ -305,25 +306,37 @@ function ActiveView({
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={[styles.warmthCard, { backgroundColor: WARMTH_COLOR[warmth] }]}>
-          <Text style={styles.warmthLabel}>{WARMTH_LABEL[warmth]}</Text>
+        <View style={styles.mapWrap}>
+          <HuntMap
+            parkPolygon={session.parkPolygon}
+            zonePolygon={myTeam?.zone ?? null}
+            myCoords={coords}
+            heartbeat={heartbeat}
+          />
+        </View>
+
+        <View style={[styles.warmthStrip, { backgroundColor: WARMTH_COLOR[warmth] }]}>
           {heartbeat?.status === 'ACTIVE' && heartbeat.nearestBearing !== null && (
-            <View style={styles.compass}>
+            <View style={styles.compassSm}>
               <View
                 style={[
-                  styles.compassArrow,
+                  styles.compassArrowSm,
                   { transform: [{ rotate: `${heartbeat.nearestBearing}deg` }] },
                 ]}
               />
             </View>
           )}
-          <Text style={styles.warmthHint}>
-            {warmth === 'very_hot'
-              ? 'Foarte aproape! Apropie-te ca sa pornesti lupta'
-              : warmth === 'cold'
-                ? 'Plimba-te prin zona ta — monstrii se ascund'
-                : 'Mergi pe directia sagetii'}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.warmthLabelSm}>{WARMTH_LABEL[warmth]}</Text>
+            <Text style={styles.warmthHintSm}>
+              {warmth === 'very_hot'
+                ? 'Foarte aproape! Atinge monstrul pentru lupta'
+                : warmth === 'cold'
+                  ? 'Plimba-te prin zona ta — monstrii se ascund'
+                  : 'Mergi pe directia sagetii'}
+            </Text>
+          </View>
+          <Text style={styles.timerInline}>{formatTime(timeRemaining)}</Text>
         </View>
 
         {!inZone && (
@@ -333,11 +346,6 @@ function ActiveView({
             </Text>
           </View>
         )}
-
-        <View style={styles.timerCard}>
-          <Text style={styles.timerLabel}>Timp ramas</Text>
-          <Text style={styles.timerValue}>{formatTime(timeRemaining)}</Text>
-        </View>
 
         <View style={styles.scoreCard}>
           <Text style={styles.sectionTitle}>Scor</Text>
@@ -454,39 +462,57 @@ const styles = StyleSheet.create({
   },
   cancelText: { color: colors.danger, fontSize: 15, fontWeight: '700' },
 
-  warmthCard: {
+  mapWrap: {
+    height: 340,
     borderRadius: 18,
-    padding: 24,
+    overflow: 'hidden',
+    backgroundColor: colors.card,
+  },
+
+  warmthStrip: {
+    flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  warmthLabel: {
+  warmthLabelSm: {
     color: '#FFFFFF',
-    fontSize: 28,
+    fontSize: 18,
     fontWeight: '900',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
-  warmthHint: {
+  warmthHintSm: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
-    textAlign: 'center',
-    opacity: 0.9,
+    opacity: 0.92,
+    marginTop: 2,
   },
-  compass: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+  timerInline: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  compassSm: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  compassArrow: {
+  compassArrowSm: {
     width: 0,
     height: 0,
-    borderLeftWidth: 14,
-    borderRightWidth: 14,
-    borderBottomWidth: 36,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 20,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: '#FFFFFF',
