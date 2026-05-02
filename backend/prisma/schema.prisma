@@ -38,6 +38,7 @@ model User {
   huntsHosted         HuntSession[]     @relation("HuntHost")
   huntTeamships       HuntTeamMember[]
   huntChallengeRuns   HuntChallengeRun[]
+  huntLobbyMemberships HuntLobbyMember[]
 
   @@index([email])
 }
@@ -439,13 +440,30 @@ model HuntSession {
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
-  host     User         @relation("HuntHost", fields: [hostId], references: [id], onDelete: Cascade)
-  park     Park         @relation(fields: [parkId], references: [id])
+  host     User              @relation("HuntHost", fields: [hostId], references: [id], onDelete: Cascade)
+  park     Park              @relation(fields: [parkId], references: [id])
   teams    HuntTeam[]
   monsters HuntMonster[]
+  lobby    HuntLobbyMember[]
 
   @@index([hostId, status])
   @@index([status, endsAt])
+}
+
+// Participant in stagiul LOBBY — inainte ca host-ul sa apese start si echipele
+// sa fie generate. La pornire, lobby members sunt convertiti in HuntTeamMember
+// random + lobby-ul se goleste. Permite drop in/out flexibil pre-start.
+model HuntLobbyMember {
+  id        String   @id @default(cuid())
+  sessionId String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  session HuntSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, userId])
+  @@index([userId])
 }
 
 model HuntTeam {

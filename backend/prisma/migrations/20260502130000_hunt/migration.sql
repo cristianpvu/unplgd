@@ -142,6 +142,19 @@ ALTER TABLE "HuntChallengeRun" ADD CONSTRAINT "HuntChallengeRun_monsterId_fkey" 
 ALTER TABLE "HuntChallengeRun" ADD CONSTRAINT "HuntChallengeRun_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
 ALTER TABLE "HuntChallengeRun" ADD CONSTRAINT "HuntChallengeRun_challengeId_fkey" FOREIGN KEY ("challengeId") REFERENCES "HuntChallenge"("id") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
+-- CreateTable HuntLobbyMember
+CREATE TABLE "HuntLobbyMember" (
+    "id" TEXT NOT NULL,
+    "sessionId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "joinedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "HuntLobbyMember_pkey" PRIMARY KEY ("id")
+);
+CREATE UNIQUE INDEX "HuntLobbyMember_sessionId_userId_key" ON "HuntLobbyMember"("sessionId", "userId");
+CREATE INDEX "HuntLobbyMember_userId_idx" ON "HuntLobbyMember"("userId");
+ALTER TABLE "HuntLobbyMember" ADD CONSTRAINT "HuntLobbyMember_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "HuntSession"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+ALTER TABLE "HuntLobbyMember" ADD CONSTRAINT "HuntLobbyMember_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE NO ACTION;
+
 -- CreateTable HuntMonsterDefeat
 CREATE TABLE "HuntMonsterDefeat" (
     "id" TEXT NOT NULL,
