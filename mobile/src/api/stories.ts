@@ -102,3 +102,58 @@ export function ttsSynthesize(text: string) {
     body: { text },
   });
 }
+
+// Extindere lant: chat conversational pe povestea pe care am verificat-o.
+// Eligibil doar daca am StoryClaim status=VERIFIED pe storyId. Final = poveste
+// noua (parentStoryId=storyId, mostenind chainRootId).
+export type ExtendFinalStory = {
+  id: string;
+  title: string;
+  body: string;
+  parentStoryId: string;
+  chainRootId: string;
+  chainLength: number;
+  bodyAudioUrl: string | null;
+  ttsProvider?: 'eleven' | 'edge' | null;
+  ttsError?: string | null;
+};
+
+export type ExtendChatResponse =
+  | { reply: string; replyAudioUrl: string | null; finalStory?: undefined }
+  | {
+      reply?: undefined;
+      replyAudioUrl?: undefined;
+      finalStory: ExtendFinalStory;
+      xp: {
+        extender: { alreadyAwarded: boolean; amount: number; newXp: number; newLevel: number; leveledUp: boolean };
+        chainBonusAwarded: boolean;
+      };
+    };
+
+export function postExtendChat(storyId: string, message: string) {
+  return api<ExtendChatResponse>(`/stories/${storyId}/extend`, {
+    method: 'POST',
+    body: { message },
+  });
+}
+
+export function resetExtendDraft(storyId: string) {
+  return api<void>(`/stories/${storyId}/extend/draft`, { method: 'DELETE' });
+}
+
+export type ChainChapter = {
+  order: number;
+  storyId: string;
+  title: string;
+  body: string;
+  audioUrl: string | null;
+  audioProvider: 'eleven' | 'edge' | null;
+  createdAt: string;
+  author: { id: string; name: string; avatarSvg: string | null };
+};
+
+export function getStoryChain(storyId: string) {
+  return api<{ chainRootId: string; chainLength: number; chapters: ChainChapter[] }>(
+    `/stories/${storyId}/chain`,
+  );
+}

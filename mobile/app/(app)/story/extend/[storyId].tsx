@@ -14,14 +14,16 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  getClaim,
-  postVerifyAnswer,
+  postExtendChat,
+  resetExtendDraft,
   absoluteAudioUrl,
   ttsSynthesize,
-  type VerifyChatResponse,
+  type ExtendChatResponse,
+  type ExtendFinalStory,
 } from '../../../../src/api/stories';
+import { ApiError } from '../../../../src/api/client';
 import {
   playPetVoice,
   speakDevice,
@@ -31,22 +33,46 @@ import {
 import { MicButton } from '../../../../src/ui/MicButton';
 import { colors } from '../../../../src/theme/colors';
 
+type ExtendDoneState = Extract<ExtendChatResponse, { finalStory: ExtendFinalStory }>;
+
 type Bubble =
   | { id: string; role: 'pet' | 'me'; text: string }
-  | { id: string; role: 'final'; final: VerifyDoneState };
+  | { id: string; role: 'final'; final: ExtendDoneState };
 
-type VerifyDoneState = Extract<VerifyChatResponse, { done: true }>;
+const INTRO_TEXT =
+  'Acum poti continua povestea cu propriul capitol! Ce se mai intampla mai departe?';
 
-export default function StoryVerify() {
-  const { claimId } = useLocalSearchParams<{ claimId: string }>();
+export default function StoryExtend() {
+  const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
-  const [bubbles, setBubbles] = useState<Bubble[]>([]);
+  const [bubbles, setBubbles] = useState<Bubble[]>([
+    { id: 'intro', role: 'pet', text: INTRO_TEXT },
+  ]);
   const [draft, setDraft] = useState('');
-  const [final, setFinal] = useState<VerifyDoneState | null>(null);
+  const [final, setFinal] = useState<ExtendDoneState | null>(null);
   const [kbOpen, setKbOpen] = useState(false);
   const sttBaseRef = useRef('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+        if (cancelled) return;
+        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+      } catch {
+        if (cancelled) return;
+        speakDevice(INTRO_TEXT);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      stopDevice();
+      void stopRemoteAudio();
+    };
+  }, []);
 
   useEffect(() => {
     const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -61,58 +87,23 @@ export default function StoryVerify() {
 
   const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
 
-  const claimQuery = useQuery({
-    queryKey: ['stories', 'claim', claimId],
-    queryFn: () => getClaim(claimId),
-    enabled: !!claimId,
-  });
-
-  // Mesaj de bun-venit pe baza autorului — pet-ul intreaba prima intrebare
-  // dupa ce trimitem PRIMUL mesaj. Aratam un placeholder de start ca user-ul
-  // sa stie ca trebuie sa scrie ceva ("ok, sunt gata!").
-  useEffect(() => {
-    let cancelled = false;
-    if (claimQuery.data && bubbles.length === 0) {
-      const author = claimQuery.data.claim.story.author.name;
-      const intro = `${author} mi-a zis ca ti-a spus o poveste! Hai sa vedem cat ai retinut. Cand esti gata, scrie-mi.`;
-      setBubbles([{ id: 'intro', role: 'pet', text: intro }]);
-      (async () => {
-        try {
-          const { audioUrl } = await ttsSynthesize(intro);
-          if (cancelled) return;
-          await playPetVoice(intro, absoluteAudioUrl(audioUrl));
-        } catch {
-          if (cancelled) return;
-          speakDevice(intro);
-        }
-      })();
-    }
-    return () => {
-      cancelled = true;
-      stopDevice();
-      void stopRemoteAudio();
-    };
-  }, [claimQuery.data]);
-
   const send = useMutation({
-    mutationFn: (msg: string) => postVerifyAnswer(claimId, msg),
+    mutationFn: (msg: string) => postExtendChat(storyId, msg),
     onSuccess: (resp) => {
-      if ('done' in resp && resp.done) {
+      if ('finalStory' in resp && resp.finalStory) {
         setFinal(resp);
-        setBubbles((b) => [
-          ...b,
-          { id: `f-${Date.now()}`, role: 'final', final: resp },
-        ]);
+        setBubbles((b) => [...b, { id: `f-${resp.finalStory.id}`, role: 'final', final: resp }]);
+        qc.invalidateQueries({ queryKey: ['stories', 'mine'] });
         qc.invalidateQueries({ queryKey: ['stories', 'inbox'] });
         qc.invalidateQueries({ queryKey: ['me'] });
 
-        if (resp.ttsError) {
-          Alert.alert('TTS error', resp.ttsError);
-        } else if (resp.ttsProvider) {
-          Alert.alert('TTS provider', resp.ttsProvider);
+        if (resp.finalStory.ttsError) {
+          Alert.alert('TTS error', resp.finalStory.ttsError);
         }
-
-        void playPetVoice(resp.summary, absoluteAudioUrl(resp.summaryAudioUrl));
+        void playPetVoice(
+          resp.finalStory.body,
+          absoluteAudioUrl(resp.finalStory.bodyAudioUrl),
+        );
       } else if ('reply' in resp && resp.reply) {
         const reply = resp.reply;
         setBubbles((b) => [...b, { id: `p-${Date.now()}`, role: 'pet', text: reply }]);
@@ -121,7 +112,37 @@ export default function StoryVerify() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (err: any) => {
-      Alert.alert('Hopa', err?.message ?? 'Buddy nu raspunde acum');
+      let msg = err?.message ?? 'Buddy nu raspunde acum';
+      if (err instanceof ApiError) {
+        if (err.code === 'daily_limit') {
+          msg = 'Ai creat sau continuat deja o poveste azi! Vino maine.';
+        } else if (err.code === 'chain_full') {
+          msg = 'Lantul povestii a atins limita maxima.';
+        } else if (err.code === 'already_extended') {
+          msg = 'Ai continuat deja aceasta poveste.';
+        } else if (err.code === 'already_in_chain') {
+          msg = 'Esti deja autor in lant.';
+        } else if (err.code === 'not_verified') {
+          msg = 'Trebuie sa verifici povestea inainte sa o continui.';
+        }
+      }
+      Alert.alert('Hopa', msg);
+    },
+  });
+
+  const reset = useMutation({
+    mutationFn: () => resetExtendDraft(storyId),
+    onSuccess: async () => {
+      setBubbles([{ id: 'intro', role: 'pet', text: INTRO_TEXT }]);
+      setFinal(null);
+      stopDevice();
+      await stopRemoteAudio();
+      try {
+        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+      } catch {
+        speakDevice(INTRO_TEXT);
+      }
     },
   });
 
@@ -134,48 +155,32 @@ export default function StoryVerify() {
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }
 
-  if (claimQuery.isPending) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <ActivityIndicator color={colors.accent} style={{ marginTop: 60 }} />
-      </SafeAreaView>
-    );
-  }
-
-  if (claimQuery.error || !claimQuery.data) {
-    return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
-        <View style={styles.headerRow}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-            <Text style={styles.back}>←</Text>
-          </Pressable>
-          <Text style={styles.headerTitle}>Verificare</Text>
-          <View style={{ width: 44 }} />
-        </View>
-        <Text style={styles.errorText}>Nu am putut incarca verificarea</Text>
-      </SafeAreaView>
-    );
-  }
-
-  const claim = claimQuery.data.claim;
-
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle} numberOfLines={1}>
-          De la {claim.story.author.name}
-        </Text>
-        <View style={{ width: 44 }} />
+        <Text style={styles.headerTitle}>Continua povestea</Text>
+        {bubbles.length > 1 && !final ? (
+          <Pressable
+            onPress={() => {
+              Alert.alert('Sigur?', 'Pierzi capitolul pe care il lucrezi.', [
+                { text: 'Nu' },
+                { text: 'Da, sterge', style: 'destructive', onPress: () => reset.mutate() },
+              ]);
+            }}
+            hitSlop={12}
+            style={styles.resetBtn}
+          >
+            <Text style={styles.resetText}>↺</Text>
+          </Pressable>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -195,19 +200,28 @@ export default function StoryVerify() {
 
         {final ? (
           <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
-            {final.status === 'VERIFIED' && (
-              <Pressable
-                onPress={() => router.replace(`/(app)/story/extend/${claim.story.id}`)}
-                style={({ pressed }) => [styles.continueBtn, pressed && styles.btnPressed]}
-              >
-                <Text style={styles.continueText}>Continua povestea</Text>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={() => {
+                void playPetVoice(
+                  final.finalStory.body,
+                  absoluteAudioUrl(final.finalStory.bodyAudioUrl),
+                );
+              }}
+              style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
+            >
+              <Text style={styles.replayText}>🔊  Asculta capitolul tau</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.replace(`/(app)/story/chain/${final.finalStory.chainRootId}`)}
+              style={({ pressed }) => [styles.chainBtn, pressed && styles.btnPressed]}
+            >
+              <Text style={styles.chainText}>📖  Vezi tot lantul</Text>
+            </Pressable>
             <Pressable
               onPress={() => router.replace('/(app)/story')}
               style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
             >
-              <Text style={styles.doneText}>Inchide</Text>
+              <Text style={styles.doneText}>Gata!</Text>
             </Pressable>
           </View>
         ) : (
@@ -227,7 +241,7 @@ export default function StoryVerify() {
               style={styles.input}
               value={draft}
               onChangeText={setDraft}
-              placeholder="Spune sau scrie ce-ai retinut..."
+              placeholder="Scrie sau apasa pe microfon..."
               placeholderTextColor={colors.textMuted}
               multiline
               maxLength={500}
@@ -253,31 +267,20 @@ export default function StoryVerify() {
 
 function BubbleView({ bubble }: { bubble: Bubble }) {
   if (bubble.role === 'final') {
-    const f = bubble.final;
-    const passed = f.status === 'VERIFIED';
+    const { finalStory, xp } = bubble.final;
     return (
-      <View
-        style={[
-          styles.finalCard,
-          passed ? styles.finalCardWin : styles.finalCardLoss,
-        ]}
-      >
-        <Text style={styles.finalEmoji}>
-          {passed ? '🎉' : f.canRetry ? '🤔' : '😅'}
-        </Text>
-        <Text style={styles.finalTitle}>
-          {passed
-            ? `${f.score} din 5 — bravo!`
-            : f.canRetry
-              ? 'Aproape! Mai incearca o data.'
-              : 'Hmm, nu prea ai prins-o.'}
-        </Text>
-        <Text style={styles.finalSummary}>{f.summary}</Text>
-        {passed && (f.xp.listener > 0 || f.xp.author > 0) && (
-          <View style={styles.xpRow}>
-            <Text style={styles.xpText}>+{f.xp.listener} XP pentru tine</Text>
-            <Text style={styles.xpText}>+{f.xp.author} XP pentru prieten</Text>
-          </View>
+      <View style={styles.finalCard}>
+        <Text style={styles.finalLabel}>CAPITOLUL TAU</Text>
+        <Text style={styles.finalTitle}>{finalStory.title}</Text>
+        <Text style={styles.finalBody}>{finalStory.body}</Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.metaText}>Capitol {finalStory.chainLength} din lant</Text>
+          {xp.extender.amount > 0 && (
+            <Text style={styles.xpText}>+{xp.extender.amount} XP</Text>
+          )}
+        </View>
+        {xp.chainBonusAwarded && (
+          <Text style={styles.bonusText}>🌟  Bonus lant lung — toti autorii primesc XP!</Text>
         )}
       </View>
     );
@@ -316,7 +319,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
+  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  resetBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetText: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
 
   chat: { flex: 1 },
   chatContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
@@ -344,19 +355,24 @@ const styles = StyleSheet.create({
   typingText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
 
   finalCard: {
+    backgroundColor: colors.card,
     borderRadius: 20,
     padding: 18,
     gap: 8,
-    alignItems: 'center',
-    marginTop: 8,
     borderWidth: 2,
+    borderColor: colors.success,
+    marginTop: 8,
   },
-  finalCardWin: { backgroundColor: colors.cardAlt, borderColor: colors.success },
-  finalCardLoss: { backgroundColor: colors.card, borderColor: colors.border },
-  finalEmoji: { fontSize: 48 },
-  finalTitle: { color: colors.text, fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  finalSummary: { color: colors.text, fontSize: 14, lineHeight: 20, textAlign: 'center' },
-  xpRow: { flexDirection: 'row', gap: 12, marginTop: 6 },
+  finalLabel: {
+    color: colors.success,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  finalTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  finalBody: { color: colors.text, fontSize: 16, lineHeight: 24 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  metaText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
   xpText: {
     color: colors.success,
     fontSize: 13,
@@ -365,6 +381,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
+  },
+  bonusText: {
+    color: colors.accent,
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginTop: 8,
   },
 
   inputRow: {
@@ -403,10 +426,25 @@ const styles = StyleSheet.create({
   finalActions: {
     paddingHorizontal: 16,
     paddingVertical: 14,
+    gap: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     backgroundColor: colors.bg,
   },
+  replayBtn: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  replayText: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  chainBtn: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  chainText: { color: colors.text, fontSize: 16, fontWeight: '700' },
   doneBtn: {
     backgroundColor: colors.accent,
     borderRadius: 14,
@@ -414,14 +452,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   doneText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  continueBtn: {
-    backgroundColor: colors.success,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  continueText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-
-  errorText: { color: colors.danger, textAlign: 'center', marginTop: 24 },
 });

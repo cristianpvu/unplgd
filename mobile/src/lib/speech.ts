@@ -38,6 +38,9 @@ export async function playPetVoice(text: string, audioUrl: string | null) {
 // povestea finala si summary-ul de verify, unde calitatea conteaza. Cache la
 // backend → al doilea play e instant.
 let activePlayer: AudioPlayer | null = null;
+// Resolver-ul promise-ului din `playPetVoiceAwait` curent. La stopRemoteAudio
+// il chemam ca apelantul sa nu ramana blocat in await dupa cancel.
+let activeAwaitResolver: (() => void) | null = null;
 
 export async function playRemoteAudio(url: string) {
   await stopRemoteAudio();
@@ -66,6 +69,57 @@ export async function stopRemoteAudio() {
     }
     activePlayer = null;
   }
+  if (activeAwaitResolver) {
+    const r = activeAwaitResolver;
+    activeAwaitResolver = null;
+    r();
+  }
+}
+
+// Variant await-able a lui playPetVoice — promise se rezolva DUPA finish-ul
+// playback-ului (sau imediat la fallback pe device speak). Folosit la
+// audiobook-ul lantului ca sa redam capitolele secvential. stop*Remote/Device
+// rezolva si ele promise-ul (cancel = rezolvare normala, nu eroare).
+export async function playPetVoiceAwait(
+  text: string,
+  audioUrl: string | null,
+): Promise<void> {
+  stopDevice();
+  await stopRemoteAudio();
+  if (!audioUrl) {
+    speakDevice(text);
+    // expo-speech nu expune un await pe finish; aproximam prin lungimea textului
+    // (~14 chars/sec la viteza standard romana). Folosit doar in fallback.
+    const ms = Math.min(60_000, Math.max(2_000, Math.round((text.length / 14) * 1000)));
+    await new Promise((r) => setTimeout(r, ms));
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const player = createAudioPlayer({ uri: audioUrl });
+    activePlayer = player;
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      try {
+        player.remove();
+      } catch {
+        // ignore
+      }
+      if (activePlayer === player) activePlayer = null;
+      if (activeAwaitResolver === finish) activeAwaitResolver = null;
+      resolve();
+    };
+    activeAwaitResolver = finish;
+    player.addListener('playbackStatusUpdate', (status) => {
+      if (status.didJustFinish) finish();
+    });
+    try {
+      player.play();
+    } catch {
+      finish();
+    }
+  });
 }
 
 // STT — push-to-talk. Folosim recunoastere on-device cand e disponibila
