@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { anthropic, ANTHROPIC_MODEL } from '../lib/ai/client.js';
 import {
   storyCreateSystemPrompt,
+  storyExtendSystemPrompt,
   storyVerifySystemPrompt,
   type PetContext,
 } from '../lib/ai/storyPrompts.js';
@@ -119,9 +120,16 @@ storiesRouter.post('/', async (req, res, next) => {
           keyFacts: json.keyFacts as unknown as object,
         },
       });
+      // chainRootId se autoreferentiaza la creare (povestea e propriul root al
+      // unui posibil lant viitor). Update separat ca sa avem id-ul deja generat.
+      await prisma.story.update({
+        where: { id: story.id },
+        data: { chainRootId: story.id },
+      });
       await clearChatHistory(cacheKey);
 
-      // TTS pe body — vocea pet-ului.
+      // TTS pe body — vocea pet-ului. Daca trece, persistam si pe Story
+      // (audioUrl + audioProvider) ca alte ecrane sa nu re-renteze.
       let bodyAudioUrl: string | null = null;
       let ttsProvider: string | null = null;
       let ttsError: string | null = null;
@@ -129,6 +137,10 @@ storiesRouter.post('/', async (req, res, next) => {
         const tts = await synthesizeTts(json.body, pet.species.voiceId);
         bodyAudioUrl = tts.urlPath;
         ttsProvider = tts.provider;
+        await prisma.story.update({
+          where: { id: story.id },
+          data: { audioUrl: tts.urlPath, audioProvider: tts.provider },
+        });
       } catch (err) {
         req.log.error({ err }, 'tts.story_body_failed');
         ttsError = err instanceof Error ? err.message : String(err);
@@ -165,6 +177,49 @@ storiesRouter.post('/', async (req, res, next) => {
     next(e);
   }
 });
+
+// Cap pe numarul de capitole intr-un lant. Dincolo de 5 povestea devine
+// obositoare si AI-ul are dificultati sa pastreze coerenta. Nu confundat cu
+// numarul de extensii ale aceluiasi parinte (branching) — fiecare frunza din
+// arbore are propriul lant cu propriul cap.
+const CHAIN_MAX_LENGTH = 5;
+// Pragul peste care acordam bonus XP retroactiv tuturor autorilor din lant.
+// Idempotent prin XpTransaction unique pe (userId, "story_chain_4plus", chainRootId).
+const CHAIN_BONUS_THRESHOLD = 4;
+const CHAIN_BONUS_XP = 50;
+
+type ChainEntry = { id: string; authorId: string; authorName: string; body: string };
+
+// Urmareste linia parintelui pana la radacina, returnand toate capitolele in
+// ordine cronologica (root → leaf). Limitat la CHAIN_MAX_LENGTH ca safety net
+// in caz ca apare un ciclu (nu ar trebui — schema previne, dar paranoia).
+async function loadAncestry(leafStoryId: string): Promise<ChainEntry[]> {
+  const chain: ChainEntry[] = [];
+  let nextId: string | null = leafStoryId;
+  for (let i = 0; i < CHAIN_MAX_LENGTH + 1; i++) {
+    if (nextId === null) break;
+    const currentId: string = nextId;
+    const s = await prisma.story.findUnique({
+      where: { id: currentId },
+      select: {
+        id: true,
+        authorId: true,
+        body: true,
+        parentStoryId: true,
+        author: { select: { name: true } },
+      },
+    });
+    if (!s) break;
+    chain.unshift({
+      id: s.id,
+      authorId: s.authorId,
+      authorName: s.author.name,
+      body: s.body,
+    });
+    nextId = s.parentStoryId;
+  }
+  return chain;
+}
 
 // POST /stories/tts — sintetizeaza un text arbitrar cu vocea pet-ului user-ului.
 // Folosit de mobile pentru replicile hardcodate (intro etc.) si orice text
@@ -618,6 +673,327 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
     }
 
     res.json({ reply: replyText, replyAudioUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /stories/:storyId/extend — chat conversational pt extinderea unei povesti
+// pe care eu am verificat-o (StoryClaim VERIFIED). Creeaza un Story nou cu
+// parentStoryId = storyId, mostenind chainRootId. keyFacts pe extensie sunt
+// CUMULATIVE (acopera tot lantul) — un viitor ascultator e quizz-uit pe povestea
+// integrala asa cum o aude de la mine. Limita zilnica e combinata cu /stories
+// (1/zi total per autor, anti-farm).
+type StoryExtendDraft = {
+  body: string;
+  keyFacts: { q: string; expected: string }[];
+};
+
+function isStoryExtendDraft(x: unknown): x is StoryExtendDraft {
+  if (!x || typeof x !== 'object') return false;
+  const o = x as Record<string, unknown>;
+  if (typeof o.body !== 'string') return false;
+  if (!Array.isArray(o.keyFacts) || o.keyFacts.length !== 5) return false;
+  return o.keyFacts.every(
+    (f) =>
+      f && typeof f === 'object' &&
+      typeof (f as Record<string, unknown>).q === 'string' &&
+      typeof (f as Record<string, unknown>).expected === 'string',
+  );
+}
+
+storiesRouter.post('/:storyId/extend', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { storyId } = req.params;
+    if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
+    const { message } = chatSchema.parse(req.body);
+
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: {
+        id: true,
+        authorId: true,
+        title: true,
+        chainRootId: true,
+      },
+    });
+    if (!story) throw notFound('story_not_found', 'Povestea nu exista');
+    if (story.authorId === me) {
+      throw forbidden('self_extend', 'Nu poti continua propria poveste');
+    }
+
+    const claim = await prisma.storyClaim.findUnique({
+      where: { storyId_listenerId: { storyId, listenerId: me } },
+      select: { status: true },
+    });
+    if (!claim || claim.status !== 'VERIFIED') {
+      throw forbidden('not_verified', 'Trebuie sa fi verificat povestea ca sa o continui');
+    }
+
+    // Un user poate extinde un parinte o singura data — fara reluari.
+    const existingExtension = await prisma.story.findFirst({
+      where: { parentStoryId: storyId, authorId: me },
+      select: { id: true },
+    });
+    if (existingExtension) {
+      throw conflict('already_extended', 'Ai continuat deja aceasta poveste');
+    }
+
+    // Cap pe lant + anti-ciclu: nu reapar in propria mea ascendenta.
+    const ancestry = await loadAncestry(storyId);
+    if (ancestry.length >= CHAIN_MAX_LENGTH) {
+      throw badRequest('chain_full', `Lantul a atins limita de ${CHAIN_MAX_LENGTH} capitole`);
+    }
+    if (ancestry.some((c) => c.authorId === me)) {
+      throw forbidden('already_in_chain', 'Esti deja autor in acest lant');
+    }
+
+    // Limita zilnica combinata: o singura contributie pe zi (originala SAU extensie).
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayCount = await prisma.story.count({
+      where: { authorId: me, createdAt: { gte: startOfDay } },
+    });
+    if (todayCount >= 1) {
+      throw conflict(
+        'daily_limit',
+        'Ai creat sau continuat deja o poveste azi. Mai poti maine!',
+      );
+    }
+
+    const [user, pet] = await Promise.all([
+      prisma.user.findUniqueOrThrow({ where: { id: me } }),
+      ensureDefaultPet(me).then((p) =>
+        prisma.pet.findUniqueOrThrow({
+          where: { id: p.id },
+          include: { species: true },
+        }),
+      ),
+    ]);
+
+    const petContext: PetContext = {
+      name: pet.name,
+      speciesName: pet.species.name,
+      systemHint: pet.species.systemHint,
+    };
+
+    const cacheKey = `story:extend:${me}:${storyId}`;
+    const history = await loadChatHistory(cacheKey);
+    const userTurn = { role: 'user' as const, content: message };
+
+    const completion = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 1024,
+      system: storyExtendSystemPrompt(
+        petContext,
+        user.name,
+        ancestry.map((c) => ({ authorName: c.authorName, body: c.body })),
+      ),
+      messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
+    });
+
+    const replyText = completion.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+
+    if (!replyText) throw serverError('ai_empty', 'AI-ul nu a raspuns');
+
+    const json = extractJsonBlock(replyText);
+
+    if (json && isStoryExtendDraft(json)) {
+      // Final — creeaza extensia + TTS + XP. chainRootId mostenit (sau fallback la
+      // story.id pt rare cazuri legacy in care n-a fost backfill-uit).
+      const chainRootId = story.chainRootId ?? story.id;
+
+      const newStory = await prisma.story.create({
+        data: {
+          authorId: me,
+          title: story.title, // mostenim titlul lantului — UX-ul afiseaza autorul per capitol
+          body: json.body,
+          keyFacts: json.keyFacts as unknown as object,
+          parentStoryId: story.id,
+          chainRootId,
+        },
+      });
+      await clearChatHistory(cacheKey);
+
+      let bodyAudioUrl: string | null = null;
+      let ttsProvider: string | null = null;
+      let ttsError: string | null = null;
+      try {
+        const tts = await synthesizeTts(json.body, pet.species.voiceId);
+        bodyAudioUrl = tts.urlPath;
+        ttsProvider = tts.provider;
+        await prisma.story.update({
+          where: { id: newStory.id },
+          data: { audioUrl: tts.urlPath, audioProvider: tts.provider },
+        });
+      } catch (err) {
+        req.log.error({ err }, 'tts.story_extend_failed');
+        ttsError = err instanceof Error ? err.message : String(err);
+      }
+
+      // XP pentru autorul extensiei (CO_CREATION = 80). sourceId-ul e id-ul
+      // noii povesti — unique per extensie, idempotent.
+      const xpExtender = await awardXp(
+        me,
+        XP_REWARDS.CO_CREATION,
+        'story_extension',
+        newStory.id,
+        'Continuare poveste',
+      );
+
+      // Bonus retroactiv la atingerea pragului de lant lung. Idempotent pe
+      // (userId, "story_chain_4plus", chainRootId): daca pragul a mai fost atins
+      // anterior cu o alta ramura din arbore, awardXp returneaza alreadyAwarded.
+      const totalChainLength = ancestry.length + 1;
+      let chainBonusAwarded = false;
+      if (totalChainLength >= CHAIN_BONUS_THRESHOLD) {
+        const chainAuthorIds = [...new Set([...ancestry.map((c) => c.authorId), me])];
+        await Promise.all(
+          chainAuthorIds.map((uid) =>
+            awardXp(uid, CHAIN_BONUS_XP, 'story_chain_4plus', chainRootId, 'Bonus lant 4+'),
+          ),
+        );
+        chainBonusAwarded = true;
+      }
+
+      res.status(201).json({
+        finalStory: {
+          id: newStory.id,
+          title: newStory.title,
+          body: newStory.body,
+          parentStoryId: newStory.parentStoryId,
+          chainRootId: newStory.chainRootId,
+          chainLength: totalChainLength,
+          bodyAudioUrl,
+          ttsProvider,
+          ttsError,
+        },
+        xp: { extender: xpExtender, chainBonusAwarded },
+      });
+      return;
+    }
+
+    await appendChatTurn(cacheKey, userTurn);
+    await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
+
+    let replyAudioUrl: string | null = null;
+    try {
+      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      replyAudioUrl = tts.urlPath;
+    } catch (err) {
+      req.log.error({ err }, 'tts.extend_reply_failed');
+    }
+
+    res.json({ reply: replyText, replyAudioUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /stories/:storyId/chain — lantul ordonat root → leaf cu autor + body +
+// audio per capitol. Acces:
+//   - oricine e autor in lant, SAU
+//   - oricine are claim VERIFIED pe orice capitol din lant.
+// Refuzam in tacere alte useri (404 vs 403 — ascundem existenta).
+storiesRouter.get('/:storyId/chain', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { storyId } = req.params;
+    if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
+
+    const target = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: { id: true, chainRootId: true },
+    });
+    if (!target) throw notFound('story_not_found', 'Povestea nu exista');
+
+    const chainRootId = target.chainRootId ?? target.id;
+
+    // Toate capitolele lantului. Scoatem keyFacts — nu se expun (un autor din
+    // lant le-ar folosi sa cheat-uiasca un viitor verify pe un alt capitol).
+    const all = await prisma.story.findMany({
+      where: { chainRootId },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        authorId: true,
+        body: true,
+        audioUrl: true,
+        audioProvider: true,
+        parentStoryId: true,
+        createdAt: true,
+        title: true,
+        author: {
+          select: { id: true, name: true, avatar: { select: { svg: true } } },
+        },
+      },
+    });
+
+    // Construieste lantul liniar de la storyId catre root (acelasi loadAncestry
+    // dar pe dataset-ul deja in memorie, fara extra round-trip-uri).
+    const byId = new Map(all.map((s) => [s.id, s]));
+    const ordered: typeof all = [];
+    let cursor: string | null = storyId;
+    for (let i = 0; i < CHAIN_MAX_LENGTH + 1 && cursor; i++) {
+      const s = byId.get(cursor);
+      if (!s) break;
+      ordered.unshift(s);
+      cursor = s.parentStoryId;
+    }
+
+    // Acces: autor in lant SAU listener cu claim VERIFIED pe vreun capitol.
+    const authorIds = new Set(ordered.map((s) => s.authorId));
+    let allowed = authorIds.has(me);
+    if (!allowed) {
+      const verifiedClaim = await prisma.storyClaim.findFirst({
+        where: {
+          listenerId: me,
+          status: 'VERIFIED',
+          storyId: { in: ordered.map((s) => s.id) },
+        },
+        select: { id: true },
+      });
+      allowed = !!verifiedClaim;
+    }
+    if (!allowed) throw notFound('story_not_found', 'Povestea nu exista');
+
+    res.json({
+      chainRootId,
+      chainLength: ordered.length,
+      chapters: ordered.map((s, i) => ({
+        order: i + 1,
+        storyId: s.id,
+        title: s.title,
+        body: s.body,
+        audioUrl: s.audioUrl,
+        audioProvider: s.audioProvider,
+        createdAt: s.createdAt,
+        author: {
+          id: s.author.id,
+          name: s.author.name,
+          avatarSvg: s.author.avatar?.svg ?? null,
+        },
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /stories/:storyId/extend/draft — reset chat-ului de extindere
+// (pereche cu DELETE /stories/draft pentru creare).
+storiesRouter.delete('/:storyId/extend/draft', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { storyId } = req.params;
+    if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
+    await clearChatHistory(`story:extend:${me}:${storyId}`);
+    res.status(204).end();
   } catch (e) {
     next(e);
   }

@@ -52,6 +52,71 @@ si povestea e salvata.
 `.trim();
 }
 
+// System prompt pt faza de extindere. Copilul curent (extender) a verificat
+// deja povestea de la A si vrea sa adauge propriul capitol. Pet-ul primeste
+// capitolele anterioare ca CONTEXT (text complet) si extrage de la copil un
+// nou capitol coerent. La final emite JSON cu:
+//  - body = capitolul nou (text propriu, NU concatenarea cu cele anterioare),
+//  - keyFacts = 5 fapte CUMULATIVE acoperind tot lantul de capitole anterioare
+//    + capitolul nou (folosite de un viitor listener care va asculta tot).
+export function storyExtendSystemPrompt(
+  pet: PetContext,
+  childName: string,
+  priorChapters: { authorName: string; body: string }[],
+): string {
+  const chaptersBlock = priorChapters
+    .map((c, i) => `Capitolul ${i + 1} (de la ${c.authorName}):\n${c.body}`)
+    .join('\n\n');
+
+  return `
+Esti ${pet.name}, ${pet.speciesName} prieten al copilului ${childName}.
+${pet.systemHint}
+
+${SAFETY_PROMPT}
+
+CONTEXT — capitolele anterioare ale povestii (NU le repeta in raspuns, doar
+foloseste-le ca sa pastrezi coerenta):
+
+${chaptersBlock}
+
+TASK: ${childName} a ascultat povestea de la prieteni si vrea sa o continue
+cu propriul capitol. Pune intrebari pe RAND (o intrebare per mesaj), maxim 4
+intrebari ca sa afli:
+  1. Ce se intampla in continuare (un eveniment nou, nu repeta ce s-a intamplat)
+  2. Cine apare nou sau cum reactioneaza personajele existente
+  3. Cum se schimba situatia (twist, descoperire, problema)
+  4. Cum se incheie capitolul (lasa-l deschis pt continuare sau inchide-l)
+
+REGULI DE COERENTA:
+- Personajele si locul stabilite anterior raman aceleasi (nu schimba numele
+  eroului sau locul brusc fara motiv din naratiune)
+- Tonul si stilul raman compatibile cu capitolele anterioare
+- Daca copilul propune ceva incompatibil, intreaba blând o data lamuritor
+
+CAND AI TOATE ELEMENTELE: trimite UN SINGUR mesaj final cu DOAR un bloc JSON:
+
+\`\`\`json
+{
+  "body": "capitolul nou de 4-6 propozitii, narativ persoana a 3-a, continua povestea coerent",
+  "keyFacts": [
+    {"q": "Cum se numea personajul principal?", "expected": "..."},
+    {"q": "Unde se petrecea povestea?", "expected": "..."},
+    {"q": "Care era problema initiala?", "expected": "..."},
+    {"q": "Ce se intampla in capitolul nou?", "expected": "..."},
+    {"q": "Cum se termina pana acum?", "expected": "..."}
+  ]
+}
+\`\`\`
+
+IMPORTANT: keyFacts trebuie sa acopere ATAT capitolele anterioare (cel putin
+2-3 fapte din contextul de mai sus) CAT SI capitolul nou (1-2 fapte). Asa
+viitorul ascultator e quizz-uit pe povestea integrala asa cum a auzit-o.
+
+body contine DOAR capitolul nou, fara repetare a celor anterioare. Inainte
+si dupa block-ul JSON nu adauga nimic.
+`.trim();
+}
+
 // System prompt pt faza de verify. Pet-ul lui B (ascultatorul) primeste
 // keyFacts (NU body-ul) si pune intrebarile pe rand, judecand semantic.
 export function storyVerifySystemPrompt(

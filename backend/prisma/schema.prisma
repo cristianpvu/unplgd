@@ -224,19 +224,38 @@ model Pet {
 // `body` e textul integral — vizibil DOAR autorului prin /stories/mine.
 // `keyFacts` e secret server-side: lista [{q, expected}] folosita ca cheie de
 // validare in chat-ul de verify (B nu vede niciodata textul si nici keyFacts).
+//
+// Lant de povesti: dupa ce un prieten verifica o poveste (StoryClaim VERIFIED)
+// poate sa o EXTINDA cu propriul capitol — devine un Story nou cu
+// `parentStoryId` setat la povestea ascultata. `chainRootId` denormalizeaza
+// radacina lantului (pt query rapid "toate capitolele lantului") — la
+// originalul lantului egal cu propriul id.
+//
+// keyFacts pe extensie sunt CUMULATIVE: AI le emite acoperind tot lantul
+// pana la capitolul curent inclusiv (ca la retelling B povesteste lui C
+// intregul fir). audioUrl/audioProvider salveaza mp3-ul TTS al propriului
+// capitol (pentru audiobook-ul lantului = secventa de capitole).
 model Story {
-  id        String   @id @default(cuid())
-  authorId  String
-  title     String
-  body      String
-  keyFacts  Json
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  authorId        String
+  title           String
+  body            String
+  keyFacts        Json
+  parentStoryId   String?
+  chainRootId     String?
+  audioUrl        String?
+  audioProvider   String?
+  createdAt       DateTime @default(now())
 
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent      Story?       @relation("StoryChain", fields: [parentStoryId], references: [id], onDelete: SetNull)
+  children    Story[]      @relation("StoryChain")
   claims      StoryClaim[]
   coCreations CoCreation[]
 
   @@index([authorId, createdAt])
+  @@index([chainRootId])
+  @@index([parentStoryId])
 }
 
 enum StoryClaimStatus {
