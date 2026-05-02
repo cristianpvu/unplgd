@@ -27,9 +27,12 @@ import {
 import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
 import { HuntMap } from '../../../../src/hunt/HuntMap';
+import { useHuntSocket } from '../../../../src/hunt/useHuntSocket';
 
 const HEARTBEAT_INTERVAL_MS = 5_000;
-const SESSION_POLL_INTERVAL_MS = 3_000;
+// Polling-ul devine fallback — socket.io face push-uri instant. Tinem un
+// refetch ocazional in caz ca socket-ul cade sau pierdem update-uri.
+const SESSION_POLL_INTERVAL_MS = 30_000;
 
 const WARMTH_COLOR: Record<Warmth, string> = {
   cold: '#5C8AB5',
@@ -50,6 +53,10 @@ const WARMTH_LABEL: Record<Warmth, string> = {
 export default function HuntSessionScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const qc = useQueryClient();
+
+  // Socket.io push-uri server-side pe fiecare schimbare de stare. Hook-ul
+  // invalideaza query-ul automat la primire — polling-ul ramane fallback.
+  useHuntSocket(sessionId);
 
   const sessionQuery = useQuery({
     queryKey: ['hunt', 'session', sessionId],
