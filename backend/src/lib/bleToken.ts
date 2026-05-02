@@ -2,10 +2,12 @@ import { createHmac } from 'node:crypto';
 import { env } from '../env.js';
 import { redis } from './redis.js';
 
-// Token de 8 bytes (16 hex chars) — payload-ul BLE manufacturer data are loc
-// limitat (max ~24 bytes utili pe Android), iar 64 bits da coliziune neglijabila
-// pentru un grup de cateva mii de useri/zi.
-const TOKEN_BYTES = 8;
+// Token de 4 bytes (8 hex chars) — incape exact intr-un iBeacon major+minor
+// (uint16 + uint16). Format iBeacon e singurul payload BLE peripheral pe care-l
+// suporta uniform iOS si Android prin librarii mentinute (react-native-ble-advertise
+// + react-native-beacon-kit). 32 bits = ~4 mld variante; pt grupuri de copii la
+// scoala (zeci, cel mult sute simultan) coliziunea per zi e neglijabila.
+const TOKEN_BYTES = 4;
 const TOKEN_HEX_LEN = TOKEN_BYTES * 2;
 // 26h ca sa avem o suprapunere mica intre zile (un copil aflat la scoala la 23:55
 // nu pierde detectia cand se schimba ziua UTC).
