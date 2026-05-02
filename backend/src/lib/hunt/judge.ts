@@ -118,3 +118,21 @@ export function judgeCountingAnswer(expected: string, answer: string): JudgeResu
   if (a === e) return { correct: true, feedback: 'Exact! Bravo!' };
   return { correct: false, feedback: `Erau ${e}, tu ai zis ${a}` };
 }
+
+// MCQ: client trimite textul variantei alese. Validare deterministica prin
+// comparare normalizata (lowercase + diacritice eliminate) cu `expected`. Daca
+// raspunsul nu e printre `options`, refuzam ca raspuns invalid (anti-cheat).
+export function judgeMcqAnswer(
+  expected: string,
+  options: string[],
+  answer: string,
+): JudgeResult {
+  const norm = normalizeRomanian;
+  const a = norm(answer);
+  const validOptions = options.map(norm);
+  if (!validOptions.includes(a)) {
+    return { correct: false, feedback: 'Raspuns invalid' };
+  }
+  if (a === norm(expected)) return { correct: true, feedback: 'Bravo! Asa este!' };
+  return { correct: false, feedback: `Era: ${expected}` };
+}

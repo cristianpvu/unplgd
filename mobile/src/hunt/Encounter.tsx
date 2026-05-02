@@ -251,6 +251,31 @@ function ChallengePanel({
   onSubmit: (answer: string) => void;
   submitting: boolean;
 }) {
+  if (run.challenge.type === 'mcq' && run.challenge.options) {
+    return (
+      <View style={styles.panelInner}>
+        <Text style={styles.promptLabel}>Provocarea ta</Text>
+        <Text style={styles.promptText}>{run.challenge.prompt}</Text>
+        <View style={styles.mcqGrid}>
+          {run.challenge.options.map((opt) => (
+            <Pressable
+              key={opt}
+              onPress={() => onSubmit(opt)}
+              disabled={submitting}
+              style={({ pressed }) => [
+                styles.mcqOption,
+                submitting && styles.mcqOptionDisabled,
+                pressed && styles.btnPressed,
+              ]}
+            >
+              <Text style={styles.mcqOptionText}>{opt}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   if (run.challenge.type === 'counting') {
     return (
       <View style={styles.panelInner}>
@@ -410,6 +435,24 @@ const styles = StyleSheet.create({
   panelInner: { gap: 12 },
   promptLabel: { color: '#A8A8B0', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
   promptText: { color: '#FFFFFF', fontSize: 18, fontWeight: '700', lineHeight: 24 },
+
+  mcqGrid: { gap: 10, marginTop: 4 },
+  mcqOption: {
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  mcqOptionDisabled: { opacity: 0.5 },
+  mcqOptionText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 
   tapPad: {
     backgroundColor: 'rgba(255,255,255,0.10)',

@@ -27,7 +27,7 @@ import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
 import { HuntMap } from '../../../../src/hunt/HuntMap';
 import { useHuntSocket } from '../../../../src/hunt/useHuntSocket';
-import { bearingDegrees, distanceMeters, warmthForDistance } from '../../../../src/hunt/geo';
+import { distanceMeters, warmthForDistance } from '../../../../src/hunt/geo';
 
 // Heartbeat-ul HTTP serveste pt validari fizice si revelare monstri noi.
 // Wedge-ul + warmth ruleaza in realtime client-side din nearestPosition + GPS,
@@ -310,15 +310,10 @@ function ActiveView({
   const inZone = heartbeat?.status === 'ACTIVE' ? heartbeat.inZone : true;
 
   // Recalcul real-time client-side: nearestPosition vine de la server (3s),
-  // dar coords se updateaza la 1s — wedge-ul si warmth-ul reactioneaza pe
-  // miscare instant. Daca server nu a expus pozitia (cold), folosim warmth
-  // direct de la heartbeat ca fallback.
+  // dar coords se updateaza la 1s — haloul reactioneaza la miscare instant.
+  // Daca server nu a expus pozitia (cold), folosim warmth direct din heartbeat.
   const nearestPosition =
     heartbeat?.status === 'ACTIVE' ? heartbeat.nearestPosition : null;
-  const localBearing = useMemo(() => {
-    if (!coords || !nearestPosition) return null;
-    return bearingDegrees(coords, nearestPosition);
-  }, [coords, nearestPosition]);
   const localWarmth = useMemo(() => {
     if (!coords || !nearestPosition) {
       return heartbeat?.status === 'ACTIVE' ? heartbeat.warmth : 'cold';
@@ -355,7 +350,6 @@ function ActiveView({
         myCoords={coords}
         heartbeat={heartbeat}
         warmth={localWarmth}
-        bearing={localBearing}
         heading={heading}
       />
 

@@ -9,7 +9,6 @@ type Props = {
   myCoords: { lat: number; lng: number } | null;
   heartbeat: HeartbeatResponse | null;
   warmth: Warmth;
-  bearing: number | null;
   heading: number | null;
 };
 
@@ -21,50 +20,15 @@ const WARMTH_HEX: Record<Warmth, string> = {
   very_hot: '#E74C3C',
 };
 
-// Raza wedge-ului proportionala cu warmth bucket-ul: aproape inseamna wedge
-// scurt/intens, departe inseamna fascicul lat. Cold = ascuns (n-avem directie).
-const WEDGE_RADIUS_M: Record<Warmth, number> = {
-  cold: 0,
-  cool: 90,
-  warm: 55,
-  hot: 28,
-  very_hot: 14,
-};
-
+// Raza haloului scade pe masura ce ne apropiem — feedback "te incingi".
+// Cold = fara halo (nu avem nimic util de aratat).
 const HALO_RADIUS_M: Record<Warmth, number> = {
   cold: 0,
-  cool: 28,
-  warm: 18,
-  hot: 12,
-  very_hot: 8,
+  cool: 60,
+  warm: 35,
+  hot: 18,
+  very_hot: 10,
 };
-
-// Construieste un poligon "wedge" centrat pe user, deschis in directia bearing.
-// Format: [center, arc points..., center] — closed ring pt Polygon.
-function buildWedge(
-  center: { lat: number; lng: number },
-  bearingDeg: number,
-  radiusM: number,
-  halfAngleDeg = 28,
-  steps = 18,
-): { latitude: number; longitude: number }[] {
-  const ring: { latitude: number; longitude: number }[] = [
-    { latitude: center.lat, longitude: center.lng },
-  ];
-  const cosLat = Math.cos((center.lat * Math.PI) / 180);
-  for (let i = 0; i <= steps; i++) {
-    const angle = bearingDeg - halfAngleDeg + (i / steps) * (halfAngleDeg * 2);
-    const rad = (angle * Math.PI) / 180;
-    const dLat = (radiusM * Math.cos(rad)) / 111_000;
-    const dLng = (radiusM * Math.sin(rad)) / (111_000 * cosLat);
-    ring.push({
-      latitude: center.lat + dLat,
-      longitude: center.lng + dLng,
-    });
-  }
-  ring.push({ latitude: center.lat, longitude: center.lng });
-  return ring;
-}
 
 function withAlpha(hex: string, alpha: number): string {
   const a = Math.max(0, Math.min(255, Math.round(alpha * 255)))
@@ -120,7 +84,6 @@ export function HuntMap({
   myCoords,
   heartbeat,
   warmth,
-  bearing,
   heading,
 }: Props) {
   const mapRef = useRef<MapView | null>(null);
@@ -153,11 +116,6 @@ export function HuntMap({
 
   const engagedMonsters = heartbeat?.status === 'ACTIVE' ? heartbeat.engagedMonsters : [];
   const revealMonster = heartbeat?.status === 'ACTIVE' ? heartbeat.revealMonster : null;
-
-  const wedgeCoords = useMemo(() => {
-    if (!myCoords || warmth === 'cold' || bearing === null) return null;
-    return buildWedge(myCoords, bearing, WEDGE_RADIUS_M[warmth]);
-  }, [myCoords, warmth, bearing]);
 
   const warmthHex = WARMTH_HEX[warmth];
 
@@ -194,21 +152,13 @@ export function HuntMap({
             strokeWidth={3}
           />
         ))}
-        {wedgeCoords && (
-          <Polygon
-            coordinates={wedgeCoords}
-            fillColor={withAlpha(warmthHex, 0.32)}
-            strokeColor={withAlpha(warmthHex, 0.9)}
-            strokeWidth={2}
-          />
-        )}
         {myCoords && warmth !== 'cold' && (
           <Circle
             center={{ latitude: myCoords.lat, longitude: myCoords.lng }}
             radius={HALO_RADIUS_M[warmth]}
-            fillColor={withAlpha(warmthHex, 0.18)}
-            strokeColor={withAlpha(warmthHex, 0.7)}
-            strokeWidth={1.5}
+            fillColor={withAlpha(warmthHex, 0.22)}
+            strokeColor={withAlpha(warmthHex, 0.85)}
+            strokeWidth={2}
           />
         )}
         {myCoords && (

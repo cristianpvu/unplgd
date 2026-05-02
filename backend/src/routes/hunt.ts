@@ -23,7 +23,7 @@ import {
 } from '../lib/hunt/spawn.js';
 import { resolveTokens } from '../lib/bleToken.js';
 import { distanceMeters, warmthForDistance, bearingDegrees } from '../lib/hunt/warmth.js';
-import { judgeRiddleAnswer, judgeCountingAnswer } from '../lib/hunt/judge.js';
+import { judgeRiddleAnswer, judgeCountingAnswer, judgeMcqAnswer } from '../lib/hunt/judge.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
@@ -946,7 +946,10 @@ huntRouter.post(
       }
 
       let result: { correct: boolean; feedback: string };
-      if (run.challenge.type === ChallengeType.riddle) {
+      if (run.challenge.type === ChallengeType.mcq) {
+        const opts = (run.challenge.options ?? '').split('|').filter(Boolean);
+        result = judgeMcqAnswer(run.challenge.expected, opts, answer);
+      } else if (run.challenge.type === ChallengeType.riddle) {
         result = await judgeRiddleAnswer(
           run.challenge.prompt,
           run.challenge.expected,
@@ -1186,6 +1189,14 @@ type RunWithChallenge = Prisma.HuntChallengeRunGetPayload<{
 }>;
 
 function buildRunDto(run: RunWithChallenge, me: string) {
+  // MCQ: shuffle deterministic pe runId — pozitia variantei corecte e diferita
+  // la fiecare run dar consistenta intre requests pentru acelasi run, ca
+  // user-ul sa nu vada lista re-aranjata daca refresh-ueste.
+  let options: string[] | null = null;
+  if (run.challenge.type === ChallengeType.mcq && run.challenge.options) {
+    const raw = run.challenge.options.split('|').filter(Boolean);
+    options = stableShuffle(raw, run.id);
+  }
   return {
     id: run.id,
     userId: run.userId,
@@ -1195,11 +1206,28 @@ function buildRunDto(run: RunWithChallenge, me: string) {
       type: run.challenge.type,
       prompt: run.challenge.prompt,
       difficulty: run.challenge.difficulty,
+      options,
     },
     outcome: run.outcome,
     feedback: run.feedback,
     finishedAt: run.finishedAt,
   };
+}
+
+// Deterministic shuffle: hash din seed produce indici mereu aceiasi.
+// Folosit ca pozitia variantei corecte la MCQ sa fie stabila per run.
+function stableShuffle<T>(arr: T[], seed: string): T[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  }
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    const j = Math.abs(h) % (i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
 }
 
 function ageFromBirthDate(birthDate: Date): number {

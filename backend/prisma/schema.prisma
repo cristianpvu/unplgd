@@ -391,8 +391,9 @@ model ParkContent {
 // quests, ~10 counting quests. Tematice (themeTags[]) ca selectorul sa
 // gaseasca pe potriva contextului parcului.
 enum ChallengeType {
-  riddle    // text, validat semantic de Claude
-  photo     // user trimite foto, validat de Claude vision
+  mcq       // grila cu 4 variante, comparatie text exact
+  riddle    // text liber, deprecated — pastrat pt compat istoric
+  photo     // user trimite foto, validat de Claude vision (TBD)
   counting  // numarare obiect din mediu, tap pe ecran
 }
 
@@ -403,10 +404,14 @@ model HuntChallenge {
   slug        String        @unique
   type        ChallengeType
   prompt      String        // text afisat copilului
-  // riddle: "expected" e raspunsul corect (semantic match);
+  // mcq: "expected" e textul variantei corecte (matchuit exact din options);
+  // riddle: "expected" e raspunsul corect (legacy, semantic match);
   // photo: "expected" e descrierea a ce trebuie sa apara in poza;
   // counting: "expected" e numarul int (stocat ca string).
   expected    String
+  // mcq: pipe-delimited "var1|var2|var3|var4" (4 variante, una egala cu expected).
+  // Nullabil pt compat cu celelalte tipuri.
+  options     String?
   // Praguri de varsta — selector ia dupa birthDate. Inclusiv-inclusiv.
   ageMin      Int
   ageMax      Int

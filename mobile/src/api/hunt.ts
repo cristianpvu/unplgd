@@ -4,7 +4,7 @@ export type HuntStatus = 'LOBBY' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 export type MonsterType = 'green' | 'yellow' | 'red' | 'gold';
 export type MonsterStatus = 'HIDDEN' | 'ENGAGED' | 'DEFEATED' | 'ESCAPED';
 export type ChallengeOutcome = 'PENDING' | 'CORRECT' | 'WRONG' | 'SKIPPED';
-export type ChallengeType = 'riddle' | 'photo' | 'counting';
+export type ChallengeType = 'mcq' | 'riddle' | 'photo' | 'counting';
 export type Warmth = 'cold' | 'cool' | 'warm' | 'hot' | 'very_hot';
 
 export type GeoJsonPolygon =
@@ -112,6 +112,7 @@ export type ChallengeRunDto = {
     type: ChallengeType;
     prompt: string;
     difficulty: number;
+    options: string[] | null;
   };
   outcome: ChallengeOutcome;
   feedback: string | null;

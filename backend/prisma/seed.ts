@@ -235,52 +235,70 @@ type SeedSpecies = {
 
 type SeedChallenge = {
   slug: string;
-  type: 'riddle' | 'counting';
+  type: 'mcq' | 'counting';
   prompt: string;
   expected: string;
+  // Pentru mcq: 4 variante (inclusiv expected). Ordinea storata e aleatorie —
+  // routes/hunt.ts oricum face shuffle stabil per run inainte sa trimita.
+  options?: string[];
   ageMin: number;
   ageMax: number;
   themeTags?: string;
   difficulty?: number;
 };
 
-// Bank de challenge-uri pentru hunt. Riddles + counting (photo va fi adaugat
-// in faza 4 cu Claude vision). Slug-urile sunt stabile — la re-seed, prompt-ul
+// Bank de challenge-uri pentru hunt. MCQ cu cultura generala adaptat varstei
+// + counting (interactiv). Slug-urile sunt stabile — la re-seed, prompt-ul
 // se updateaza dar id-ul DB ramane (idempotent).
 const CHALLENGES: SeedChallenge[] = [
-  // ===== Riddles age 6-9 (difficulty 1) =====
-  { slug: 'r-a69-001', type: 'riddle', prompt: 'Ce zboara dar nu are aripi?', expected: 'timpul', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'r-a69-002', type: 'riddle', prompt: 'Are dinti dar nu mananca, ce e?', expected: 'pieptenul', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'r-a69-003', type: 'riddle', prompt: 'Ce are doua roti si nu are motor?', expected: 'bicicleta', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'transport' },
-  { slug: 'r-a69-004', type: 'riddle', prompt: 'Are coada lunga, miorlaie si prinde soareci. Ce e?', expected: 'pisica', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'r-a69-005', type: 'riddle', prompt: 'Cum se numeste puiul caprioarei?', expected: 'iedul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,padure' },
-  { slug: 'r-a69-006', type: 'riddle', prompt: 'Inot in apa, am solzi si fara mine pescarul ramane trist. Ce sunt?', expected: 'pestele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'apa,animale' },
-  { slug: 'r-a69-007', type: 'riddle', prompt: 'Are 4 picioare, latra si pazeste casa. Cine e?', expected: 'cainele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'r-a69-008', type: 'riddle', prompt: 'Cad din cer si sunt albe. Ce sunt?', expected: 'fulgii de zapada', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'iarna' },
-  { slug: 'r-a69-009', type: 'riddle', prompt: 'Are coaja, semburi si e dulce. Ce fruct e?', expected: 'cireasa', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'fructe' },
-  { slug: 'r-a69-010', type: 'riddle', prompt: 'Iese din fata cand strigi tare. Ce e?', expected: 'ecoul', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'r-a69-011', type: 'riddle', prompt: 'Are aripi, ciripeste, sta in copac. Cine e?', expected: 'pasarea', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,cer' },
-  { slug: 'r-a69-012', type: 'riddle', prompt: 'Dimineata se ridica, seara se culca. Cine e?', expected: 'soarele', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'cer' },
-  { slug: 'r-a69-013', type: 'riddle', prompt: 'Ne luminam in noapte cu el. Ce e?', expected: 'becul', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'r-a69-014', type: 'riddle', prompt: 'Are corn pe frunte, e magic si zboara prin povesti. Ce e?', expected: 'unicornul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'fantastic' },
-  { slug: 'r-a69-015', type: 'riddle', prompt: 'Sare din floare in floare si face miere. Cine e?', expected: 'albina', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale,flori' },
+  // ===== MCQ age 6-9 (difficulty 1) — cultura generala basic =====
+  { slug: 'q-a69-001', type: 'mcq', prompt: 'Care e capitala Romaniei?', options: ['Bucuresti', 'Cluj', 'Iasi', 'Brasov'], expected: 'Bucuresti', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'geografie' },
+  { slug: 'q-a69-002', type: 'mcq', prompt: 'Cate zile are o saptamana?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-003', type: 'mcq', prompt: 'Cate luni are un an?', options: ['10', '11', '12', '13'], expected: '12', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-004', type: 'mcq', prompt: 'Cate picioare are un paianjen?', options: ['6', '8', '10', '4'], expected: '8', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-005', type: 'mcq', prompt: 'Ce culoare obtii daca amesteci galben cu albastru?', options: ['Verde', 'Portocaliu', 'Maro', 'Roz'], expected: 'Verde', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-006', type: 'mcq', prompt: 'Ce numar urmeaza dupa 99?', options: ['90', '99', '100', '101'], expected: '100', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-007', type: 'mcq', prompt: 'In ce anotimp ninge?', options: ['Vara', 'Primavara', 'Toamna', 'Iarna'], expected: 'Iarna', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-008', type: 'mcq', prompt: 'Cine e numit "regele junglei"?', options: ['Tigrul', 'Leul', 'Lupul', 'Ursul'], expected: 'Leul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-009', type: 'mcq', prompt: 'Cati ochi are o pisica?', options: ['1', '2', '3', '4'], expected: '2', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-010', type: 'mcq', prompt: 'Cum se numeste casuta cainelui?', options: ['Cuibul', 'Cusca', 'Petera', 'Borta'], expected: 'Cusca', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-011', type: 'mcq', prompt: 'Care e cea mai mare planeta din sistemul solar?', options: ['Pamant', 'Marte', 'Jupiter', 'Venus'], expected: 'Jupiter', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'cer,stiinta' },
+  { slug: 'q-a69-012', type: 'mcq', prompt: 'Ce sunet face vaca?', options: ['Miau', 'Cucurigu', 'Muu', 'Hau'], expected: 'Muu', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-013', type: 'mcq', prompt: 'Cati metri are un kilometru?', options: ['10', '100', '1000', '10000'], expected: '1000', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-014', type: 'mcq', prompt: 'Cati pitici are Alba ca Zapada?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-015', type: 'mcq', prompt: 'Ce culoare are cerul senin?', options: ['Verde', 'Albastru', 'Roz', 'Galben'], expected: 'Albastru', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-016', type: 'mcq', prompt: 'Cati ani are un secol?', options: ['10', '50', '100', '1000'], expected: '100', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-017', type: 'mcq', prompt: 'Cate roti are o bicicleta?', options: ['1', '2', '3', '4'], expected: '2', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'transport' },
+  { slug: 'q-a69-018', type: 'mcq', prompt: 'Ce face albina?', options: ['Lapte', 'Miere', 'Branza', 'Unt'], expected: 'Miere', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
+  { slug: 'q-a69-019', type: 'mcq', prompt: 'Care e cea mai mica unitate de timp?', options: ['Ora', 'Minutul', 'Secunda', 'Ziua'], expected: 'Secunda', ageMin: 6, ageMax: 9, difficulty: 1 },
+  { slug: 'q-a69-020', type: 'mcq', prompt: 'Cum se numeste puiul cainelui?', options: ['Catelus', 'Pisoi', 'Pui', 'Manz'], expected: 'Catelus', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
 
-  // ===== Riddles age 10-14 (difficulty 2) =====
-  { slug: 'r-a14-001', type: 'riddle', prompt: 'Are pagini, dar nu intoarce singura. Ce e?', expected: 'cartea', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-002', type: 'riddle', prompt: 'Curge dar nu e apa, ne tine in viata si trece prin inima. Ce e?', expected: 'sangele', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-003', type: 'riddle', prompt: 'Cu cat iei mai multa, cu atat las mai mult in spate. Ce sunt?', expected: 'pasi', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-004', type: 'riddle', prompt: 'Sunt mereu in fata ta dar nu ma poti atinge. Ce sunt?', expected: 'viitorul', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-005', type: 'riddle', prompt: 'Cresc dar nu sunt vie, am varf dar nu sunt creion. Ce sunt?', expected: 'muntele', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'natura' },
-  { slug: 'r-a14-006', type: 'riddle', prompt: 'Are chei dar nu deschide nimic. Ce e?', expected: 'pianul', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-007', type: 'riddle', prompt: 'Cad fara sa ma lovesc, sunt blanda si racoresc. Ce sunt?', expected: 'ploaia', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,apa' },
-  { slug: 'r-a14-008', type: 'riddle', prompt: 'Are limba dar nu vorbeste. Ce e?', expected: 'pantoful', ageMin: 10, ageMax: 14, difficulty: 2 },
-  { slug: 'r-a14-009', type: 'riddle', prompt: 'Ce planeta e cunoscuta drept "planeta rosie"?', expected: 'marte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
-  { slug: 'r-a14-010', type: 'riddle', prompt: 'Cate continente are Pamantul?', expected: 'sapte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'r-a14-011', type: 'riddle', prompt: 'Ce metal e folosit pentru fire electrice?', expected: 'cupru', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
-  { slug: 'r-a14-012', type: 'riddle', prompt: 'Care e cel mai lung rau din Romania?', expected: 'dunarea', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
-  { slug: 'r-a14-013', type: 'riddle', prompt: 'Cum se numeste fenomenul cand luna acopera soarele?', expected: 'eclipsa', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'cer,stiinta' },
-  { slug: 'r-a14-014', type: 'riddle', prompt: 'Cate inimi are caracatita?', expected: 'trei', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'animale,apa' },
-  { slug: 'r-a14-015', type: 'riddle', prompt: 'Cum se cheama puiul vulpii?', expected: 'puiul de vulpe', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'animale,padure' },
+  // ===== MCQ age 10-14 (difficulty 2-3) — cultura generala avansata =====
+  { slug: 'q-a14-001', type: 'mcq', prompt: 'Cine a scris "Amintiri din copilarie"?', options: ['Mihai Eminescu', 'Ion Creanga', 'I.L. Caragiale', 'Mihail Sadoveanu'], expected: 'Ion Creanga', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'romana' },
+  { slug: 'q-a14-002', type: 'mcq', prompt: 'In ce an a inceput Al Doilea Razboi Mondial?', options: ['1914', '1918', '1939', '1945'], expected: '1939', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'istorie' },
+  { slug: 'q-a14-003', type: 'mcq', prompt: 'Care e formula chimica a apei?', options: ['CO2', 'H2O', 'O2', 'NaCl'], expected: 'H2O', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
+  { slug: 'q-a14-004', type: 'mcq', prompt: 'Cate continente are Pamantul?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-005', type: 'mcq', prompt: 'Care e cel mai inalt munte din lume?', options: ['Everest', 'K2', 'Mont Blanc', 'Kilimanjaro'], expected: 'Everest', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,natura' },
+  { slug: 'q-a14-006', type: 'mcq', prompt: 'Cine a pictat "Mona Lisa"?', options: ['Leonardo da Vinci', 'Pablo Picasso', 'Vincent van Gogh', 'Michelangelo'], expected: 'Leonardo da Vinci', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'arta' },
+  { slug: 'q-a14-007', type: 'mcq', prompt: 'Ce planeta e numita "planeta rosie"?', options: ['Marte', 'Jupiter', 'Venus', 'Saturn'], expected: 'Marte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
+  { slug: 'q-a14-008', type: 'mcq', prompt: 'Care e cel mai lung rau din Romania?', options: ['Olt', 'Mures', 'Dunarea', 'Prut'], expected: 'Dunarea', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
+  { slug: 'q-a14-009', type: 'mcq', prompt: 'Care e capitala Frantei?', options: ['Lyon', 'Marsilia', 'Paris', 'Nisa'], expected: 'Paris', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-010', type: 'mcq', prompt: 'Ce gaz respiram pentru a trai?', options: ['Azot', 'Oxigen', 'Hidrogen', 'Dioxid de carbon'], expected: 'Oxigen', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
+  { slug: 'q-a14-011', type: 'mcq', prompt: 'Care e cel mai mare ocean din lume?', options: ['Atlantic', 'Pacific', 'Indian', 'Arctic'], expected: 'Pacific', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
+  { slug: 'q-a14-012', type: 'mcq', prompt: 'Cine a fost domnitorul care a unit Tarile Romane in 1859?', options: ['Mihai Viteazul', 'Stefan cel Mare', 'Alexandru Ioan Cuza', 'Carol I'], expected: 'Alexandru Ioan Cuza', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'istorie' },
+  { slug: 'q-a14-013', type: 'mcq', prompt: 'Cati km are aproximativ un maraton?', options: ['21', '32', '42', '50'], expected: '42', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'sport' },
+  { slug: 'q-a14-014', type: 'mcq', prompt: 'Cat e radacina patrata din 144?', options: ['11', '12', '13', '14'], expected: '12', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'mate' },
+  { slug: 'q-a14-015', type: 'mcq', prompt: 'In ce judet se afla Castelul Bran?', options: ['Sibiu', 'Brasov', 'Hunedoara', 'Cluj'], expected: 'Brasov', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,istorie' },
+  { slug: 'q-a14-016', type: 'mcq', prompt: 'Cum se numeste fenomenul cand Luna acopera Soarele?', options: ['Aurora', 'Eclipsa', 'Cometa', 'Meteorit'], expected: 'Eclipsa', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
+  { slug: 'q-a14-017', type: 'mcq', prompt: 'Cate inimi are o caracatita?', options: ['1', '2', '3', '4'], expected: '3', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'animale,apa' },
+  { slug: 'q-a14-018', type: 'mcq', prompt: 'Cine a inventat becul electric?', options: ['Nikola Tesla', 'Thomas Edison', 'Albert Einstein', 'Isaac Newton'], expected: 'Thomas Edison', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta,istorie' },
+  { slug: 'q-a14-019', type: 'mcq', prompt: 'Care e cel mai inalt varf din Romania?', options: ['Negoiu', 'Moldoveanu', 'Omu', 'Parangu Mare'], expected: 'Moldoveanu', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-020', type: 'mcq', prompt: 'Care e capitala Spaniei?', options: ['Barcelona', 'Madrid', 'Sevilla', 'Valencia'], expected: 'Madrid', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-021', type: 'mcq', prompt: 'Cati cromozomi are o celula umana?', options: ['23', '46', '48', '52'], expected: '46', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'stiinta' },
+  { slug: 'q-a14-022', type: 'mcq', prompt: 'Cine a scris "Romeo si Julieta"?', options: ['Charles Dickens', 'William Shakespeare', 'Mark Twain', 'Jules Verne'], expected: 'William Shakespeare', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'literatura' },
+  { slug: 'q-a14-023', type: 'mcq', prompt: 'Pe ce continent se afla Egiptul?', options: ['Asia', 'Africa', 'Europa', 'America'], expected: 'Africa', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-024', type: 'mcq', prompt: 'Care e capitala Statelor Unite ale Americii?', options: ['New York', 'Washington', 'Los Angeles', 'Chicago'], expected: 'Washington', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
+  { slug: 'q-a14-025', type: 'mcq', prompt: 'Cum se numeste procesul prin care plantele produc hrana?', options: ['Respiratie', 'Fotosinteza', 'Digestie', 'Evaporare'], expected: 'Fotosinteza', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta,natura' },
 
   // ===== Counting (toate varstele) =====
   { slug: 'c-001', type: 'counting', prompt: 'Atinge ecranul de exact 5 ori', expected: '5', ageMin: 6, ageMax: 14, difficulty: 1 },
@@ -343,6 +361,15 @@ async function main() {
   }
 
   for (const ch of CHALLENGES) {
+    if (ch.type === 'mcq') {
+      if (!ch.options || ch.options.length !== 4) {
+        throw new Error(`MCQ ${ch.slug} trebuie sa aiba exact 4 optiuni`);
+      }
+      if (!ch.options.includes(ch.expected)) {
+        throw new Error(`MCQ ${ch.slug}: expected "${ch.expected}" nu e in options`);
+      }
+    }
+    const optionsStr = ch.options ? ch.options.join('|') : null;
     await prisma.huntChallenge.upsert({
       where: { slug: ch.slug },
       create: {
@@ -350,22 +377,34 @@ async function main() {
         type: ch.type,
         prompt: ch.prompt,
         expected: ch.expected,
+        options: optionsStr,
         ageMin: ch.ageMin,
         ageMax: ch.ageMax,
         themeTags: ch.themeTags ?? '',
         difficulty: ch.difficulty ?? 1,
+        active: true,
       },
       update: {
         type: ch.type,
         prompt: ch.prompt,
         expected: ch.expected,
+        options: optionsStr,
         ageMin: ch.ageMin,
         ageMax: ch.ageMax,
         themeTags: ch.themeTags ?? '',
         difficulty: ch.difficulty ?? 1,
+        active: true,
       },
     });
   }
+
+  // Dezactivam orice challenge istoric care nu mai e in lista (ex. ghicitorile
+  // vechi). Le pastram in DB pt referinta dar selector-ul nu le mai foloseste.
+  const allSlugs = CHALLENGES.map((c) => c.slug);
+  await prisma.huntChallenge.updateMany({
+    where: { slug: { notIn: allSlugs } },
+    data: { active: false },
+  });
 
   const counts = await prisma.item.count();
   console.log(
