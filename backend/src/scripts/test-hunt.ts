@@ -26,16 +26,30 @@ import { assignTeamsRandomly } from '../lib/hunt/teamAssign.js';
 import { generateSpawns } from '../lib/hunt/spawn.js';
 
 const args = process.argv.slice(2);
-const HOST_EMAIL = args[0] ?? process.env.HOST_EMAIL;
-const LAT = Number(args[1] ?? process.env.LAT);
-const LNG = Number(args[2] ?? process.env.LNG);
+// Filter flags + positional args.
+const flags = new Set(args.filter((a) => a.startsWith('--')));
+const positional = args.filter((a) => !a.startsWith('--'));
+const HOST_EMAIL = positional[0] ?? process.env.HOST_EMAIL;
+const LAT = Number(positional[1] ?? process.env.LAT);
+const LNG = Number(positional[2] ?? process.env.LNG);
 const DURATION = Number(process.env.DURATION ?? 1800);
 const DEMO_COUNT = Number(process.env.DEMO_COUNT ?? 3);
 const DEMO_PASSWORD_PLAIN = 'TestHunt!1234';
+// --here = mod test la birou: creeaza un parc fictiv 50x50m centrat pe coords
+// si plaseaza monstrii foarte aproape (3-15m). Folosit cand testezi pe device
+// real fara sa fii in parc — GPS-ul tau actual = centrul jocului.
+const HERE_MODE = flags.has('--here');
 
 if (!HOST_EMAIL || !Number.isFinite(LAT) || !Number.isFinite(LNG)) {
-  console.error('Usage: tsx scripts/test-hunt.ts <hostEmail> <lat> <lng>');
-  console.error('Example: tsx scripts/test-hunt.ts office@dinedroid.com 44.4360 26.0935');
+  console.error(
+    'Usage: node dist/scripts/test-hunt.js <hostEmail> <lat> <lng> [--here]',
+  );
+  console.error(
+    'Example real park: node dist/scripts/test-hunt.js office@dinedroid.com 44.4360 26.0935',
+  );
+  console.error(
+    'Example test pe loc (la birou): node dist/scripts/test-hunt.js office@dinedroid.com 44.439 26.090 --here',
+  );
   process.exit(1);
 }
 
@@ -85,9 +99,67 @@ async function ensureFriendship(hostId: string, demoId: string): Promise<void> {
   });
 }
 
+// Creeaza un parc fictiv 50x50m centrat pe (lat, lng). Folosit in modul --here
+// ca sa testezi pe device real fara sa fii in parc — joaca incepe oriunde.
+// Idempotent: refoloseste parc-ul daca exista cu acelasi osmId.
+async function ensureFakeParkHere(lat: number, lng: number): Promise<{
+  id: string;
+  polygon: string;
+}> {
+  const osmId = `dev/here/${lat.toFixed(5)}_${lng.toFixed(5)}`;
+  // ~25m in toate directiile (50x50m).
+  const dLat = 25 / 111_000;
+  const dLng = 25 / (111_000 * Math.cos((lat * Math.PI) / 180));
+  const minLat = lat - dLat;
+  const maxLat = lat + dLat;
+  const minLng = lng - dLng;
+  const maxLng = lng + dLng;
+  const polygon = {
+    type: 'Polygon' as const,
+    coordinates: [
+      [
+        [minLng, minLat],
+        [maxLng, minLat],
+        [maxLng, maxLat],
+        [minLng, maxLat],
+        [minLng, minLat],
+      ],
+    ],
+  };
+  const polygonStr = JSON.stringify(polygon);
+  // Aria 50x50m ~ 2500 m^2.
+  const areaSqm = 50 * 50;
+  const park = await prisma.park.upsert({
+    where: { osmId },
+    create: {
+      osmId,
+      name: 'Test Park (la tine)',
+      polygon: polygonStr,
+      bboxMinLat: minLat,
+      bboxMaxLat: maxLat,
+      bboxMinLng: minLng,
+      bboxMaxLng: maxLng,
+      areaSqm,
+      city: 'dev',
+    },
+    update: {
+      polygon: polygonStr,
+      bboxMinLat: minLat,
+      bboxMaxLat: maxLat,
+      bboxMinLng: minLng,
+      bboxMaxLng: maxLng,
+      areaSqm,
+      lastFetchedAt: new Date(),
+    },
+  });
+  return { id: park.id, polygon: park.polygon };
+}
+
 async function main() {
   console.log(`Host: ${HOST_EMAIL}`);
-  console.log(`Coords: ${LAT}, ${LNG}\n`);
+  console.log(`Coords: ${LAT}, ${LNG}`);
+  if (HERE_MODE) console.log('Mod: --here (parc fictiv la coords tale)');
+  console.log('');
 
   // 1. Host.
   const host = await prisma.user.findUnique({ where: { email: HOST_EMAIL } });
@@ -112,12 +184,21 @@ async function main() {
 
   // 4. Park.
   console.log('\n[4/6] Identific parc...');
-  const parks = await getParksNear(LAT, LNG);
-  if (parks.length === 0) {
-    throw new Error('Niciun parc langa coordonate. Schimba LAT/LNG.');
+  let parkRow: { id: string; polygon: string };
+  if (HERE_MODE) {
+    const fake = await ensureFakeParkHere(LAT, LNG);
+    parkRow = { id: fake.id, polygon: fake.polygon };
+    console.log(`  Parc fictiv (50x50m centrat pe coords tale)`);
+  } else {
+    const parks = await getParksNear(LAT, LNG);
+    if (parks.length === 0) {
+      throw new Error(
+        'Niciun parc langa coordonate. Foloseste --here pentru parc fictiv la coords tale.',
+      );
+    }
+    parkRow = { id: parks[0]!.id, polygon: parks[0]!.polygon };
+    console.log(`  ${parks[0]!.name} (${parks[0]!.id}) la ${Math.round(parks[0]!.distanceM)}m`);
   }
-  const park = parks[0]!;
-  console.log(`  ${park.name} (${park.id}) la ${Math.round(park.distanceM)}m`);
 
   // 5. Anulam sesiuni anterioare ale host-ului.
   console.log('\n[5/6] Curat sesiuni vechi...');
@@ -134,17 +215,21 @@ async function main() {
   console.log('\n[6/6] Creez sesiune ACTIVE...');
   const allMemberIds = [host.id, ...demos.map((d) => d.id)];
   const teamPlans = assignTeamsRandomly(allMemberIds);
-  const parkPolygon = JSON.parse(park.polygon) as Polygon | MultiPolygon;
+  const parkPolygon = JSON.parse(parkRow.polygon) as Polygon | MultiPolygon;
   const zones = splitPolygonIntoZones(parkPolygon, teamPlans.length);
 
   const now = new Date();
   const endsAt = new Date(now.getTime() + DURATION * 1000);
 
+  // In modul --here override-uim coords spawn-urilor pentru echipa hostului ca
+  // sa fie 3-15m de tine (forteaza "very_hot" la deschiderea app-ului).
+  const overrideSpawnsForHost = HERE_MODE;
+
   const session = await prisma.$transaction(async (tx) => {
     const created = await tx.huntSession.create({
       data: {
         hostId: host.id,
-        parkId: park.id,
+        parkId: parkRow.id,
         status: HuntStatus.ACTIVE,
         durationSec: DURATION,
         startedAt: now,
@@ -152,7 +237,7 @@ async function main() {
       },
     });
 
-    const createdTeams: { id: string; zone: Polygon | MultiPolygon }[] = [];
+    const createdTeams: { id: string; zone: Polygon | MultiPolygon; hasHost: boolean }[] = [];
     for (let i = 0; i < teamPlans.length; i++) {
       const plan = teamPlans[i]!;
       const zone = zones[i]!;
@@ -165,14 +250,32 @@ async function main() {
           members: { create: plan.memberIds.map((userId) => ({ userId })) },
         },
       });
-      createdTeams.push({ id: team.id, zone });
+      createdTeams.push({
+        id: team.id,
+        zone,
+        hasHost: plan.memberIds.includes(host.id),
+      });
     }
 
     const { spawns, totalCount } = generateSpawns(createdTeams);
     for (const sp of spawns) {
       if (sp.monsters.length === 0) continue;
+      const team = createdTeams.find((t) => t.id === sp.teamId);
+      const positioned = sp.monsters.map((m, idx) => {
+        if (overrideSpawnsForHost && team?.hasHost) {
+          // Cerc concentric in jurul user-ului — distante 4-12m, unghiuri
+          // distribuite uniform ca sa nu se suprapuna.
+          const distM = 4 + (idx % 4) * 3; // 4, 7, 10, 13
+          const angle = (idx / sp.monsters.length) * 2 * Math.PI;
+          const dLat = (distM * Math.cos(angle)) / 111_000;
+          const dLng =
+            (distM * Math.sin(angle)) / (111_000 * Math.cos((LAT * Math.PI) / 180));
+          return { ...m, lat: LAT + dLat, lng: LNG + dLng };
+        }
+        return m;
+      });
       await tx.huntMonster.createMany({
-        data: sp.monsters.map((m) => ({
+        data: positioned.map((m) => ({
           sessionId: created.id,
           teamId: sp.teamId,
           type: m.type,
@@ -209,10 +312,17 @@ async function main() {
   );
 
   console.log('\n=== READY ===');
-  console.log(`Pe device:`);
-  console.log(`  1. Deschide app → Vanatoare in parc → vei vedea sesiunea ACTIVE`);
-  console.log(`  2. Mock GPS la unul din monstri (lat,lng de mai sus)`);
-  console.log(`  3. Heartbeat-ul te aduce automat la AR encounter`);
+  if (HERE_MODE) {
+    console.log('Pe device (esti la coords date):');
+    console.log('  1. Deschide app → Vanatoare in parc → vezi sesiunea ACTIVE');
+    console.log('  2. Tap pe ea → ecranul de hunt se incarca');
+    console.log('  3. Heartbeat-ul detecteaza monstri la <8m → AR encounter porneste automat');
+  } else {
+    console.log('Pe device:');
+    console.log('  1. Deschide app → Vanatoare in parc → vei vedea sesiunea ACTIVE');
+    console.log('  2. Trebuie sa fii fizic in parc + langa un monstru');
+    console.log('  3. Daca testezi la birou, foloseste --here pentru parc fictiv');
+  }
 }
 
 main()
