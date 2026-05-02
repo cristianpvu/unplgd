@@ -21,6 +21,7 @@
     "@dicebear/core": "^9.4.2",
     "@google-cloud/storage": "^7.19.0",
     "@prisma/client": "^5.22.0",
+    "@turf/turf": "^7.3.5",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

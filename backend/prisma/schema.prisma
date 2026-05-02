@@ -35,6 +35,9 @@ model User {
   storyClaims         StoryClaim[]
   coCreationsAsA      CoCreation[]      @relation("CoCreationUserA")
   coCreationsAsB      CoCreation[]      @relation("CoCreationUserB")
+  huntsHosted         HuntSession[]     @relation("HuntHost")
+  huntTeamships       HuntTeamMember[]
+  huntChallengeRuns   HuntChallengeRun[]
 
   @@index([email])
 }
@@ -330,6 +333,243 @@ model CoCreation {
   @@index([userAId, status])
   @@index([userBId, status])
   @@index([storyId])
+}
+
+// ===== HUNT (treasure hunt cu echipe in parcuri) =====
+//
+// Park = cache pentru poligoanele OSM (leisure=park). Re-fetch saptamanal
+// pentru parcuri active (lastFetchedAt < 7 zile). polygon e GeoJSON
+// stocat ca string pt portabilitate (Postgres are PostGIS dar nu vrem
+// dependinta extra pt MVP — turf.js face calcule client-server in JS).
+model Park {
+  id            String        @id @default(cuid())
+  // Identificator OSM (way/12345 sau relation/67890). Unique pe el ca
+  // sa de-duplicam la re-fetch.
+  osmId         String        @unique
+  name          String
+  // GeoJSON Polygon sau MultiPolygon stringified. Calculele de zona si
+  // contains se fac in JS via turf.
+  polygon       String
+  // Bounding box cache pt query rapid de proximitate (filtru initial in DB
+  // inainte de turf.distance pe lista filtrata).
+  bboxMinLat    Float
+  bboxMaxLat    Float
+  bboxMinLng    Float
+  bboxMaxLng    Float
+  // m^2 calculat la salvare; folosit la spawn density si la filtru "parc
+  // prea mic pentru hunt cu mai multe echipe".
+  areaSqm       Float
+  city          String?
+  lastFetchedAt DateTime      @default(now())
+  createdAt     DateTime      @default(now())
+
+  content       ParkContent?
+  sessions      HuntSession[]
+
+  @@index([bboxMinLat, bboxMaxLat])
+  @@index([bboxMinLng, bboxMaxLng])
+}
+
+// Continut tematic generat de Claude per parc, cache-uit. Refresh manual sau
+// la 30 zile. monsters[] e JSON cu schema:
+//   [{ slug, name, type: 'green'|'yellow'|'red'|'gold', loreShort, themeTags[] }]
+// challenges[] sunt referente la HuntChallenge.id-uri tematice (ex: parc cu
+// lac → ghicitori despre apa).
+model ParkContent {
+  id            String   @id @default(cuid())
+  parkId        String   @unique
+  monsters      Json
+  themeSummary  String   // ex: "parc urban cu lac mare, salcii, banci, rate"
+  generatedAt   DateTime @default(now())
+  refreshedAt   DateTime @default(now())
+
+  park Park @relation(fields: [parkId], references: [id], onDelete: Cascade)
+}
+
+// Bank global de challenge-uri. seed-uite initial cu ~50 ghicitori, ~10 photo
+// quests, ~10 counting quests. Tematice (themeTags[]) ca selectorul sa
+// gaseasca pe potriva contextului parcului.
+enum ChallengeType {
+  riddle    // text, validat semantic de Claude
+  photo     // user trimite foto, validat de Claude vision
+  counting  // numarare obiect din mediu, tap pe ecran
+}
+
+model HuntChallenge {
+  id          String        @id @default(cuid())
+  type        ChallengeType
+  prompt      String        // text afisat copilului
+  // riddle: "expected" e raspunsul corect (semantic match);
+  // photo: "expected" e descrierea a ce trebuie sa apara in poza;
+  // counting: "expected" e numarul int (stocat ca string).
+  expected    String
+  // Praguri de varsta — selector ia dupa birthDate. Inclusiv-inclusiv.
+  ageMin      Int
+  ageMax      Int
+  // Tag-uri tematice (apa/padure/animale/...) pt potrivire cu themeTags-urile
+  // monstrului. Stocate ca CSV simplu pt query rapid.
+  themeTags   String        @default("")
+  difficulty  Int           @default(1) // 1=usor, 2=mediu, 3=greu
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+
+  runs HuntChallengeRun[]
+
+  @@index([type, ageMin, ageMax, active])
+}
+
+enum HuntStatus {
+  LOBBY      // host a creat, asteapta alti membri sa accepte (sau auto-pornire)
+  ACTIVE     // gameplay in progres
+  COMPLETED  // timeout sau host a apasat end
+  CANCELLED  // criterii ne-indeplinite (echipe rupte etc.)
+}
+
+model HuntSession {
+  id          String     @id @default(cuid())
+  hostId      String
+  parkId      String
+  status      HuntStatus @default(LOBBY)
+  durationSec Int        // 900 / 1800 / 2700 (15 / 30 / 45 min)
+  startedAt   DateTime?
+  endsAt      DateTime?  // startedAt + durationSec
+  endedAt     DateTime?
+  // Cache: numar total de monstri spawn-ati la pornire, pentru progress UI.
+  monsterCount Int       @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  host     User         @relation("HuntHost", fields: [hostId], references: [id], onDelete: Cascade)
+  park     Park         @relation(fields: [parkId], references: [id])
+  teams    HuntTeam[]
+  monsters HuntMonster[]
+
+  @@index([hostId, status])
+  @@index([status, endsAt])
+}
+
+model HuntTeam {
+  id        String   @id @default(cuid())
+  sessionId String
+  name      String   // "Lac" / "Padure" / sau "Echipa 1"
+  // GeoJSON Polygon — sub-zona din parc atribuita echipei. Calculat la
+  // pornire prin turf intersection (bbox stripes ∩ park polygon).
+  zone      String
+  zoneArea  Float    // m^2
+  // Scor cumulativ in sesiune. Update incremental la fiecare monstru ucis,
+  // ca polling-ul de scoreboard sa fie 1 SELECT.
+  score     Int      @default(0)
+  monstersDefeated Int @default(0)
+  createdAt DateTime @default(now())
+
+  session  HuntSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  members  HuntTeamMember[]
+  monsters HuntMonster[]
+  defeats  HuntMonsterDefeat[]
+
+  @@index([sessionId])
+}
+
+model HuntTeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  joinedAt  DateTime @default(now())
+
+  team HuntTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+}
+
+enum MonsterType {
+  green   // 50 puncte, 1 challenge per teammate
+  yellow  // 150 puncte, 2 challenge per teammate
+  red     // 400 puncte, 3 challenge per teammate
+  gold    // 1000 puncte, rar, 1 challenge dificil per teammate, time-limited spawn
+}
+
+enum MonsterStatus {
+  HIDDEN     // pe harta, nedescoperit inca
+  ENGAGED    // o echipa l-a descoperit si a pornit lupta
+  DEFEATED   // ucis cu succes
+  ESCAPED    // timer expirat sau toate challenges esuate
+}
+
+model HuntMonster {
+  id          String         @id @default(cuid())
+  sessionId   String
+  // Echipa careia ii apartine (zona ei). NULL inseamna ca nu e atribuit (eroare)
+  // — in practica setat la spawn.
+  teamId      String?
+  type        MonsterType
+  // Slug-ul si meta din ParkContent (e.g. "spirit-lac"). Cache local pe monster
+  // sa nu necesite join la fiecare query.
+  slug        String
+  name        String
+  loreShort   String
+  // Pozitie GPS spawn (validata sa fie in zona team-ului).
+  lat         Float
+  lng         Float
+  status      MonsterStatus  @default(HIDDEN)
+  // Timestamp engaged — fereastra de 90 sec pentru completion.
+  engagedAt   DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime       @default(now())
+
+  session HuntSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  team    HuntTeam?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  runs    HuntChallengeRun[]
+  defeat  HuntMonsterDefeat?
+
+  @@index([sessionId, teamId, status])
+}
+
+// Challenge alocat unui (monster, user) specific. La engage, generam N runs
+// pe membru ai echipei (1/2/3 dupa type). User raspunde, evaluator (Claude
+// pentru riddle/photo, comparator simplu pentru counting) seteaza outcome.
+enum ChallengeOutcome {
+  PENDING
+  CORRECT
+  WRONG
+  SKIPPED  // user a renuntat / timeout
+}
+
+model HuntChallengeRun {
+  id          String           @id @default(cuid())
+  monsterId   String
+  userId      String
+  challengeId String
+  outcome     ChallengeOutcome @default(PENDING)
+  // Raspunsul brut (text / photoKey GCS / numar). Salvat pentru audit + AI
+  // scoring asincron.
+  answer      String?
+  // Feedback scurt de la Claude pentru riddle/photo ("aproape, era X").
+  feedback    String?
+  startedAt   DateTime         @default(now())
+  finishedAt  DateTime?
+
+  monster   HuntMonster   @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge HuntChallenge @relation(fields: [challengeId], references: [id])
+
+  @@unique([monsterId, userId, challengeId])
+  @@index([monsterId, outcome])
+}
+
+// Audit log pe fiecare monstru ucis cu succes — pt scoreboard final si stats.
+// Idempotent prin (monsterId) unique: max 1 record per monstru.
+model HuntMonsterDefeat {
+  id          String   @id @default(cuid())
+  monsterId   String   @unique
+  teamId      String
+  pointsAwarded Int
+  durationMs  Int      // cat a durat lupta
+  defeatedAt  DateTime @default(now())
+
+  monster HuntMonster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  team    HuntTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
 }
 
 model XpTransaction {
