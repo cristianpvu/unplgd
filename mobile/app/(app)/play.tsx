@@ -88,6 +88,28 @@ export default function Play() {
           </View>
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/(app)/hunt')}
+          style={({ pressed }) => [
+            styles.heroCard,
+            { backgroundColor: '#D5F5E3' },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          <View style={styles.heroIconWrap}>
+            <Text style={styles.heroEmoji}>🏞️</Text>
+            <View style={styles.heroSparkle}>
+              <SparklesIcon />
+            </View>
+          </View>
+          <View style={styles.heroText}>
+            <Text style={styles.heroTitle}>Vanatoare in parc</Text>
+            <Text style={styles.heroSubtitle}>
+              Cu prietenii in parc, cautati monstri si folositi AR-ul ca sa-i invingeti pe echipe.
+            </Text>
+          </View>
+        </Pressable>
+
       </ScrollView>
     </SafeAreaView>
   );

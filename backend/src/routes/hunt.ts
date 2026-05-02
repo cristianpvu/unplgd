@@ -30,8 +30,9 @@ export const huntRouter = Router();
 huntRouter.use(requireAuth);
 
 // Numar minim de jucatori in lobby ca host sa poata apasa start. 4 = 2 echipe
-// minim, conditie pentru competitivitate.
-const MIN_LOBBY_PLAYERS = 4;
+// minim, conditie pentru competitivitate. Override-uibil prin env in dev pt
+// testare singur (HUNT_MIN_PLAYERS=1).
+const MIN_LOBBY_PLAYERS = Math.max(1, Number(process.env.HUNT_MIN_PLAYERS) || 4);
 
 // Durate permise pentru sesiune (15 / 30 / 45 min).
 const ALLOWED_DURATIONS = new Set([900, 1800, 2700]);

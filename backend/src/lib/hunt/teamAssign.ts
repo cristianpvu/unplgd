@@ -35,8 +35,14 @@ export type TeamPlan = {
 
 export function assignTeamsRandomly(memberIds: string[]): TeamPlan[] {
   const n = memberIds.length;
+  if (n < 1) {
+    throw new Error('Team assign cere minim 1 jucator');
+  }
+
+  // Cazuri dev (1-3 jucatori): cream o singura echipa cu toti. La 4+ aplicam
+  // logica de competitie (min 2 echipe, min 2 membri per echipa).
   if (n < 4) {
-    throw new Error('Team assign cere minim 4 jucatori');
+    return [{ name: 'Lupii', memberIds: [...memberIds] }];
   }
 
   const numTeams = Math.floor(n / 2);

@@ -42,6 +42,9 @@
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_ADVERTISE",
         "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ]
     },
@@ -66,6 +69,18 @@
       ],
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Unplgd foloseste locatia ta pentru a porni vanatoarea in parcuri si a calcula distanta la monstri."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Unplgd foloseste camera pentru a-ti arata monstrii in modul AR la lupta."
+        }
+      ],
       [
         "expo-image-picker",
         {
