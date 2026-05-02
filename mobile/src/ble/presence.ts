@@ -318,10 +318,26 @@ class PresenceEngine {
   }
 
   private async commitCoWalk(s: CoWalkSession) {
+    const now = Date.now();
     const startedAtIso = new Date(s.startedAt).toISOString();
     const durationSec = Math.floor((s.lastSeenAt - s.startedAt) / 1000);
     const steps = Math.max(0, this.myStepCount - s.startStepCount);
     const rssiStdDev = stdDev(s.rssiSamples);
+
+    // Squad auto-detect: alti prieteni vazuti in aceeasi fereastra cu durata
+    // sustinuta (>= MIN_DURATION) si inca recent prezenti (in RESUME_GAP). Sesiunile
+    // committed raman in map cat peer-ul e activ — astfel se prind si membrii care
+    // au atins pragul mai devreme. Backend-ul valideaza ca toti sunt prieteni reali
+    // si calculeaza multiplier-ul (1x/1.5x/2x).
+    const squadFriendIds: string[] = [];
+    for (const [otherId, other] of this.sessions) {
+      if (otherId === s.userId) continue;
+      const otherDuration = other.lastSeenAt - other.startedAt;
+      const recent = now - other.lastSeenAt <= COWALK_RESUME_GAP_MS;
+      if (recent && otherDuration >= COWALK_MIN_DURATION_MS) {
+        squadFriendIds.push(otherId);
+      }
+    }
 
     // Anti-cheat local: dropam sesiunea inainte sa lovim backend-ul daca semnalele
     // de miscare sunt slabe. Backend-ul aplica acelasi check (defense in depth) —
@@ -351,6 +367,7 @@ class PresenceEngine {
         startedAt: startedAtIso,
         stepsMe: steps,
         rssiStdDev: Number(rssiStdDev.toFixed(3)),
+        squadFriendIds,
       });
       s.committed = true;
       this.committedToday.add(s.userId);

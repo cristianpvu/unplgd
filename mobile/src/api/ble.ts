@@ -14,6 +14,8 @@ export type CoWalkResult = {
   friend: { alreadyAwarded: boolean; amount: number; newXp: number; newLevel: number; leveledUp: boolean };
   durationSec: number;
   startedAt: string;
+  squadSize: number;
+  squadMultiplier: number;
 };
 
 export function getMyBleToken(): Promise<{ token: string }> {
@@ -33,6 +35,7 @@ export function postCoWalk(args: {
   startedAt: string;
   stepsMe: number;
   rssiStdDev: number;
+  squadFriendIds: string[];
 }): Promise<CoWalkResult> {
   return api<CoWalkResult>('/interactions/co-walk', { method: 'POST', body: args });
 }

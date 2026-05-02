@@ -264,12 +264,26 @@ interactionsRouter.post('/ble-resolve', async (req, res, next) => {
 const COWALK_MIN_STEPS = 200;
 const COWALK_MIN_RSSI_STDDEV = 1.5;
 
+// Squad multiplier: scaleaza recompensa cu marimea grupului care a mers impreuna.
+// 2 = pair (1x base), 3 = "Patrula" (1.5x), 4+ = "Trupa" (2x). Cap-ul opreste
+// XP-ul sa explodeze la o clasa intreaga in scoala.
+function squadMultiplier(squadSize: number): number {
+  if (squadSize >= 4) return 2.0;
+  if (squadSize === 3) return 1.5;
+  return 1.0;
+}
+
 const coWalkSchema = z.object({
   friendUserId: z.string().cuid(),
   durationSec: z.number().int().min(600).max(86_400),
   startedAt: z.string().datetime(),
   stepsMe: z.number().int().min(COWALK_MIN_STEPS).max(100_000),
   rssiStdDev: z.number().min(COWALK_MIN_RSSI_STDDEV).max(40),
+  // Alti prieteni vazuti simultan in fereastra de co-walk (auto-detectati de
+  // mobile, nu interventie a userului). Backend-ul valideaza ca fiecare e
+  // prieten ACCEPTED inainte sa scaleze XP-ul; ignoram in tacere intrarile
+  // invalide ca sa nu omoram tot commit-ul pentru un id stale.
+  squadFriendIds: z.array(z.string().cuid()).max(20).default([]),
 });
 
 // Co-walk = 10+ min de prezenta sustinuta BLE intre 2 prieteni. Mobile detecteaza
@@ -279,9 +293,8 @@ const coWalkSchema = z.object({
 interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => {
   try {
     const me = req.userId!;
-    const { friendUserId, durationSec, startedAt, stepsMe, rssiStdDev } = coWalkSchema.parse(
-      req.body,
-    );
+    const { friendUserId, durationSec, startedAt, stepsMe, rssiStdDev, squadFriendIds } =
+      coWalkSchema.parse(req.body);
     if (friendUserId === me) throw badRequest('self_cowalk', 'Nu te poti co-walka cu tine');
 
     const friendship = await prisma.friendship.findFirst({
@@ -294,6 +307,33 @@ interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => 
       },
     });
     if (!friendship) throw forbidden('not_friends', 'Nu sunteti prieteni');
+
+    // Validare squad: id-uri unice, fara me, fara friendUserId (deja contat in pair),
+    // toti trebuie sa fie prieteni ACCEPTED. Filtram in loc sa aruncam eroare —
+    // un id stale nu trebuie sa omoare commit-ul intregului pair.
+    const claimedSquad = [...new Set(squadFriendIds.filter((id) => id !== me && id !== friendUserId))];
+    let validSquad: string[] = [];
+    if (claimedSquad.length > 0) {
+      const friendships = await prisma.friendship.findMany({
+        where: {
+          status: FriendshipStatus.ACCEPTED,
+          OR: [
+            { requesterId: me, receiverId: { in: claimedSquad } },
+            { requesterId: { in: claimedSquad }, receiverId: me },
+          ],
+        },
+        select: { requesterId: true, receiverId: true },
+      });
+      const friendIds = new Set(
+        friendships.map((f) => (f.requesterId === me ? f.receiverId : f.requesterId)),
+      );
+      validSquad = claimedSquad.filter((id) => friendIds.has(id));
+    }
+
+    // squadSize include si me si friendUserId — minimum 2 (pair).
+    const squadSize = 2 + validSquad.length;
+    const multiplier = squadMultiplier(squadSize);
+    const coWalkXp = Math.floor(XP_REWARDS.CO_WALK * multiplier);
 
     const today = startOfDayUTC();
     const dateStr = today.toISOString().slice(0, 10);
@@ -332,17 +372,18 @@ interactionsRouter.post('/co-walk', checkinRateLimit, async (req, res, next) => 
 
       // Co-walk XP separat de daily interaction — recompensa pt 10 min impreuna,
       // valabila si daca au tap-uit deja bratara azi. Description-ul e folosit
-      // ca audit trail pentru semnalele anti-cheat (pasi + rssi stddev).
-      const audit = `Co-walk ${durationSec}s steps=${stepsMe} rssiStd=${rssiStdDev.toFixed(2)}`;
+      // ca audit trail pentru semnalele anti-cheat (pasi + rssi stddev) si
+      // marimea squad-ului efectiv recompensat.
+      const audit = `Co-walk ${durationSec}s steps=${stepsMe} rssiStd=${rssiStdDev.toFixed(2)} squad=${squadSize}x${multiplier}`;
       const [meXp, friendXp] = await Promise.all([
-        awardXp(me, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, audit, tx),
-        awardXp(friendUserId, XP_REWARDS.CO_WALK, 'co_walk', cowalkSourceId, audit, tx),
+        awardXp(me, coWalkXp, 'co_walk', cowalkSourceId, audit, tx),
+        awardXp(friendUserId, coWalkXp, 'co_walk', cowalkSourceId, audit, tx),
       ]);
 
       return { dailyAwarded, me: meXp, friend: friendXp, durationSec, startedAt };
     });
 
-    res.status(201).json(result);
+    res.status(201).json({ ...result, squadSize, squadMultiplier: multiplier });
   } catch (e) {
     next(e);
   }
