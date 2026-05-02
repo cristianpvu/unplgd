@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,33 +22,20 @@ import {
   startSession,
   type HeartbeatResponse,
   type HuntSessionState,
-  type Warmth,
 } from '../../../../src/api/hunt';
 import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
 import { HuntMap } from '../../../../src/hunt/HuntMap';
 import { useHuntSocket } from '../../../../src/hunt/useHuntSocket';
+import { bearingDegrees, distanceMeters, warmthForDistance } from '../../../../src/hunt/geo';
 
-const HEARTBEAT_INTERVAL_MS = 5_000;
+// Heartbeat-ul HTTP serveste pt validari fizice si revelare monstri noi.
+// Wedge-ul + warmth ruleaza in realtime client-side din nearestPosition + GPS,
+// asa ca 3s e suficient ca sursa de adevar de la server.
+const HEARTBEAT_INTERVAL_MS = 3_000;
 // Polling-ul devine fallback — socket.io face push-uri instant. Tinem un
 // refetch ocazional in caz ca socket-ul cade sau pierdem update-uri.
 const SESSION_POLL_INTERVAL_MS = 30_000;
-
-const WARMTH_COLOR: Record<Warmth, string> = {
-  cold: '#5C8AB5',
-  cool: '#6FB1D8',
-  warm: '#F2B23B',
-  hot: '#F37D3B',
-  very_hot: '#E74C3C',
-};
-
-const WARMTH_LABEL: Record<Warmth, string> = {
-  cold: 'Rece',
-  cool: 'Racoros',
-  warm: 'Caldut',
-  hot: 'Cald',
-  very_hot: 'Fierbinte!',
-};
 
 export default function HuntSessionScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
@@ -233,11 +220,21 @@ function ActiveView({
   sessionId: string;
 }) {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [heading, setHeading] = useState<number | null>(null);
   const [heartbeat, setHeartbeat] = useState<HeartbeatResponse | null>(null);
   const [encounterMonsterId, setEncounterMonsterId] = useState<string | null>(null);
   const [encounterReveal, setEncounterReveal] = useState<{ lat: number; lng: number } | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  // Foreground location watch — update incremental cu min 5m si min 3s.
+  // Tick local de 1s pentru ca timer-ul sa coboare smooth, nu in salturi de
+  // 5s la fiecare heartbeat. Sursa de adevar ramane session.endsAt.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Foreground location watch — update agresiv (1m, 1s) ca wedge-ul si
+  // warmth-ul recalculate client-side sa fie smooth pe miscare.
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
     (async () => {
@@ -245,9 +242,9 @@ function ActiveView({
       if (!perm.granted) return;
       sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 5,
-          timeInterval: 3000,
+          accuracy: Location.Accuracy.BestForNavigation,
+          distanceInterval: 1,
+          timeInterval: 1000,
         },
         (pos) => {
           setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
@@ -259,14 +256,32 @@ function ActiveView({
     };
   }, []);
 
+  // Phone heading — orientarea telefonului (busola). Map-ul roteste sa fie
+  // heading-up ca turn-by-turn nav. trueHeading e calibrat cu nordul real;
+  // pe fallback magnetic adaugam declinatia daca dispozitivul o expune.
+  useEffect(() => {
+    let sub: Location.LocationSubscription | null = null;
+    (async () => {
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) return;
+      sub = await Location.watchHeadingAsync((h) => {
+        const v = h.trueHeading >= 0 ? h.trueHeading : h.magHeading;
+        if (typeof v === 'number' && v >= 0) setHeading(v);
+      });
+    })();
+    return () => {
+      sub?.remove();
+    };
+  }, []);
+
   // Heartbeat la 5s cu pozitia curenta.
   const lastBeatRef = useRef(0);
   useEffect(() => {
     const id = setInterval(async () => {
       if (!coords) return;
-      const now = Date.now();
-      if (now - lastBeatRef.current < HEARTBEAT_INTERVAL_MS - 200) return;
-      lastBeatRef.current = now;
+      const tNow = Date.now();
+      if (tNow - lastBeatRef.current < HEARTBEAT_INTERVAL_MS - 200) return;
+      lastBeatRef.current = tNow;
       try {
         const resp = await postHeartbeat(sessionId, coords.lat, coords.lng);
         setHeartbeat(resp);
@@ -282,16 +297,40 @@ function ActiveView({
   }, [coords, sessionId, encounterMonsterId]);
 
   const myTeam = session.teams.find((t) => t.id === session.myTeamId);
-  const otherTeams = session.teams.filter((t) => t.id !== session.myTeamId);
+  const rankedTeams = useMemo(
+    () => [...session.teams].sort((a, b) => b.score - a.score),
+    [session.teams],
+  );
 
   const endMut = useMutation({
     mutationFn: () => endSession(sessionId),
     onSuccess: () => router.replace(`/(app)/hunt/${sessionId}/results`),
   });
 
-  const warmth = heartbeat?.status === 'ACTIVE' ? heartbeat.warmth : 'cold';
-  const timeRemaining = heartbeat?.status === 'ACTIVE' ? heartbeat.timeRemainingSec : 0;
   const inZone = heartbeat?.status === 'ACTIVE' ? heartbeat.inZone : true;
+
+  // Recalcul real-time client-side: nearestPosition vine de la server (3s),
+  // dar coords se updateaza la 1s — wedge-ul si warmth-ul reactioneaza pe
+  // miscare instant. Daca server nu a expus pozitia (cold), folosim warmth
+  // direct de la heartbeat ca fallback.
+  const nearestPosition =
+    heartbeat?.status === 'ACTIVE' ? heartbeat.nearestPosition : null;
+  const localBearing = useMemo(() => {
+    if (!coords || !nearestPosition) return null;
+    return bearingDegrees(coords, nearestPosition);
+  }, [coords, nearestPosition]);
+  const localWarmth = useMemo(() => {
+    if (!coords || !nearestPosition) {
+      return heartbeat?.status === 'ACTIVE' ? heartbeat.warmth : 'cold';
+    }
+    return warmthForDistance(distanceMeters(coords, nearestPosition));
+  }, [coords, nearestPosition, heartbeat]);
+
+  // Calcul local: timpul ramas vine din session.endsAt + tick 1s. Cand
+  // heartbeat-ul mai vechi spunea altceva, prioritizam ce calculam local.
+  const timeRemaining = session.endsAt
+    ? Math.max(0, Math.floor((new Date(session.endsAt).getTime() - now) / 1000))
+    : 0;
 
   if (encounterMonsterId && coords && encounterReveal) {
     return (
@@ -309,67 +348,71 @@ function ActiveView({
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
+    <View style={styles.fullscreen}>
+      <HuntMap
+        parkPolygon={session.parkPolygon}
+        zonePolygon={myTeam?.zone ?? null}
+        myCoords={coords}
+        heartbeat={heartbeat}
+        warmth={localWarmth}
+        bearing={localBearing}
+        heading={heading}
+      />
 
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.mapWrap}>
-          <HuntMap
-            parkPolygon={session.parkPolygon}
-            zonePolygon={myTeam?.zone ?? null}
-            myCoords={coords}
-            heartbeat={heartbeat}
-          />
-        </View>
-
-        <View style={[styles.warmthStrip, { backgroundColor: WARMTH_COLOR[warmth] }]}>
-          {heartbeat?.status === 'ACTIVE' && heartbeat.nearestBearing !== null && (
-            <View style={styles.compassSm}>
-              <View
-                style={[
-                  styles.compassArrowSm,
-                  { transform: [{ rotate: `${heartbeat.nearestBearing}deg` }] },
-                ]}
-              />
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.warmthLabelSm}>{WARMTH_LABEL[warmth]}</Text>
-            <Text style={styles.warmthHintSm}>
-              {warmth === 'very_hot'
-                ? 'Foarte aproape! Atinge monstrul pentru lupta'
-                : warmth === 'cold'
-                  ? 'Plimba-te prin zona ta — monstrii se ascund'
-                  : 'Mergi pe directia sagetii'}
+      <SafeAreaView style={styles.topOverlay} edges={['top']} pointerEvents="box-none">
+        <View style={styles.topRow} pointerEvents="box-none">
+          <Pressable
+            onPress={() => router.replace('/(app)/hunt')}
+            hitSlop={12}
+            style={styles.iconBtn}
+          >
+            <Text style={styles.iconBtnText}>←</Text>
+          </Pressable>
+          <View style={styles.parkPill} pointerEvents="none">
+            <Text style={styles.parkPillText} numberOfLines={1}>
+              {session.park.name}
             </Text>
           </View>
-          <Text style={styles.timerInline}>{formatTime(timeRemaining)}</Text>
+          <View style={styles.timerPill} pointerEvents="none">
+            <Text style={styles.timerPillText}>{formatTime(timeRemaining)}</Text>
+          </View>
         </View>
 
         {!inZone && (
-          <View style={styles.warningCard}>
-            <Text style={styles.warningText}>
-              Esti in afara zonei echipei tale! Intoarce-te in {myTeam?.name ?? 'zona ta'}.
+          <View style={styles.zoneBanner} pointerEvents="none">
+            <Text style={styles.zoneBannerText}>
+              Iesi din zona {myTeam?.name ?? 'ta'} — intoarce-te
             </Text>
           </View>
         )}
+      </SafeAreaView>
 
-        <View style={styles.scoreCard}>
-          <Text style={styles.sectionTitle}>Scor</Text>
-          {myTeam && (
-            <View style={[styles.teamRow, styles.teamRowMine]}>
-              <Text style={styles.teamName}>{myTeam.name} (echipa ta)</Text>
-              <Text style={styles.teamScore}>{myTeam.score}</Text>
-            </View>
-          )}
-          {otherTeams.map((t) => (
-            <View key={t.id} style={styles.teamRow}>
-              <Text style={styles.teamName}>{t.name}</Text>
-              <Text style={styles.teamScoreMuted}>
-                {compareScore(myTeam?.score ?? 0, t.score)}
-              </Text>
-            </View>
-          ))}
+      <SafeAreaView style={styles.bottomOverlay} edges={['bottom']} pointerEvents="box-none">
+        <View style={styles.leaderCard}>
+          <Text style={styles.leaderTitle}>Clasament</Text>
+          {rankedTeams.map((t, idx) => {
+            const mine = t.id === myTeam?.id;
+            return (
+              <View
+                key={t.id}
+                style={[styles.leaderRow, mine && styles.leaderRowMine]}
+              >
+                <Text style={[styles.leaderRank, mine && styles.leaderRankMine]}>
+                  #{idx + 1}
+                </Text>
+                <Text
+                  style={[styles.leaderName, mine && styles.leaderNameMine]}
+                  numberOfLines={1}
+                >
+                  {t.name}
+                  {mine ? ' (tu)' : ''}
+                </Text>
+                <Text style={[styles.leaderScore, mine && styles.leaderScoreMine]}>
+                  {t.score}
+                </Text>
+              </View>
+            );
+          })}
         </View>
 
         {session.isHost && (
@@ -380,13 +423,13 @@ function ActiveView({
                 { text: 'Da, opreste', style: 'destructive', onPress: () => endMut.mutate() },
               ])
             }
-            style={({ pressed }) => [styles.cancelBtn, pressed && styles.btnPressed]}
+            style={({ pressed }) => [styles.endBtn, pressed && styles.btnPressed]}
           >
-            <Text style={styles.cancelText}>Opreste sesiunea</Text>
+            <Text style={styles.endBtnText}>Opreste sesiunea</Text>
           </Pressable>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -396,18 +439,10 @@ function formatTime(sec: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// Pentru fairness: nu aratam scor exact al adversarului, doar comparativ vag.
-function compareScore(mine: number, theirs: number): string {
-  const diff = theirs - mine;
-  if (diff > 200) return 'mult in fata';
-  if (diff > 50) return 'putin in fata';
-  if (diff > -50) return 'aproape de tine';
-  if (diff > -200) return 'putin in spate';
-  return 'mult in spate';
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  fullscreen: { flex: 1, backgroundColor: '#000000' },
+
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -469,94 +504,150 @@ const styles = StyleSheet.create({
   },
   cancelText: { color: colors.danger, fontSize: 15, fontWeight: '700' },
 
-  mapWrap: {
-    height: 340,
-    borderRadius: 18,
-    overflow: 'hidden',
-    backgroundColor: colors.card,
+  // Active view — overlays peste harta fullscreen.
+  topOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
-
-  warmthStrip: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingTop: 8,
+    gap: 10,
   },
-  warmthLabelSm: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
-  warmthHintSm: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-    opacity: 0.92,
-    marginTop: 2,
-  },
-  timerInline: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    backgroundColor: 'rgba(0,0,0,0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  compassSm: {
+  iconBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    backgroundColor: 'rgba(15,15,18,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  compassArrowSm: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 8,
-    borderRightWidth: 8,
-    borderBottomWidth: 20,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#FFFFFF',
+  iconBtnText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  parkPill: {
+    flex: 1,
+    backgroundColor: 'rgba(15,15,18,0.85)',
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-
-  warningCard: {
-    backgroundColor: '#FFE2E8',
-    borderRadius: 14,
-    padding: 14,
+  parkPillText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  timerPill: {
+    backgroundColor: 'rgba(15,15,18,0.92)',
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    minWidth: 78,
     alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  warningText: { color: colors.danger, fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  timerPillText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: 0.3,
+  },
 
-  timerCard: {
-    backgroundColor: colors.card,
+  zoneBanner: {
+    marginTop: 10,
+    marginHorizontal: 14,
+    backgroundColor: 'rgba(231,76,60,0.95)',
     borderRadius: 14,
-    padding: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  timerLabel: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
-  timerValue: { color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 4 },
+  zoneBannerText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
-  scoreCard: { backgroundColor: colors.card, borderRadius: 16, padding: 14, gap: 8 },
-  sectionTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  teamRow: {
+  bottomOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  leaderCard: {
+    backgroundColor: 'rgba(15,15,18,0.92)',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  leaderTitle: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  leaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  teamRowMine: {
-    backgroundColor: 'rgba(46,204,113,0.10)',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    gap: 10,
     borderRadius: 10,
   },
-  teamName: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  teamScore: { color: colors.success, fontSize: 17, fontWeight: '900' },
-  teamScoreMuted: { color: colors.textMuted, fontSize: 14, fontStyle: 'italic' },
+  leaderRowMine: { backgroundColor: 'rgba(46,204,113,0.18)' },
+  leaderRank: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    fontWeight: '900',
+    width: 26,
+  },
+  leaderRankMine: { color: '#7DCEA0' },
+  leaderName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', flex: 1 },
+  leaderNameMine: { color: '#FFFFFF' },
+  leaderScore: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  leaderScoreMine: { color: '#7DCEA0' },
+
+  endBtn: {
+    backgroundColor: 'rgba(231,76,60,0.95)',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  endBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
 
   btnPressed: { transform: [{ scale: 0.98 }], opacity: 0.85 },
 });

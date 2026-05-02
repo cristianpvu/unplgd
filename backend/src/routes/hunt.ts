@@ -663,12 +663,14 @@ huntRouter.post('/sessions/:id/heartbeat', async (req, res, next) => {
     let nearestDist = Infinity;
     let nearestBearing: number | null = null;
     let nearestType: MonsterType | null = null;
+    let nearestPos: { lat: number; lng: number } | null = null;
     for (const m of hiddenInMyZone) {
       const d = distanceMeters(lat, lng, m.lat, m.lng);
       if (d < nearestDist) {
         nearestDist = d;
         nearestBearing = bearingDegrees(lat, lng, m.lat, m.lng);
         nearestType = m.type;
+        nearestPos = { lat: m.lat, lng: m.lng };
       }
     }
 
@@ -727,6 +729,9 @@ huntRouter.post('/sessions/:id/heartbeat', async (req, res, next) => {
       // NU expunem distanta sau pozitia exacta cat warmth nu e very_hot.
       nearestBearing: warmth === 'cold' ? null : nearestBearing,
       nearestType,
+      // Pozitia nearest hidden — clientul recalculeaza warmth+bearing local
+      // intre heartbeat-uri ca wedge-ul sa nu fie stale. Hidden cand cold.
+      nearestPosition: warmth === 'cold' ? null : nearestPos,
       revealMonster,
       engagedMonsters: engagedInMyTeam,
     });
@@ -759,7 +764,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
           include: {
             members: {
               include: {
-                user: { select: { id: true, name: true, birthDate: true } },
+                user: { select: { id: true, name: true, email: true, birthDate: true } },
               },
             },
           },
@@ -841,6 +846,14 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       }
     }
 
+    // Demo users (dev mode) — marcam run-urile lor CORRECT instant ca host-ul
+    // sa poata termina lupta fara sa astepte 3 boti. Detectie pe email pattern.
+    const demoUserIds = new Set(
+      monster.team.members
+        .filter((m) => m.user.email.startsWith('hunt-demo-') && m.user.email.endsWith('@unplgd.test'))
+        .map((m) => m.userId),
+    );
+
     await prisma.$transaction(async (tx) => {
       await tx.huntMonster.update({
         where: { id: mid },
@@ -851,7 +864,17 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
         },
       });
       await tx.huntChallengeRun.createMany({
-        data: runsToCreate,
+        data: runsToCreate.map((r) =>
+          demoUserIds.has(r.userId)
+            ? {
+                ...r,
+                outcome: ChallengeOutcome.CORRECT,
+                answer: '[demo]',
+                feedback: 'Demo a raspuns corect',
+                finishedAt: now,
+              }
+            : r,
+        ),
         skipDuplicates: true,
       });
     });

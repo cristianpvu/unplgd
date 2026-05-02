@@ -89,6 +89,7 @@ export type HeartbeatResponse =
       warmth: Warmth;
       nearestBearing: number | null;
       nearestType: MonsterType | null;
+      nearestPosition: { lat: number; lng: number } | null;
       revealMonster: { id: string; lat: number; lng: number; type: MonsterType } | null;
       engagedMonsters: Array<{
         id: string;
