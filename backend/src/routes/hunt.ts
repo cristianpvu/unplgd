@@ -25,6 +25,8 @@ import { resolveTokens } from '../lib/bleToken.js';
 import { distanceMeters, warmthForDistance, bearingDegrees } from '../lib/hunt/warmth.js';
 import { judgeRiddleAnswer, judgeCountingAnswer } from '../lib/hunt/judge.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { env } from '../env.js';
+import { createDevHereSession } from '../lib/hunt/devSession.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -82,6 +84,35 @@ const createSchema = z.object({
   durationSec: z.number().int(),
   lat: z.number().gte(-90).lte(90),
   lng: z.number().gte(-180).lte(180),
+});
+
+// POST /hunt/dev/quick-here
+// Doar daca HUNT_DEV_MODE=true in env. Creeaza pe loc o sesiune de test cu
+// parc fictiv 50x50m la coords date + 3 demo useri + monstri spawn-ati la
+// 4-13m. Pentru testare AR pe device fara teren.
+const devQuickSchema = z.object({
+  lat: z.number().gte(-90).lte(90),
+  lng: z.number().gte(-180).lte(180),
+});
+
+huntRouter.post('/dev/quick-here', async (req, res, next) => {
+  try {
+    if (!env.HUNT_DEV_MODE) {
+      throw notFound('not_found', 'Endpoint indisponibil');
+    }
+    const me = req.userId!;
+    const { lat, lng } = devQuickSchema.parse(req.body);
+    const result = await createDevHereSession({ hostId: me, lat, lng });
+    res.status(201).json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /hunt/dev/enabled — mobile checkeaza la pornirea ecranului hunt daca
+// poate afisa toggle-ul de dev mode. Mai sigur decat sa hardcodam in mobile.
+huntRouter.get('/dev/enabled', async (_req, res) => {
+  res.json({ enabled: env.HUNT_DEV_MODE });
 });
 
 huntRouter.post('/sessions', async (req, res, next) => {

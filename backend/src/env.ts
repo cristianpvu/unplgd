@@ -38,6 +38,14 @@ const schema = z.object({
   // Default us-central1 (cea mai stabila + cea mai larga acoperire de modele).
   VERTEX_LOCATION: z.string().default('us-central1'),
   IMAGEN_MODEL: z.string().default('imagen-3.0-generate-002'),
+  // Mod dev pentru hunt: deblocheaza endpoint-ul /hunt/dev/quick-here care
+  // creeaza pe loc o sesiune de test cu parc fictiv la coords date + 3 demo
+  // useri + monstri spawn-ati in jurul tau. Pentru testare pe device fara teren.
+  // OFF in productie reala — un user obisnuit nu trebuie sa-l vada.
+  HUNT_DEV_MODE: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 const parsed = schema.safeParse(process.env);

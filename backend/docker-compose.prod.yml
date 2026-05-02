@@ -59,6 +59,7 @@ services:
       GCP_SERVICE_ACCOUNT_JSON: ${GCP_SERVICE_ACCOUNT_JSON:-}
       VERTEX_LOCATION: ${VERTEX_LOCATION:-europe-west4}
       IMAGEN_MODEL: ${IMAGEN_MODEL:-imagen-3.0-generate-002}
+      HUNT_DEV_MODE: ${HUNT_DEV_MODE:-false}
     volumes:
       - unplgd_tts_cache:/data/tts-cache
     ports:
