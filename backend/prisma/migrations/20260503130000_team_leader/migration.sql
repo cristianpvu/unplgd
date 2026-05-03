@@ -1,0 +1,1 @@
+ALTER TABLE "HuntTeam" ADD COLUMN "leaderId" TEXT;

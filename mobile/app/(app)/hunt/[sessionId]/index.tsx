@@ -94,7 +94,84 @@ export default function HuntSessionScreen() {
     return <LobbyView session={session} sessionId={sessionId} qc={qc} />;
   }
 
+  // Modelul "team-leader-only-phone": doar liderul echipei (random la Start)
+  // vede AR + harta + lupta. Restul sunt fizic langa el si vad un ecran simplu
+  // (timer + clasament). Liderul nu e neaparat host-ul global al sesiunii.
+  if (!session.iAmTeamLeader) {
+    return <MemberWaitingView session={session} />;
+  }
+
   return <ActiveView session={session} sessionId={sessionId} />;
+}
+
+function MemberWaitingView({
+  session,
+}: {
+  session: Extract<HuntSessionState, { status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' }>;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const myTeam = session.teams.find((t) => t.id === session.myTeamId);
+  const rankedTeams = useMemo(
+    () => [...session.teams].sort((a, b) => b.score - a.score),
+    [session.teams],
+  );
+  const timeRemaining = session.endsAt
+    ? Math.max(0, Math.floor((new Date(session.endsAt).getTime() - now) / 1000))
+    : 0;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
+      <ScrollView contentContainerStyle={styles.memberScroll}>
+        <View style={styles.memberHero}>
+          <Text style={styles.memberHeroEmoji}>👀</Text>
+          <Text style={styles.memberHeroTitle}>
+            Stai langa {session.myTeamLeader?.name ?? 'liderul echipei'}!
+          </Text>
+          <Text style={styles.memberHeroSub}>
+            Vanatoarea se joaca pe telefonul lui. Ajutati-l sa raspunda la
+            intrebari — discutati impreuna ce varianta alege.
+          </Text>
+          <View style={styles.memberTimerPill}>
+            <Text style={styles.memberTimerLabel}>Timp ramas</Text>
+            <Text style={styles.memberTimerText}>{formatTime(timeRemaining)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.memberLeaderCard}>
+          <Text style={styles.leaderTitle}>Clasament</Text>
+          {rankedTeams.map((t, idx) => {
+            const mine = t.id === myTeam?.id;
+            return (
+              <View
+                key={t.id}
+                style={[styles.leaderRow, mine && styles.leaderRowMine]}
+              >
+                <Text style={[styles.leaderRank, mine && styles.leaderRankMine]}>
+                  #{idx + 1}
+                </Text>
+                <Text
+                  style={[styles.leaderName, mine && styles.leaderNameMine]}
+                  numberOfLines={1}
+                >
+                  {t.name}
+                  {mine ? ' (echipa ta)' : ''}
+                </Text>
+                <Text style={[styles.leaderScore, mine && styles.leaderScoreMine]}>
+                  {t.score}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 function Header({ title, onBack }: { title: string; onBack: () => void }) {
@@ -629,6 +706,59 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   leaderScoreMine: { color: '#7DCEA0' },
+
+  // Member waiting view — telefonul kid-ului care e langa team-leader.
+  memberScroll: { padding: 16, gap: 16 },
+  memberHero: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 22,
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberHeroEmoji: { fontSize: 48 },
+  memberHeroTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  memberHeroSub: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  memberTimerPill: {
+    marginTop: 14,
+    backgroundColor: colors.cardAlt,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+  },
+  memberTimerLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  memberTimerText: {
+    color: colors.text,
+    fontSize: 30,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    marginTop: 2,
+  },
+  memberLeaderCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 4,
+  },
 
   endBtn: {
     backgroundColor: 'rgba(231,76,60,0.95)',

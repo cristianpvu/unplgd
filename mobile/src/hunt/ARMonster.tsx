@@ -41,19 +41,40 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor, bubbleText }:
     y: 0,
     visible: false,
   });
+  const arrowPosRef = useRef<{ x: number; y: number; angle: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    angle: 0,
+    visible: false,
+  });
   const [bubble, setBubble] = useState<{ x: number; y: number; visible: boolean }>({
     x: 0,
     y: 0,
     visible: false,
   });
+  const [arrow, setArrow] = useState<{ x: number; y: number; angle: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    angle: 0,
+    visible: false,
+  });
 
   useEffect(() => {
     const id = setInterval(() => {
-      const cur = bubblePosRef.current;
+      const b = bubblePosRef.current;
       setBubble((prev) =>
-        prev.x === cur.x && prev.y === cur.y && prev.visible === cur.visible
+        prev.x === b.x && prev.y === b.y && prev.visible === b.visible
           ? prev
-          : { ...cur },
+          : { ...b },
+      );
+      const a = arrowPosRef.current;
+      setArrow((prev) =>
+        prev.x === a.x &&
+        prev.y === a.y &&
+        prev.angle === a.angle &&
+        prev.visible === a.visible
+          ? prev
+          : { ...a },
       );
     }, 50);
     return () => clearInterval(id);
@@ -200,6 +221,7 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor, bubbleText }:
     const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
     const euler = new THREE.Euler();
     const bubbleAnchor = new THREE.Vector3();
+    const camSpace = new THREE.Vector3();
 
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
@@ -223,24 +245,65 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor, bubbleText }:
       const dz = camera.position.z - monsterGroup.position.z;
       monsterGroup.rotation.y = Math.atan2(dx, dz);
 
-      // Proiectie pozitie deasupra capului in screen-space pentru bula. Punctul
-      // proiectat e tipul "vorf al cozii" — bula sta deasupra cu offset fix.
+      // Proiectie pozitie deasupra capului. Pentru bula folosim NDC (Normalized
+      // Device Coords) dupa project(). Pentru directia sagetii, daca monstrul
+      // e in afara cadrului, folosim camera-space ca sa stim sigur in ce parte
+      // sa intoarca user-ul telefonul (chiar si cand e in spate).
       bubbleAnchor.set(
         monsterGroup.position.x,
         monsterGroup.position.y + 1.0,
         monsterGroup.position.z,
       );
+      camSpace.copy(bubbleAnchor).applyMatrix4(camera.matrixWorldInverse);
+      const inFront = camSpace.z < 0; // Three.js camera priveste catre -Z
       bubbleAnchor.project(camera);
-      const visible =
-        bubbleAnchor.z > -1 &&
-        bubbleAnchor.z < 1 &&
-        bubbleAnchor.x > -1.4 &&
-        bubbleAnchor.x < 1.4;
-      bubblePosRef.current = {
-        x: (bubbleAnchor.x * 0.5 + 0.5) * screenW,
-        y: (-bubbleAnchor.y * 0.5 + 0.5) * screenH,
-        visible,
-      };
+      const onScreen =
+        inFront &&
+        bubbleAnchor.x > -1 &&
+        bubbleAnchor.x < 1 &&
+        bubbleAnchor.y > -1 &&
+        bubbleAnchor.y < 1;
+
+      if (onScreen) {
+        bubblePosRef.current = {
+          x: (bubbleAnchor.x * 0.5 + 0.5) * screenW,
+          y: (-bubbleAnchor.y * 0.5 + 0.5) * screenH,
+          visible: true,
+        };
+        arrowPosRef.current = { ...arrowPosRef.current, visible: false };
+      } else {
+        // Calculam directia: in fata folosim NDC, in spate folosim camera-space
+        // (NDC inverteaza semnele cand punctul e in spate).
+        let dx: number;
+        let dy: number;
+        if (inFront) {
+          dx = bubbleAnchor.x;
+          dy = -bubbleAnchor.y;
+        } else {
+          dx = camSpace.x;
+          dy = -camSpace.y;
+          if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+            dx = 1; // direct in spate fix — default catre dreapta
+          }
+        }
+        const angle = Math.atan2(dy, dx);
+        // Punem sageata pe marginea ecranului (clamped la rectangle cu marja).
+        const margin = 70;
+        const halfW = screenW / 2 - margin;
+        const halfH = screenH / 2 - margin;
+        const ax = Math.cos(angle);
+        const ay = Math.sin(angle);
+        const tx = ax !== 0 ? halfW / Math.abs(ax) : Infinity;
+        const ty = ay !== 0 ? halfH / Math.abs(ay) : Infinity;
+        const t = Math.min(tx, ty);
+        arrowPosRef.current = {
+          x: screenW / 2 + ax * t,
+          y: screenH / 2 + ay * t,
+          angle,
+          visible: true,
+        };
+        bubblePosRef.current = { ...bubblePosRef.current, visible: false };
+      }
 
       renderer.render(scene, camera);
       gl.endFrameEXP();
@@ -265,12 +328,28 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor, bubbleText }:
           <View style={styles.bubbleTail} />
         </View>
       )}
+      {bubbleText && arrow.visible && (
+        <View
+          style={[
+            styles.arrowWrap,
+            {
+              left: arrow.x - ARROW_BOX / 2,
+              top: arrow.y - ARROW_BOX / 2,
+              transform: [{ rotate: `${arrow.angle}rad` }],
+            },
+          ]}
+        >
+          <View style={[styles.arrowTriangle, { borderLeftColor: monsterColor }]} />
+        </View>
+      )}
     </View>
   );
 }
 
 const BUBBLE_W = 240;
 const BUBBLE_OFFSET_Y = 110;
+const ARROW_BOX = 56;
+const ARROW_TIP = 26; // dimensiunea triunghiului
 
 const styles = StyleSheet.create({
   bubble: {
@@ -306,5 +385,33 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderTopColor: 'rgba(255,255,255,0.96)',
+  },
+  // Wrapper-ul are dimensiune patrata fixa ca rotirea sa pivoteze pe centru.
+  // Triunghiul ia 0 width/height + border-uri colorate (CSS triangle pattern).
+  // Default: tip catre dreapta — angle=0 inseamna sageata catre est, urmeaza
+  // unghiul calculat in animate.
+  arrowWrap: {
+    position: 'absolute',
+    width: ARROW_BOX,
+    height: ARROW_BOX,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 5,
+  },
+  arrowTriangle: {
+    width: 0,
+    height: 0,
+    borderTopWidth: ARROW_TIP / 2,
+    borderBottomWidth: ARROW_TIP / 2,
+    borderLeftWidth: ARROW_TIP,
+    borderRightWidth: 0,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    // borderLeftColor injectat per-instance (= culoarea monstrului)
+    borderRightColor: 'transparent',
   },
 });

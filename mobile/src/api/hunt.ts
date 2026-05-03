@@ -68,6 +68,8 @@ export type HuntSessionState =
       parkPolygon: GeoJsonPolygon;
       teams: HuntTeamDto[];
       myTeamId: string | null;
+      iAmTeamLeader: boolean;
+      myTeamLeader: { id: string; name: string; avatarSvg: string | null } | null;
     };
 
 export type HuntLobbyNearbyItem = {

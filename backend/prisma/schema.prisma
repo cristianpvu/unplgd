@@ -477,6 +477,9 @@ model HuntLobbyMember {
 model HuntTeam {
   id        String   @id @default(cuid())
   sessionId String
+  // Liderul echipei (ales aleatoriu la Start dintre membri). Doar el joaca
+  // efectiv pe telefonul lui — restul echipei sta langa el fizic.
+  leaderId  String?
   name      String   // "Lac" / "Padure" / sau "Echipa 1"
   // GeoJSON Polygon — sub-zona din parc atribuita echipei. Calculat la
   // pornire prin turf intersection (bbox stripes ∩ park polygon).

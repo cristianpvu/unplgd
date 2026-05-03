@@ -175,16 +175,24 @@ export async function createDevHereSession(opts: {
     for (let i = 0; i < teamPlans.length; i++) {
       const plan = teamPlans[i]!;
       const zone = zones[i]!;
+      // Dev mode: forteaza host-ul ca lider in echipa lui (sa joace pe propriul
+      // telefon). In alte echipe, alegem un demo random — n-are importanta in
+      // dev oricum, demo-ii sunt boti.
+      const isHostTeam = plan.memberIds.includes(opts.hostId);
+      const leaderId = isHostTeam
+        ? opts.hostId
+        : plan.memberIds[Math.floor(Math.random() * plan.memberIds.length)]!;
       const team = await tx.huntTeam.create({
         data: {
           sessionId: session.id,
           name: plan.name,
+          leaderId,
           zone: JSON.stringify(zone),
           zoneArea: zoneAreaSqm(zone),
           members: { create: plan.memberIds.map((userId) => ({ userId })) },
         },
       });
-      createdTeams.push({ id: team.id, zone, hasHost: plan.memberIds.includes(opts.hostId) });
+      createdTeams.push({ id: team.id, zone, hasHost: isHostTeam });
     }
 
     const { spawns, totalCount } = generateSpawns(createdTeams);

@@ -363,10 +363,14 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
       for (let i = 0; i < teamPlans.length; i++) {
         const plan = teamPlans[i]!;
         const zone = zones[i]!;
+        // Lider random — telefonul lui e cel pe care ruleaza vanatoarea pt
+        // toata echipa. Restul stau langa el fizic si discuta raspunsurile.
+        const leaderId = plan.memberIds[Math.floor(Math.random() * plan.memberIds.length)]!;
         const team = await tx.huntTeam.create({
           data: {
             sessionId: id,
             name: plan.name,
+            leaderId,
             zone: JSON.stringify(zone),
             zoneArea: zoneAreaSqm(zone),
             members: { create: plan.memberIds.map((userId) => ({ userId })) },
@@ -530,6 +534,9 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
     }
 
     // Pentru ACTIVE/COMPLETED returnam scoreboard + zona mea (nu zonele celorlalti).
+    const myTeamLeader = myTeam
+      ? session.teams.find((t) => t.id === myTeam.id)?.members.find((m) => m.userId === myTeam.leaderId)
+      : null;
     res.json({
       ...base,
       monsterCount: session.monsterCount,
@@ -549,6 +556,16 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
         })),
       })),
       myTeamId: myTeam?.id ?? null,
+      // Cine joaca pe telefonul lui pentru echipa mea — folosit de mobile ca sa
+      // arate AR + harta doar liderului, restul vad doar scoreboard.
+      iAmTeamLeader: !!myTeam && myTeam.leaderId === me,
+      myTeamLeader: myTeamLeader
+        ? {
+            id: myTeamLeader.userId,
+            name: myTeamLeader.user.name,
+            avatarSvg: myTeamLeader.user.avatar?.svg ?? null,
+          }
+        : null,
     });
   } catch (e) {
     next(e);
@@ -780,9 +797,14 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
     if (!monster.team) {
       throw badRequest('monster_no_team', 'Monstru fara echipa atribuita');
     }
+    // Modelul "team-leader-only-phone": doar liderul echipei (random la Start)
+    // joaca efectiv. Restul copiilor sunt fizic langa el si discuta raspunsurile.
+    if (monster.team.leaderId !== me) {
+      throw forbidden('leader_only', 'Doar liderul echipei tale joaca pe telefonul lui');
+    }
     const myMembership = monster.team.members.find((m) => m.userId === me);
     if (!myMembership) {
-      throw forbidden('not_my_team', 'Acest monstru e pe zona altei echipe');
+      throw forbidden('leader_not_in_team', 'Liderul nu e in echipa monstrului');
     }
     if (monster.status === MonsterStatus.DEFEATED || monster.status === MonsterStatus.ESCAPED) {
       throw conflict('monster_closed', 'Monstrul a fost deja rezolvat');
@@ -808,51 +830,37 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       return;
     }
 
-    // Generam challenge runs. challengesPerMember din spawn.ts (1/2/3 dupa
-    // tipul monstrului). Selector pe varsta: pentru fiecare member calculam
-    // varsta si filtram challenge-urile care se potrivesc.
-    const perMember = MONSTER_CHALLENGES_PER_MEMBER[monster.type];
+    // Generam toate challenge-urile pentru host. Numarul scade din map-ul
+    // MONSTER_CHALLENGES_PER_MEMBER (acum reinterpretat ca "per monstru"):
+    // green=1, yellow=2, red=3, gold=4. Echipa discuta fizic intrebarile;
+    // host-ul tap-uieste raspunsul ales de grup.
+    const perMonster = MONSTER_CHALLENGES_PER_MEMBER[monster.type];
     const now = new Date();
     const expiresAt = new Date(now.getTime() + FIGHT_WINDOW_MS);
 
-    const runsToCreate: Prisma.HuntChallengeRunCreateManyInput[] = [];
-    for (const member of monster.team.members) {
-      const age = ageFromBirthDate(member.user.birthDate);
-      const candidates = await prisma.huntChallenge.findMany({
-        where: {
-          active: true,
-          ageMin: { lte: age },
-          ageMax: { gte: age },
-          // Pentru monstri de tip rosu/gold cerem dificultate >=2.
-          difficulty: monster.type === 'red' || monster.type === 'gold' ? { gte: 2 } : undefined,
-        },
-        select: { id: true },
-      });
-      if (candidates.length === 0) {
-        throw badRequest(
-          'no_challenges_for_age',
-          `Nu am gasit challenge-uri pentru varsta ${age}`,
-        );
-      }
-      // Shuffle si ia primele perMember.
-      const shuffled = [...candidates].sort(() => Math.random() - 0.5);
-      for (let i = 0; i < perMember; i++) {
-        const c = shuffled[i % shuffled.length]!;
-        runsToCreate.push({
-          monsterId: mid,
-          userId: member.userId,
-          challengeId: c.id,
-        });
-      }
+    const age = ageFromBirthDate(myMembership.user.birthDate);
+    const candidates = await prisma.huntChallenge.findMany({
+      where: {
+        active: true,
+        ageMin: { lte: age },
+        ageMax: { gte: age },
+        // Pentru monstri de tip rosu/gold cerem dificultate >=2.
+        difficulty: monster.type === 'red' || monster.type === 'gold' ? { gte: 2 } : undefined,
+      },
+      select: { id: true },
+    });
+    if (candidates.length === 0) {
+      throw badRequest(
+        'no_challenges_for_age',
+        `Nu am gasit challenge-uri pentru varsta ${age}`,
+      );
     }
-
-    // Demo users (dev mode) — marcam run-urile lor CORRECT instant ca host-ul
-    // sa poata termina lupta fara sa astepte 3 boti. Detectie pe email pattern.
-    const demoUserIds = new Set(
-      monster.team.members
-        .filter((m) => m.user.email.startsWith('hunt-demo-') && m.user.email.endsWith('@unplgd.test'))
-        .map((m) => m.userId),
-    );
+    const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+    const runsToCreate: Prisma.HuntChallengeRunCreateManyInput[] = [];
+    for (let i = 0; i < perMonster; i++) {
+      const c = shuffled[i % shuffled.length]!;
+      runsToCreate.push({ monsterId: mid, userId: me, challengeId: c.id });
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.huntMonster.update({
@@ -864,17 +872,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
         },
       });
       await tx.huntChallengeRun.createMany({
-        data: runsToCreate.map((r) =>
-          demoUserIds.has(r.userId)
-            ? {
-                ...r,
-                outcome: ChallengeOutcome.CORRECT,
-                answer: '[demo]',
-                feedback: 'Demo a raspuns corect',
-                finishedAt: now,
-              }
-            : r,
-        ),
+        data: runsToCreate,
         skipDuplicates: true,
       });
     });
