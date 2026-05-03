@@ -222,15 +222,22 @@ const TYPES: SeedType[] = [
   },
 ];
 
-// Pet species — catalog pentru AI buddy. MVP: doar caine "Buddy" (default).
-// Iteratiile viitoare adauga pisica, dragon etc. cu voci distincte.
-// `voiceId` = identificator Microsoft Edge TTS (ro-RO neural voices).
+// Pet species — seedat doar default-ul ("dog") ca ensureDefaultPet sa aiba
+// referinta valida la register. Restul speciilor + cardurile NFC se adauga
+// manual in DB (Prisma Studio / SQL) cu UID-uri reale + imagePath catre PNG.
 type SeedSpecies = {
   slug: string;
   name: string;
   voiceId: string;
   systemHint: string;
   isDefault: boolean;
+  imagePath: string;
+  shortLore: string;
+  tone: string;
+  catchphrases: string[];
+  interests: string[];
+  minAge?: number;
+  unlockLevel?: number;
 };
 
 type SeedChallenge = {
@@ -314,11 +321,18 @@ const CHALLENGES: SeedChallenge[] = [
 const SPECIES: SeedSpecies[] = [
   {
     slug: 'dog',
-    name: 'Catelus',
+    name: 'Buddy',
     voiceId: 'ro-RO-EmilNeural',
     systemHint:
       'Esti un catelus jucaus si dragalas. Vorbesti scurt, vesel, dai labute. Folosesti diminutive ("povestioara", "prietenul meu"). Te entuziasmezi la lucruri noi.',
     isDefault: true,
+    imagePath: '/pets/dog.png',
+    shortLore: 'Cateluselul tau loial, mereu gata de joaca.',
+    tone: 'jucaus si afectuos',
+    catchphrases: ['Hau-hau!', 'Hai sa ne jucam!', 'Esti cel mai tare prieten!'],
+    interests: ['minge', 'plimbari', 'prajituri', 'mirosuri noi'],
+    minAge: 6,
+    unlockLevel: 1,
   },
 ];
 

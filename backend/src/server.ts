@@ -3,6 +3,8 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { createServer } from 'node:http';
 import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { pinoHttp } from 'pino-http';
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
@@ -18,6 +20,7 @@ import { storiesRouter } from './routes/stories.js';
 import { coCreationsRouter } from './routes/coCreations.js';
 import { usersRouter } from './routes/users.js';
 import { huntRouter } from './routes/hunt.js';
+import { petsRouter } from './routes/pets.js';
 import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
@@ -46,6 +49,13 @@ app.use(pinoHttp({ logger }));
 mkdirSync(env.TTS_CACHE_DIR, { recursive: true });
 app.use('/tts-cache', express.static(env.TTS_CACHE_DIR, { maxAge: '7d', immutable: true }));
 
+// PNG-uri pet species. Comise in repo (backend/public/pets/<slug>.png) ca
+// build-ul Docker sa le aiba pe loc, fara volum extern.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const petsImageDir = path.resolve(__dirname, '../public/pets');
+mkdirSync(petsImageDir, { recursive: true });
+app.use('/pets', express.static(petsImageDir, { maxAge: '30d', immutable: true }));
+
 app.use('/health', healthRouter);
 app.use('/auth', authRateLimit, authRouter);
 app.use('/me', meRouter);
@@ -57,6 +67,7 @@ app.use('/stories', storiesRouter);
 app.use('/co-creations', coCreationsRouter);
 app.use('/users', usersRouter);
 app.use('/hunt', huntRouter);
+app.use('/pets', petsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);

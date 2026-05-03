@@ -31,6 +31,7 @@ model User {
   avatar              Avatar?
   bracelet            NfcBracelet?
   pet                 Pet?
+  petCards            NfcPetCard[]
   stories             Story[]
   storyClaims         StoryClaim[]
   coCreationsAsA      CoCreation[]      @relation("CoCreationUserA")
@@ -200,28 +201,72 @@ model DailyInteraction {
 // TTS server-side (Microsoft Edge TTS pt MVP, voice clone post-MVP).
 // `systemHint` se concateneaza la system prompt-ul AI ca pet-ul sa aiba
 // personalitate distincta (ex: "ragusit, leneveste, da labute").
+//
+// `imagePath` = ruta relativa servita static la /pets/<file>.png (vizual la
+// picioarele avatarului pe home). `tone`, `catchphrases`, `interests`,
+// `shortLore` alimenteaza system prompt-ul AI buddy + sunt afisate user-ului
+// in card-detail. `minAge` filtreaza speciile potrivite pt copilul curent;
+// `unlockLevel` permite carduri "rare" deblocate la level mare.
 model PetSpecies {
-  id         String  @id @default(cuid())
-  slug       String  @unique
-  name       String
-  voiceId    String
-  systemHint String
-  isDefault  Boolean @default(false)
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  voiceId      String
+  systemHint   String
+  isDefault    Boolean  @default(false)
+  imagePath    String?
+  shortLore    String   @default("")
+  tone         String   @default("prietenos")
+  catchphrases String[] @default([])
+  interests    String[] @default([])
+  minAge       Int      @default(6)
+  unlockLevel  Int      @default(1)
 
-  pets Pet[]
+  pets  Pet[]
+  cards NfcPetCard[]
 }
 
-// Pet-ul fiecarui copil — agentul AI personalizat. Cream lazy la register cu
-// `species = default` (caine "Buddy"). Personalizare specie/nume in iteratia 2.
+// Pet-ul fiecarui copil — agentul AI personalizat ECHIPAT. 1:1 cu User.
+// `speciesId` = specia activa (poate fi schimbata cand user scaneaza alt card).
+// `name` = nickname personalizat (default "Buddy", schimbat la primul card scanat
+// sau de user). `bondXp` creste cu interactiunile (chat, prieteni, jocuri) —
+// pet-ul "evolueaza" odata cu user-ul.
+//
+// Sursa de adevar pentru: AI buddy in stories, AI chat home, vizual la picioare.
 model Pet {
   id        String   @id @default(cuid())
   userId    String   @unique
   speciesId String
   name      String   @default("Buddy")
+  bondXp    Int      @default(0)
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   species PetSpecies @relation(fields: [speciesId], references: [id])
+}
+
+// Card NFC fizic colectabil. UID-ul e hardcodat de fabrica si unic global.
+// Cand un user scaneaza un card neclamat, devine ownerId. Re-scan = doar
+// equip (Pet.speciesId schimbat la specia cardului). Un user are O colectie
+// (multe carduri), dar o SINGURA specie activa pe Pet la un moment dat.
+//
+// `nickname` = numele dat de user acelui card specific (ramane chiar daca
+// nu e echipat). La equip, Pet.name se sincronizeaza cu nickname-ul (sau
+// numele speciei daca null).
+model NfcPetCard {
+  id        String    @id @default(cuid())
+  uid       String    @unique
+  speciesId String
+  ownerId   String?
+  nickname  String?
+  claimedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  species PetSpecies @relation(fields: [speciesId], references: [id])
+  owner   User?      @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId])
 }
 
 // Poveste creata de copil impreuna cu pet-ul (chat conversational, 1/zi/copil).
