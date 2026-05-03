@@ -1,5 +1,10 @@
-import { useEffect, useRef } from 'react';
-import { StyleSheet } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
 import { Renderer } from 'expo-three';
 import { DeviceMotion } from 'expo-sensors';
@@ -10,6 +15,7 @@ type Props = {
   myCoords: { lat: number; lng: number };
   monsterCoords: { lat: number; lng: number };
   monsterColor: string;
+  bubbleText?: string | null;
 };
 
 // AR ancorat pe busola+GPS: monstrul are pozitie fixa in lume calculata din
@@ -23,9 +29,35 @@ const PHONE_HEIGHT_M = 1.5;
 const RENDER_DIST_CAP_M = 6;
 const RENDER_DIST_MIN_M = 2;
 
-export function ARMonster({ myCoords, monsterCoords, monsterColor }: Props) {
+export function ARMonster({ myCoords, monsterCoords, monsterColor, bubbleText }: Props) {
   const orientationRef = useRef({ alpha: 0, beta: 0, gamma: 0 });
   const rafRef = useRef<number | null>(null);
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  // Pozitia bula pe ecran — scrisa la 60fps in ref din loop-ul de randare,
+  // citita la 20Hz in setState ca sa nu spamam React. Suficient de smooth
+  // pentru o bula care urmareste un object aproape stationar.
+  const bubblePosRef = useRef<{ x: number; y: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    visible: false,
+  });
+  const [bubble, setBubble] = useState<{ x: number; y: number; visible: boolean }>({
+    x: 0,
+    y: 0,
+    visible: false,
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cur = bubblePosRef.current;
+      setBubble((prev) =>
+        prev.x === cur.x && prev.y === cur.y && prev.visible === cur.visible
+          ? prev
+          : { ...cur },
+      );
+    }, 50);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let sub: { remove: () => void } | null = null;
@@ -167,6 +199,7 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor }: Props) {
     // q1 = -90deg around X — face camera sa "iasa" prin spatele telefonului.
     const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
     const euler = new THREE.Euler();
+    const bubbleAnchor = new THREE.Vector3();
 
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
@@ -190,6 +223,25 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor }: Props) {
       const dz = camera.position.z - monsterGroup.position.z;
       monsterGroup.rotation.y = Math.atan2(dx, dz);
 
+      // Proiectie pozitie deasupra capului in screen-space pentru bula. Punctul
+      // proiectat e tipul "vorf al cozii" — bula sta deasupra cu offset fix.
+      bubbleAnchor.set(
+        monsterGroup.position.x,
+        monsterGroup.position.y + 1.0,
+        monsterGroup.position.z,
+      );
+      bubbleAnchor.project(camera);
+      const visible =
+        bubbleAnchor.z > -1 &&
+        bubbleAnchor.z < 1 &&
+        bubbleAnchor.x > -1.4 &&
+        bubbleAnchor.x < 1.4;
+      bubblePosRef.current = {
+        x: (bubbleAnchor.x * 0.5 + 0.5) * screenW,
+        y: (-bubbleAnchor.y * 0.5 + 0.5) * screenH,
+        visible,
+      };
+
       renderer.render(scene, camera);
       gl.endFrameEXP();
     };
@@ -197,6 +249,62 @@ export function ARMonster({ myCoords, monsterCoords, monsterColor }: Props) {
   };
 
   return (
-    <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+      {bubbleText && bubble.visible && (
+        <View
+          style={[
+            styles.bubble,
+            {
+              left: bubble.x - BUBBLE_W / 2,
+              top: bubble.y - BUBBLE_OFFSET_Y,
+            },
+          ]}
+        >
+          <Text style={styles.bubbleText}>{bubbleText}</Text>
+          <View style={styles.bubbleTail} />
+        </View>
+      )}
+    </View>
   );
 }
+
+const BUBBLE_W = 240;
+const BUBBLE_OFFSET_Y = 110;
+
+const styles = StyleSheet.create({
+  bubble: {
+    position: 'absolute',
+    width: BUBBLE_W,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    alignItems: 'center',
+  },
+  bubbleText: {
+    color: '#1a1a24',
+    fontSize: 15,
+    fontWeight: '800',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  bubbleTail: {
+    position: 'absolute',
+    bottom: -12,
+    alignSelf: 'center',
+    width: 0,
+    height: 0,
+    borderLeftWidth: 12,
+    borderRightWidth: 12,
+    borderTopWidth: 14,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: 'rgba(255,255,255,0.96)',
+  },
+});

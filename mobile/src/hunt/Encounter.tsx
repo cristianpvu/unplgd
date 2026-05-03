@@ -160,6 +160,7 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
               myCoords={myCoords}
               monsterCoords={monsterCoords}
               monsterColor={MONSTER_COLOR[monsterType]}
+              bubbleText={currentRun?.challenge.prompt ?? null}
             />
           )}
         </>
@@ -257,8 +258,6 @@ function ChallengePanel({
   if (run.challenge.type === 'mcq' && run.challenge.options) {
     return (
       <View style={styles.panelInner}>
-        <Text style={styles.promptLabel}>Provocarea ta</Text>
-        <Text style={styles.promptText}>{run.challenge.prompt}</Text>
         <View style={styles.mcqGrid}>
           {run.challenge.options.map((opt) => (
             <Pressable
@@ -282,8 +281,6 @@ function ChallengePanel({
   if (run.challenge.type === 'counting') {
     return (
       <View style={styles.panelInner}>
-        <Text style={styles.promptLabel}>Provocarea ta</Text>
-        <Text style={styles.promptText}>{run.challenge.prompt}</Text>
         <Pressable
           onPress={onTap}
           disabled={submitting}
@@ -312,8 +309,6 @@ function ChallengePanel({
   if (run.challenge.type === 'riddle') {
     return (
       <View style={styles.panelInner}>
-        <Text style={styles.promptLabel}>Provocarea ta</Text>
-        <Text style={styles.promptText}>{run.challenge.prompt}</Text>
         <View style={styles.inputRow}>
           <MicButton
             disabled={submitting}
