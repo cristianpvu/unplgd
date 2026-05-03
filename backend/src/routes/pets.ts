@@ -4,6 +4,8 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
+import { getSignedUrl, isStorageConfigured } from '../lib/storage/gcs.js';
+import { logger } from '../lib/logger.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -30,7 +32,35 @@ type SpeciesSummary = {
   interests: string[];
 };
 
-function speciesDto(s: {
+// Rezolva `imagePath` din DB intr-un URL utilizabil de mobile.
+// Format suportat:
+//  - `https://...` sau `http://...` → URL absolut (CDN/extern), pasat ca atare
+//  - `/pets/foo.png` → ruta servita static din backend/public/pets/, pasata
+//    ca atare; mobile-ul prepend-uieste API_BASE_URL
+//  - `gs://<bucket>/<key>` sau `<key>` (orice altceva) → key GCS pe bucket-ul
+//    privat (cel folosit la co-creations), generam signed URL cu TTL 1h
+async function resolveImagePath(imagePath: string | null): Promise<string | null> {
+  if (!imagePath) return null;
+  if (/^https?:\/\//i.test(imagePath)) return imagePath;
+  if (imagePath.startsWith('/')) return imagePath;
+
+  if (!isStorageConfigured()) {
+    logger.warn({ imagePath }, 'pet imagePath looks like GCS key but storage not configured');
+    return null;
+  }
+
+  const key = imagePath.startsWith('gs://')
+    ? imagePath.replace(/^gs:\/\/[^/]+\//, '')
+    : imagePath;
+  try {
+    return await getSignedUrl(key, 3600);
+  } catch (err) {
+    logger.error({ err, imagePath }, 'Failed to sign pet image URL');
+    return null;
+  }
+}
+
+async function speciesDto(s: {
   slug: string;
   name: string;
   imagePath: string | null;
@@ -38,11 +68,11 @@ function speciesDto(s: {
   tone: string;
   catchphrases: string[];
   interests: string[];
-}): SpeciesSummary {
+}): Promise<SpeciesSummary> {
   return {
     slug: s.slug,
     name: s.name,
-    imagePath: s.imagePath,
+    imagePath: await resolveImagePath(s.imagePath),
     shortLore: s.shortLore,
     tone: s.tone,
     catchphrases: s.catchphrases,
@@ -68,20 +98,25 @@ petsRouter.get('/me', async (req, res, next) => {
       orderBy: { claimedAt: 'asc' },
     });
 
+    const [petSpecies, cardSpecies] = await Promise.all([
+      speciesDto(pet.species),
+      Promise.all(cards.map((c) => speciesDto(c.species))),
+    ]);
+
     res.json({
       pet: {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
-        species: speciesDto(pet.species),
+        species: petSpecies,
       },
-      cards: cards.map((c) => ({
+      cards: cards.map((c, i) => ({
         id: c.id,
         uid: c.uid,
         nickname: c.nickname,
         claimedAt: c.claimedAt,
         equipped: c.speciesId === pet.speciesId,
-        species: speciesDto(c.species),
+        species: cardSpecies[i]!,
       })),
     });
   } catch (e) {
@@ -136,13 +171,18 @@ petsRouter.post('/scan', async (req, res, next) => {
       include: { species: true },
     });
 
+    const [petSpecies, cardSpeciesDto] = await Promise.all([
+      speciesDto(pet.species),
+      speciesDto(updatedCard.species),
+    ]);
+
     res.json({
       newClaim: wasUnclaimed,
       pet: {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
-        species: speciesDto(pet.species),
+        species: petSpecies,
       },
       card: {
         id: updatedCard.id,
@@ -150,7 +190,7 @@ petsRouter.post('/scan', async (req, res, next) => {
         nickname: updatedCard.nickname,
         claimedAt: updatedCard.claimedAt,
         equipped: true,
-        species: speciesDto(updatedCard.species),
+        species: cardSpeciesDto,
       },
     });
   } catch (e) {
@@ -179,12 +219,17 @@ petsRouter.post('/equip', async (req, res, next) => {
       include: { species: true },
     });
 
+    const [petSpecies, cardSpeciesDto] = await Promise.all([
+      speciesDto(pet.species),
+      speciesDto(card.species),
+    ]);
+
     res.json({
       pet: {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
-        species: speciesDto(pet.species),
+        species: petSpecies,
       },
       card: {
         id: card.id,
@@ -192,7 +237,7 @@ petsRouter.post('/equip', async (req, res, next) => {
         nickname: card.nickname,
         claimedAt: card.claimedAt,
         equipped: true,
-        species: speciesDto(card.species),
+        species: cardSpeciesDto,
       },
     });
   } catch (e) {
@@ -235,7 +280,7 @@ petsRouter.patch('/cards/:id', async (req, res, next) => {
         nickname: updated.nickname,
         claimedAt: updated.claimedAt,
         equipped: pet.speciesId === updated.speciesId,
-        species: speciesDto(updated.species),
+        species: await speciesDto(updated.species),
       },
     });
   } catch (e) {

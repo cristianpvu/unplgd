@@ -1,10 +1,9 @@
 // Dev one-off: ataseaza un pet "Darth Vader" user-ului office@dinedroid.com.
 // Ruleaza: npx tsx scripts/seedDevPet.ts
 //
-// Nota: URL-ul GCS public e "https://storage.googleapis.com/<bucket>/<path>"
-// (NU "storage.cloud.google.com" care necesita login Google in browser).
-// Obiectul trebuie sa aiba allUsers:objectViewer ca Image-ul din mobile sa-l
-// poata incarca anonim.
+// `imagePath` = key GCS pe bucket-ul privat (acelasi folosit de co-creations).
+// Backend-ul (routes/pets.ts) genereaza signed URL la fiecare GET /pets/me
+// folosind getSignedUrl, deci bucket-ul NU trebuie sa fie public.
 
 import { PrismaClient } from '@prisma/client';
 
@@ -19,7 +18,7 @@ const SPECIES = {
   systemHint:
     'Esti Darth Vader, sever dar protector. Vorbesti grav si masurat, cu pauze. Folosesti metafore din spatiu si destin. Nu esti rau cu copilul — il indrumi cu autoritate calma.',
   isDefault: false,
-  imagePath: 'https://storage.googleapis.com/unplgd/pets/PngItem_1495363-removebg-preview.png',
+  imagePath: 'pets/PngItem_1495363-removebg-preview.png',
   shortLore: 'Lord-ul Sith devenit prieten — te invata despre putere si echilibru.',
   tone: 'grav, calm, autoritar',
   catchphrases: ['Asa este destinul tau.', 'Forta e cu tine.', 'Respira adanc, tinere.'],
