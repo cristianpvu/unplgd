@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import Svg, { Circle, Path, SvgXml } from 'react-native-svg';
 import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
 import { listFriends } from '../../src/api/friends';
+import { getMyPet, petImageUrl } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
@@ -46,6 +48,9 @@ export default function Home() {
     queryFn: listFriends,
     enabled: sheet === 'friends',
   });
+  const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
+  const petImage = petImageUrl(petQuery.data?.pet.species.imagePath ?? null);
+  const petName = petQuery.data?.pet.name ?? null;
 
   // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
   // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
@@ -84,13 +89,29 @@ export default function Home() {
           Salut{me ? `, ${me.name}` : ''}!
         </Text>
 
-        <Pressable
-          style={styles.scene}
-          onPressIn={() => avatarRef.current?.bounce()}
-          onPress={() => router.push('/(app)/avatar-edit')}
-        >
-          <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={420} />
-        </Pressable>
+        <View style={styles.scene}>
+          <View style={styles.avatarStage}>
+            <Pressable
+              onPressIn={() => avatarRef.current?.bounce()}
+              onPress={() => router.push('/(app)/avatar-edit')}
+            >
+              <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={420} />
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.petContainer, pressed && styles.petContainerPressed]}
+              onPress={() => router.push('/(app)/pets')}
+              hitSlop={8}
+            >
+              {petImage ? (
+                <Image source={{ uri: petImage }} style={styles.petImage} resizeMode="contain" />
+              ) : (
+                <View style={[styles.petImage, styles.petPlaceholder]}>
+                  <Text style={styles.petPlaceholderEmoji}>🐾</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        </View>
 
         {isPending && <ActivityIndicator color={colors.accent} />}
         {error && (
@@ -365,6 +386,26 @@ const styles = StyleSheet.create({
   },
 
   scene: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // Stage pt avatar + pet absolut pozitionat la nivelul picioarelor.
+  // Avatar-ul ramane centrat normal, pet-ul "iese" in dreapta jos.
+  avatarStage: { position: 'relative' },
+  petContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: -84,
+    alignItems: 'center',
+  },
+  petContainerPressed: { opacity: 0.7, transform: [{ scale: 0.96 }] },
+  petImage: { width: 96, height: 96 },
+  petPlaceholder: {
+    backgroundColor: colors.card,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petPlaceholderEmoji: { fontSize: 36 },
+  petName: { color: colors.text, fontSize: 13, fontWeight: '700' },
 
   playButton: {
     flexDirection: 'row',
