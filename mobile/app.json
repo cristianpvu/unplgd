@@ -69,7 +69,9 @@
         {
           "microphonePermission": "Buddy te asculta cand creezi povesti — vocea ramane pe telefon.",
           "speechRecognitionPermission": "Recunoastem vocea ta ca sa o transformam in text pentru Buddy.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ],
       "expo-router",
@@ -92,7 +94,8 @@
           "photosPermission": "Alegi din galerie poza desenului pe care vrei sa-l trimiti.",
           "cameraPermission": "Folosim camera ca sa fotografiezi desenul tau si sa-l transformam intr-o ilustratie magica."
         }
-      ]
+      ],
+      "expo-asset"
     ]
   }
 }

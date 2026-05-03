@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -23,6 +21,7 @@ import {
 } from '../api/hunt';
 import { colors } from '../theme/colors';
 import { MicButton } from '../ui/MicButton';
+import { ARMonster } from './ARMonster';
 
 const MONSTER_COLOR: Record<MonsterType, string> = {
   green: '#7DCEA0',
@@ -55,17 +54,6 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
   const [draftAnswer, setDraftAnswer] = useState('');
   const [now, setNow] = useState(Date.now());
   const sttBaseRef = useRef('');
-
-  // Float animation pe sprite (sus-jos uniform).
-  const float = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, { toValue: 1, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
-        Animated.timing(float, { toValue: 0, duration: 1500, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
-      ]),
-    ).start();
-  }, [float]);
 
   // Auto-engage la deschidere — backend-ul valideaza distanta.
   const engageMut = useMutation({
@@ -161,17 +149,32 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
   }
 
   const monsterType = engaged?.monster?.type ?? 'green';
-  const floatY = float.interpolate({ inputRange: [0, 1], outputRange: [-12, 12] });
 
   return (
     <View style={styles.container}>
       {permission?.granted ? (
-        <CameraView style={StyleSheet.absoluteFill} facing="back" />
+        <>
+          <CameraView style={StyleSheet.absoluteFill} facing="back" />
+          {engaged && (
+            <ARMonster
+              myCoords={myCoords}
+              monsterCoords={monsterCoords}
+              monsterColor={MONSTER_COLOR[monsterType]}
+            />
+          )}
+        </>
       ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0E0E10' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0E0E10' }]}>
+          {/* Fallback fara camera: bula colorata + emoji ca placeholder. */}
+          <View style={styles.fallbackBubbleWrap} pointerEvents="none">
+            <View style={[styles.spriteBg, { backgroundColor: MONSTER_COLOR[monsterType] }]}>
+              <Text style={styles.spriteEmoji}>{MONSTER_EMOJI[monsterType]}</Text>
+            </View>
+          </View>
+        </View>
       )}
 
-      <View style={styles.overlay}>
+      <View style={styles.overlay} pointerEvents="box-none">
         <View style={[styles.headerRow, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.timer}>
             {remainingSec > 0 ? `${remainingSec}s` : 'Timpul a expirat'}
@@ -181,14 +184,14 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
           </Pressable>
         </View>
 
-        <Animated.View style={[styles.spriteWrap, { transform: [{ translateY: floatY }] }]}>
-          <View style={[styles.spriteBg, { backgroundColor: MONSTER_COLOR[monsterType] }]}>
-            <Text style={styles.spriteEmoji}>{MONSTER_EMOJI[monsterType]}</Text>
-          </View>
-          {engaged?.monster && (
+        {engaged?.monster && (
+          <View style={styles.nameWrap} pointerEvents="none">
             <Text style={styles.monsterName}>{engaged.monster.name}</Text>
-          )}
-        </Animated.View>
+          </View>
+        )}
+
+        {/* Spacer — impinge bottomCard la baza ecranului. */}
+        <View style={{ flex: 1 }} pointerEvents="none" />
 
         <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 18 }]}>
           {currentRun ? (
@@ -402,7 +405,19 @@ const styles = StyleSheet.create({
   },
   closeIcon: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
 
-  spriteWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  fallbackBubbleWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nameWrap: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
   spriteBg: {
     width: 180,
     height: 180,
