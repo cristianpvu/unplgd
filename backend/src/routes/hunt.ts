@@ -544,6 +544,7 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
       teams: session.teams.map((t) => ({
         id: t.id,
         name: t.name,
+        nameSet: t.nameSet,
         score: t.score,
         monstersDefeated: t.monstersDefeated,
         memberCount: t.members.length,
@@ -567,6 +568,42 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
           }
         : null,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /hunt/sessions/:id/teams/:teamId/name
+// Liderul echipei alege/schimba numele dupa Start. Pana se face, membrii vad
+// "asteptam pe lider sa numeasca echipa".
+const teamNameSchema = z.object({
+  name: z.string().trim().min(1).max(30),
+});
+huntRouter.post('/sessions/:id/teams/:teamId/name', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id, teamId } = req.params;
+    if (!id || !teamId) throw badRequest('missing_id', 'id-uri lipsa');
+    const { name } = teamNameSchema.parse(req.body);
+
+    const team = await prisma.huntTeam.findUnique({
+      where: { id: teamId },
+      select: { id: true, sessionId: true, leaderId: true },
+    });
+    if (!team || team.sessionId !== id) {
+      throw notFound('team_not_found', 'Echipa inexistenta');
+    }
+    if (team.leaderId !== me) {
+      throw forbidden('leader_only', 'Doar liderul poate numi echipa');
+    }
+
+    await prisma.huntTeam.update({
+      where: { id: teamId },
+      data: { name, nameSet: true },
+    });
+
+    emitHuntUpdate(id, 'team_named');
+    res.json({ id: teamId, name, nameSet: true });
   } catch (e) {
     next(e);
   }

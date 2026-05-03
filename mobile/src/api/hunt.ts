@@ -32,6 +32,7 @@ export type HuntLobbyMemberDto = {
 export type HuntTeamDto = {
   id: string;
   name: string;
+  nameSet: boolean;
   score: number;
   monstersDefeated: number;
   memberCount: number;
@@ -235,6 +236,13 @@ export function finalizeMonster(sessionId: string, monsterId: string) {
   return api<FinalizeResponse>(
     `/hunt/sessions/${sessionId}/monsters/${monsterId}/finalize`,
     { method: 'POST' },
+  );
+}
+
+export function setTeamName(sessionId: string, teamId: string, name: string) {
+  return api<{ id: string; name: string; nameSet: boolean }>(
+    `/hunt/sessions/${sessionId}/teams/${teamId}/name`,
+    { method: 'POST', body: { name } },
   );
 }
 

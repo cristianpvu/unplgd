@@ -7,7 +7,8 @@ export type HuntUpdateReason =
   | 'cancelled'
   | 'monster_engaged'
   | 'monster_finalized'
-  | 'run_answered';
+  | 'run_answered'
+  | 'team_named';
 
 // Notifica toti subscriberii la sesiune ca state-ul s-a schimbat. Payload-ul e
 // minimal (reason + sessionId) — clientul re-fetch-uieste GET /hunt/sessions/:id

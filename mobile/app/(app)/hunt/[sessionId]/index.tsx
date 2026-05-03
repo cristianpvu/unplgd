@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +20,7 @@ import {
   getSessionState,
   leaveSession,
   postHeartbeat,
+  setTeamName,
   startSession,
   type HeartbeatResponse,
   type HuntSessionState,
@@ -94,6 +96,8 @@ export default function HuntSessionScreen() {
     return <LobbyView session={session} sessionId={sessionId} qc={qc} />;
   }
 
+  const myTeam = session.teams.find((t) => t.id === session.myTeamId);
+
   // Modelul "team-leader-only-phone": doar liderul echipei (random la Start)
   // vede AR + harta + lupta. Restul sunt fizic langa el si vad un ecran simplu
   // (timer + clasament). Liderul nu e neaparat host-ul global al sesiunii.
@@ -101,7 +105,94 @@ export default function HuntSessionScreen() {
     return <MemberWaitingView session={session} />;
   }
 
+  // Liderul: inainte sa joace, alege/confirma numele echipei. Pana atunci
+  // membrii vad "asteptam pe lider sa numeasca echipa".
+  if (myTeam && !myTeam.nameSet) {
+    return (
+      <TeamNamingView
+        session={session}
+        sessionId={sessionId}
+        team={myTeam}
+        qc={qc}
+      />
+    );
+  }
+
   return <ActiveView session={session} sessionId={sessionId} />;
+}
+
+type ActiveSessionState = Extract<
+  HuntSessionState,
+  { status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' }
+>;
+type ActiveTeam = ActiveSessionState['teams'][number];
+
+function TeamNamingView({
+  session,
+  sessionId,
+  team,
+  qc,
+}: {
+  session: ActiveSessionState;
+  sessionId: string;
+  team: ActiveTeam;
+  qc: ReturnType<typeof useQueryClient>;
+}) {
+  const [draft, setDraft] = useState<string>(team.name ?? '');
+  const mut = useMutation({
+    mutationFn: (name: string) => setTeamName(sessionId, team.id, name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['hunt', 'session', sessionId] });
+    },
+    onError: (err: any) => Alert.alert('Hopa', err?.message ?? 'Nu pot salva numele'),
+  });
+
+  const trimmed = draft.trim();
+  const canSubmit = trimmed.length >= 1 && trimmed.length <= 30 && !mut.isPending;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
+      <ScrollView contentContainerStyle={styles.namingScroll}>
+        <View style={styles.namingHero}>
+          <Text style={styles.namingEmoji}>🎯</Text>
+          <Text style={styles.namingTitle}>Esti liderul echipei!</Text>
+          <Text style={styles.namingSub}>
+            Da-i un nume echipei tale. Apoi pornim vanatoarea — restul copiilor
+            stau langa tine si raspundeti impreuna.
+          </Text>
+        </View>
+
+        <View style={styles.namingCard}>
+          <Text style={styles.namingLabel}>Numele echipei</Text>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="ex. Vulturii, Echipa Norilor..."
+            placeholderTextColor={colors.textMuted}
+            maxLength={30}
+            autoFocus
+            style={styles.namingInput}
+          />
+          <Text style={styles.namingHint}>{trimmed.length}/30</Text>
+        </View>
+
+        <Pressable
+          onPress={() => canSubmit && mut.mutate(trimmed)}
+          disabled={!canSubmit}
+          style={({ pressed }) => [
+            styles.namingBtn,
+            !canSubmit && styles.namingBtnDisabled,
+            pressed && styles.btnPressed,
+          ]}
+        >
+          <Text style={styles.namingBtnText}>
+            {mut.isPending ? 'Salvez...' : 'Confirma si porneste'}
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
+  );
 }
 
 function MemberWaitingView({
@@ -133,10 +224,17 @@ function MemberWaitingView({
           <Text style={styles.memberHeroTitle}>
             Stai langa {session.myTeamLeader?.name ?? 'liderul echipei'}!
           </Text>
-          <Text style={styles.memberHeroSub}>
-            Vanatoarea se joaca pe telefonul lui. Ajutati-l sa raspunda la
-            intrebari — discutati impreuna ce varianta alege.
-          </Text>
+          {myTeam && !myTeam.nameSet ? (
+            <Text style={styles.memberHeroSub}>
+              {session.myTeamLeader?.name ?? 'Liderul'} alege un nume pentru
+              echipa voastra. Asteapta-l langa el.
+            </Text>
+          ) : (
+            <Text style={styles.memberHeroSub}>
+              Vanatoarea se joaca pe telefonul lui. Ajutati-l sa raspunda la
+              intrebari — discutati impreuna ce varianta alege.
+            </Text>
+          )}
           <View style={styles.memberTimerPill}>
             <Text style={styles.memberTimerLabel}>Timp ramas</Text>
             <Text style={styles.memberTimerText}>{formatTime(timeRemaining)}</Text>
@@ -706,6 +804,66 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   leaderScoreMine: { color: '#7DCEA0' },
+
+  // Team naming view — liderul alege numele echipei dupa Start.
+  namingScroll: { padding: 16, gap: 16 },
+  namingHero: {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    padding: 22,
+    alignItems: 'center',
+    gap: 6,
+  },
+  namingEmoji: { fontSize: 44 },
+  namingTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  namingSub: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  namingCard: {
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    padding: 16,
+    gap: 8,
+  },
+  namingLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  namingInput: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  namingHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  namingBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  namingBtnDisabled: { opacity: 0.4 },
+  namingBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
   // Member waiting view — telefonul kid-ului care e langa team-leader.
   memberScroll: { padding: 16, gap: 16 },
