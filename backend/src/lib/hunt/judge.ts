@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { anthropic, ANTHROPIC_MODEL } from '../ai/client.js';
+import { ANTHROPIC_MODEL } from '../ai/client.js';
+import { claudeMessages } from '../ai/usage.js';
 import { extractJsonBlock } from '../ai/jsonExtract.js';
 import { logger } from '../logger.js';
 
@@ -76,12 +77,12 @@ Raspuns asteptat: "${expected}"
 Raspunsul copilului: "${answer}"`;
 
   try {
-    const completion = await anthropic.messages.create({
+    const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 200,
       system: SYSTEM,
       messages: [{ role: 'user', content: userMessage }],
-    });
+    }, 'hunt_judge');
 
     const replyText = completion.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')

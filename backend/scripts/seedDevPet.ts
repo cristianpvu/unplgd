@@ -26,15 +26,11 @@ const SPECIES = {
   minAge: 8,
   unlockLevel: 1,
   // ElevenLabs voice id (Voice Library / Voice Design, free tier). Override la
-  // ELEVENLABS_VOICE_ID din env. Pipeline: TTS-ul iese cu aceasta voce, apoi
-  // (daca rvcModelUrl e setat) trecem prin RVC pentru nuanta extra.
+  // ELEVENLABS_VOICE_ID din env. Vocea e suficient de Vader-ish singura, nu
+  // mai aplicam RVC (era prea lent, 30-60s/reply, UX nasol pt copii).
   elevenVoiceId: 'b3j1IRiWblFiHqnXblvH',
-  // RVC overlay: model Vader Ultimate de pe HuggingFace. Pitch -1 (in
-  // semitones, via pitch_change_all) ca vocea Eleven sa coboare usor.
-  // Setarile RVC sunt blande (vezi voiceConvert.ts) — RVC adauga DOAR
-  // distorsiunea / accentul Vader peste vocea Eleven, nu o inlocuieste.
-  rvcModelUrl: 'https://huggingface.co/OwlCity/OwlCityRVC/resolve/main/Darth%20Vader%20Ultimate.zip',
-  rvcPitchShift: -1,
+  rvcModelUrl: null,
+  rvcPitchShift: 0,
 };
 
 async function main() {

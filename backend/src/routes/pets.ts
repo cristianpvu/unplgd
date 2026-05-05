@@ -8,7 +8,8 @@ import { ensureDefaultPet } from '../lib/pet.js';
 import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
 import { getSignedUrl, isStorageConfigured } from '../lib/storage/gcs.js';
 import { logger } from '../lib/logger.js';
-import { anthropic, ANTHROPIC_MODEL } from '../lib/ai/client.js';
+import { ANTHROPIC_MODEL } from '../lib/ai/client.js';
+import { claudeMessages } from '../lib/ai/usage.js';
 import { petChatSystemPrompt } from '../lib/ai/petChatPrompt.js';
 import {
   appendChatTurn,
@@ -367,7 +368,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
-    const completion = await anthropic.messages.create({
+    const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 400,
       system: petChatSystemPrompt({
@@ -382,7 +383,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
         childAge: calcAge(user.birthDate),
       }),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
-    });
+    }, 'pet_chat');
 
     const replyText = completion.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')

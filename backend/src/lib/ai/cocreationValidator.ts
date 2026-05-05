@@ -1,5 +1,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { anthropic, ANTHROPIC_MODEL } from './client.js';
+import { ANTHROPIC_MODEL } from './client.js';
+import { claudeMessages } from './usage.js';
 import { extractJsonBlock } from './jsonExtract.js';
 import { coCreationValidatorPrompt } from './cocreationPrompts.js';
 
@@ -30,7 +31,7 @@ export async function validateCoCreation(
   storyTitle: string,
   storyBody: string,
 ): Promise<CoCreationValidation> {
-  const completion = await anthropic.messages.create({
+  const completion = await claudeMessages({
     model: ANTHROPIC_MODEL,
     max_tokens: 512,
     system: coCreationValidatorPrompt(storyTitle, storyBody),
@@ -49,7 +50,7 @@ export async function validateCoCreation(
         ],
       },
     ],
-  });
+  }, 'cocreation_validate');
 
   const replyText = completion.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')

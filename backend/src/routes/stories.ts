@@ -3,7 +3,8 @@ import { z } from 'zod';
 import type Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { anthropic, ANTHROPIC_MODEL } from '../lib/ai/client.js';
+import { ANTHROPIC_MODEL } from '../lib/ai/client.js';
+import { claudeMessages } from '../lib/ai/usage.js';
 import {
   storyCreateSystemPrompt,
   storyExtendSystemPrompt,
@@ -87,7 +88,7 @@ storiesRouter.post('/', async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
-    const completion = await anthropic.messages.create({
+    const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyCreateSystemPrompt(petContext, user.name),
@@ -95,7 +96,7 @@ storiesRouter.post('/', async (req, res, next) => {
         role: t.role,
         content: t.content,
       })),
-    });
+    }, 'story_create');
 
     const replyText = completion.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -575,7 +576,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
-    const completion = await anthropic.messages.create({
+    const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyVerifySystemPrompt(
@@ -585,7 +586,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
         keyFacts,
       ),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
-    });
+    }, 'story_verify');
 
     const replyText = completion.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -782,7 +783,7 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
-    const completion = await anthropic.messages.create({
+    const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyExtendSystemPrompt(
@@ -791,7 +792,7 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
         ancestry.map((c) => ({ authorName: c.authorName, body: c.body })),
       ),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
-    });
+    }, 'story_extend');
 
     const replyText = completion.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')

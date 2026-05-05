@@ -63,6 +63,7 @@ services:
       REPLICATE_API_TOKEN: ${REPLICATE_API_TOKEN:-}
       REPLICATE_RVC_VERSION: ${REPLICATE_RVC_VERSION:-bbdb9b991f627b94d5fa92f0a3eb4037f224bb79cf56ff46b70afe84ce7bb646}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      ADMIN_KEY: ${ADMIN_KEY:-}
     volumes:
       - unplgd_tts_cache:/data/tts-cache
     ports:

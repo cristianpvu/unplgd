@@ -53,6 +53,11 @@ const schema = z.object({
   // intermediar din /tts-cache/<hash>.mp3 (containerul Docker e in spatele
   // nginx la api-unplgd.dinedroid.com). Daca lipseste, RVC e dezactivat.
   PUBLIC_BASE_URL: z.string().url().optional(),
+  // Cheie secreta pentru endpoint-uri admin debug (ex. /admin/ai-usage). Nu e
+  // JWT — doar un random string pe care doar tu il stii. Pus in .env, accesezi
+  // din browser cu ?key=<secret>. Daca lipseste, endpoint-urile admin sunt
+  // dezactivate (raspund 503).
+  ADMIN_KEY: z.string().optional(),
   // Mod dev pentru hunt: deblocheaza endpoint-ul /hunt/dev/quick-here care
   // creeaza pe loc o sesiune de test cu parc fictiv la coords date + 3 demo
   // useri + monstri spawn-ati in jurul tau. Pentru testare pe device fara teren.
