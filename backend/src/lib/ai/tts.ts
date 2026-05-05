@@ -61,28 +61,41 @@ export type RvcOverlay = {
   pitchShift: number;
 };
 
+export type TtsOptions = {
+  // Per-species ElevenLabs voice override. Cand setat → forteaza ElevenLabs
+  // chiar daca TTS_PROVIDER=edge (cazul Vader: Edge n-are voce dramatica, dar
+  // ElevenLabs are voci comunitare deep). Daca null → cade pe TTS_PROVIDER.
+  elevenVoiceId?: string | null;
+  // RVC peste TTS (independent de provider). Optional, default off.
+  rvc?: RvcOverlay;
+};
+
 /**
  * Sintetizeaza textul si returneaza URL-ul MP3 cache-uit + provider-ul folosit.
  *
  * Pipeline:
- *  1. TTS de baza (Edge sau ElevenLabs) → MP3 in cache local.
- *  2. Daca `rvc` e setat SI Replicate e configurat SI PUBLIC_BASE_URL e setat:
- *     trimitem MP3-ul la Replicate cu modelul .zip al personajului, descarcam
- *     output-ul, il salvam intr-un al doilea fisier de cache (hash combinat).
- *  3. Returnam URL-ul final (post-RVC daca rvc, altfel TTS-ul direct).
+ *  1. TTS de baza:
+ *     - daca `opts.elevenVoiceId` setat → ElevenLabs cu acea voce (overide)
+ *     - altfel TTS_PROVIDER (eleven cu env voice, sau edge cu `voiceId`)
+ *  2. RVC overlay optional (daca `opts.rvc` setat + Replicate configurat).
  *
- * Cache: sha256 pe (provider, voiceId, text) pt baza, sha256 pe (provider,
- * voiceId, text, rvcUrl, pitchShift) pt output-ul RVC. Al doilea play e gratis.
+ * Cache local pe sha256 — al doilea play al aceluiasi text+voce e gratis.
  */
 export async function synthesizeTts(
   text: string,
   voiceId: string,
-  rvc?: RvcOverlay,
+  opts: TtsOptions = {},
 ): Promise<TtsResult> {
   // Step 1 — TTS de baza
   let baseUrlPath: string;
   let provider: 'eleven' | 'edge';
-  if (env.TTS_PROVIDER === 'eleven') {
+  if (opts.elevenVoiceId) {
+    if (!env.ELEVENLABS_API_KEY) {
+      throw new Error('elevenVoiceId setat pe specie dar ELEVENLABS_API_KEY lipseste in env');
+    }
+    baseUrlPath = await synthesizeEleven(text, opts.elevenVoiceId);
+    provider = 'eleven';
+  } else if (env.TTS_PROVIDER === 'eleven') {
     if (!env.ELEVENLABS_API_KEY) {
       throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_API_KEY lipseste');
     }
@@ -95,6 +108,7 @@ export async function synthesizeTts(
     baseUrlPath = await synthesizeEdge(text, voiceId);
     provider = 'edge';
   }
+  const rvc = opts.rvc;
 
   // Step 2 — RVC overlay (optional). Daca lipsesc preconditii, livram TTS direct.
   if (!rvc) return { urlPath: baseUrlPath, provider, rvcApplied: false };

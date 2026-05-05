@@ -229,6 +229,11 @@ model PetSpecies {
   // Semitone shift aplicat in RVC. Pt voce grava (Vader) -3 / -4. Pt voce de
   // copil (Stitch) +2 / +3. 0 = fara shift.
   rvcPitchShift Int     @default(0)
+  // ElevenLabs voice id per specie (override la ELEVENLABS_VOICE_ID din env).
+  // Cand setat, sintetiza folosind aceasta voce (chiar daca TTS_PROVIDER=edge
+  // global). Util pt impersonari: Vader = voce dark masculine din Voice Library,
+  // Stitch = voce expresiva, etc.
+  elevenVoiceId String?
 
   pets  Pet[]
   cards NfcPetCard[]

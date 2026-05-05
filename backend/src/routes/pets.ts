@@ -398,13 +398,15 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     let replyAudioUrl: string | null = null;
     let ttsProvider: string | null = null;
     try {
-      const rvc = pet.species.rvcModelUrl
-        ? {
-            modelZipUrl: pet.species.rvcModelUrl,
-            pitchShift: pet.species.rvcPitchShift,
-          }
-        : undefined;
-      const tts = await synthesizeTts(replyText, pet.species.voiceId, rvc);
+      const tts = await synthesizeTts(replyText, pet.species.voiceId, {
+        elevenVoiceId: pet.species.elevenVoiceId,
+        rvc: pet.species.rvcModelUrl
+          ? {
+              modelZipUrl: pet.species.rvcModelUrl,
+              pitchShift: pet.species.rvcPitchShift,
+            }
+          : undefined,
+      });
       replyAudioUrl = tts.urlPath;
       ttsProvider = tts.provider;
     } catch (err) {
