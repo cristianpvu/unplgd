@@ -74,7 +74,8 @@ export async function convertVoiceRvc({
     body: JSON.stringify({
       version: env.REPLICATE_RVC_VERSION,
       input: {
-        // Sursa = audio MP3 publicat pe domeniul nostru (TTS-ul de baza).
+        // Sursa = audio MP3 publicat pe domeniul nostru (TTS-ul de baza,
+        // tipic ElevenLabs cu voce deja Vader-ish).
         song_input: audioUrl,
         // Schema reala (vezi openapi schema): "rvc_model si
         // custom_rvc_model_download_name TREBUIE sa coincida". Daca lipseste
@@ -83,17 +84,19 @@ export async function convertVoiceRvc({
         rvc_model: modelName,
         custom_rvc_model_download_name: modelName,
         custom_rvc_model_download_url: modelZipUrl,
-        // ATENTIE: pitch_change e in OCTAVE (1 octava = 12 semitones). NU
-        // pasam pitchShift aici — am rupe vocea. Pentru fine-tune in semitones
-        // foloseste pitch_change_all (vezi mai jos).
+        // ATENTIE: pitch_change e in OCTAVE. Pentru fine-tune in semitones
+        // foloseste pitch_change_all.
         pitch_change: 0,
         pitch_change_all: pitchShift,
-        // Setari blande pt voce vorbita (NU canta). Daca audio-ul de input e
-        // deja un MP3 de TTS curat, nu vrem sa amestecam cu vocala / instrumental.
-        index_rate: 0.5,
+        // Setari subtile: vocea de baza ElevenLabs e deja buna; RVC adauga
+        // doar nuanta "personaj" (mecanica, distorsiune Vader). Index mic =
+        // mai putin model RVC, mai mult Eleven. Protect mare = pastreaza
+        // breath / consoanele Eleven (claritate dictie). Tweak in DB daca
+        // vrei mai mult / mai putin RVC.
+        index_rate: 0.3,
         filter_radius: 3,
-        rms_mix_rate: 0.25,
-        protect: 0.33,
+        rms_mix_rate: 0.3,
+        protect: 0.45,
         pitch_detection_algorithm: 'rmvpe',
         // Fara reverb — adaugi tu manual daca vrei in post.
         reverb_size: 0,

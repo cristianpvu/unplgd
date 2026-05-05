@@ -25,15 +25,16 @@ const SPECIES = {
   interests: ['spatiu', 'destin', 'tehnica', 'curaj'],
   minAge: 8,
   unlockLevel: 1,
-  // ElevenLabs voice id (Voice Library, free tier). Override la
-  // ELEVENLABS_VOICE_ID din env — daca aceasta valoare e setata pe specie,
-  // chat-ul ruleaza ElevenLabs cu vocea asta indiferent de TTS_PROVIDER.
+  // ElevenLabs voice id (Voice Library / Voice Design, free tier). Override la
+  // ELEVENLABS_VOICE_ID din env. Pipeline: TTS-ul iese cu aceasta voce, apoi
+  // (daca rvcModelUrl e setat) trecem prin RVC pentru nuanta extra.
   elevenVoiceId: 'b3j1IRiWblFiHqnXblvH',
-  // RVC ramane disabled pe Vader — ElevenLabs cu voce custom suna mai bine
-  // si nu costa Replicate. Putem reactiva ulterior daca vrei impersonari mai
-  // agresive (combo Eleven → RVC).
-  rvcModelUrl: null,
-  rvcPitchShift: 0,
+  // RVC overlay: model Vader Ultimate de pe HuggingFace. Pitch -1 (in
+  // semitones, via pitch_change_all) ca vocea Eleven sa coboare usor.
+  // Setarile RVC sunt blande (vezi voiceConvert.ts) — RVC adauga DOAR
+  // distorsiunea / accentul Vader peste vocea Eleven, nu o inlocuieste.
+  rvcModelUrl: 'https://huggingface.co/OwlCity/OwlCityRVC/resolve/main/Darth%20Vader%20Ultimate.zip',
+  rvcPitchShift: -1,
 };
 
 async function main() {
