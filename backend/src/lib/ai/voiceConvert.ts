@@ -76,16 +76,18 @@ export async function convertVoiceRvc({
       input: {
         // Sursa = audio MP3 publicat pe domeniul nostru (TTS-ul de baza).
         song_input: audioUrl,
-        // rvc_model = numele folderului in /src/rvc_models/. Cand pasezi un
-        // nume CARE NU EXISTA in container, modelul descarca zip-ul de la
-        // custom_rvc_model_download_url si il extrage in /src/rvc_models/<name>/.
-        // (Documentatia lor recomanda "CUSTOM" + download_name, dar in
-        // implementarea reala download_name e ignorat — folosim direct numele
-        // derivat ca rvc_model. Vezi github.com/zsxkib/realistic-voice-cloning
-        // src/main.py daca se schimba.)
+        // Schema reala (vezi openapi schema): "rvc_model si
+        // custom_rvc_model_download_name TREBUIE sa coincida". Daca lipseste
+        // download_name, modelul nu descarca zip-ul si esueaza cu
+        // "/src/rvc_models/<name> does not exist". Pasam ambele = modelName.
         rvc_model: modelName,
+        custom_rvc_model_download_name: modelName,
         custom_rvc_model_download_url: modelZipUrl,
-        pitch_change: pitchShift,
+        // ATENTIE: pitch_change e in OCTAVE (1 octava = 12 semitones). NU
+        // pasam pitchShift aici — am rupe vocea. Pentru fine-tune in semitones
+        // foloseste pitch_change_all (vezi mai jos).
+        pitch_change: 0,
+        pitch_change_all: pitchShift,
         // Setari blande pt voce vorbita (NU canta). Daca audio-ul de input e
         // deja un MP3 de TTS curat, nu vrem sa amestecam cu vocala / instrumental.
         index_rate: 0.5,
