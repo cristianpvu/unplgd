@@ -374,6 +374,8 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
         name: pet.name,
         speciesName: pet.species.name,
         systemHint: pet.species.systemHint,
+        shortLore: pet.species.shortLore,
+        tone: pet.species.tone,
         catchphrases: pet.species.catchphrases,
         interests: pet.species.interests,
         childName: user.name,
