@@ -388,16 +388,17 @@ const styles = StyleSheet.create({
   scene: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   // Stage pt avatar + pet absolut pozitionat la nivelul picioarelor.
-  // Avatar-ul ramane centrat normal, pet-ul "iese" in dreapta jos.
+  // Pet-ul sta lipit langa picioare, putin overlap pe avatar ca sa para
+  // ca sunt impreuna pe podea, nu la distanta.
   avatarStage: { position: 'relative' },
   petContainer: {
     position: 'absolute',
-    bottom: 0,
-    right: -84,
+    bottom: 8,
+    right: -30,
     alignItems: 'center',
   },
   petContainerPressed: { opacity: 0.7, transform: [{ scale: 0.96 }] },
-  petImage: { width: 96, height: 96 },
+  petImage: { width: 120, height: 120 },
   petPlaceholder: {
     backgroundColor: colors.card,
     borderRadius: 48,
