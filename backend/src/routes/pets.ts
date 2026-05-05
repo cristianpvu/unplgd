@@ -398,7 +398,13 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     let replyAudioUrl: string | null = null;
     let ttsProvider: string | null = null;
     try {
-      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      const rvc = pet.species.rvcModelUrl
+        ? {
+            modelZipUrl: pet.species.rvcModelUrl,
+            pitchShift: pet.species.rvcPitchShift,
+          }
+        : undefined;
+      const tts = await synthesizeTts(replyText, pet.species.voiceId, rvc);
       replyAudioUrl = tts.urlPath;
       ttsProvider = tts.provider;
     } catch (err) {

@@ -39,6 +39,20 @@ const schema = z.object({
   // Default us-central1 (cea mai stabila + cea mai larga acoperire de modele).
   VERTEX_LOCATION: z.string().default('us-central1'),
   IMAGEN_MODEL: z.string().default('imagen-3.0-generate-002'),
+  // Replicate API token pentru RVC voice conversion (lib/ai/voiceConvert.ts).
+  // Optional — daca lipseste, RVC se ignora si TTS-ul de baza e livrat direct.
+  REPLICATE_API_TOKEN: z.string().optional(),
+  // Versiunea modelului RVC pe Replicate. zsxkib/realistic-voice-cloning —
+  // accepta custom .zip prin URL, ~$0.037/run. Pinned pe versiune ca update-uri
+  // breaking sa nu strice productia. Verifica replicate.com/zsxkib/realistic-voice-cloning
+  // pentru ultima versiune; tine la zi cand e cazul.
+  REPLICATE_RVC_VERSION: z
+    .string()
+    .default('bbdb9b991f627b94d5fa92f0a3eb4037f224bb79cf56ff46b70afe84ce7bb646'),
+  // URL public al backend-ului — folosit ca Replicate sa poata fetch-ui MP3-ul
+  // intermediar din /tts-cache/<hash>.mp3 (containerul Docker e in spatele
+  // nginx la api-unplgd.dinedroid.com). Daca lipseste, RVC e dezactivat.
+  PUBLIC_BASE_URL: z.string().url().optional(),
   // Mod dev pentru hunt: deblocheaza endpoint-ul /hunt/dev/quick-here care
   // creeaza pe loc o sesiune de test cu parc fictiv la coords date + 3 demo
   // useri + monstri spawn-ati in jurul tau. Pentru testare pe device fara teren.

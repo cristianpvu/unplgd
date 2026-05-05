@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import { env } from '../../env.js';
 import { logger } from '../logger.js';
+import { convertVoiceRvc, isRvcConfigured } from './voiceConvert.js';
 
 // URL prefix sub care servim cache-ul. Trebuie sa coincida cu app.use() din
 // server.ts.
@@ -49,14 +50,38 @@ async function fileExists(path: string) {
 export type TtsResult = {
   urlPath: string;
   provider: 'eleven' | 'edge';
+  // True daca s-a aplicat conversie RVC peste TTS-ul de baza.
+  rvcApplied: boolean;
+};
+
+// Optional RVC overlay applied dupa TTS-ul de baza. Daca lipseste / nu e
+// configurat, se livreaza TTS-ul direct.
+export type RvcOverlay = {
+  modelZipUrl: string;
+  pitchShift: number;
 };
 
 /**
  * Sintetizeaza textul si returneaza URL-ul MP3 cache-uit + provider-ul folosit.
- * Dispatcher pe `TTS_PROVIDER`. Erorile propaga (fara fallback silentios) ca
- * sa fie vizibile in dev.
+ *
+ * Pipeline:
+ *  1. TTS de baza (Edge sau ElevenLabs) → MP3 in cache local.
+ *  2. Daca `rvc` e setat SI Replicate e configurat SI PUBLIC_BASE_URL e setat:
+ *     trimitem MP3-ul la Replicate cu modelul .zip al personajului, descarcam
+ *     output-ul, il salvam intr-un al doilea fisier de cache (hash combinat).
+ *  3. Returnam URL-ul final (post-RVC daca rvc, altfel TTS-ul direct).
+ *
+ * Cache: sha256 pe (provider, voiceId, text) pt baza, sha256 pe (provider,
+ * voiceId, text, rvcUrl, pitchShift) pt output-ul RVC. Al doilea play e gratis.
  */
-export async function synthesizeTts(text: string, voiceId: string): Promise<TtsResult> {
+export async function synthesizeTts(
+  text: string,
+  voiceId: string,
+  rvc?: RvcOverlay,
+): Promise<TtsResult> {
+  // Step 1 — TTS de baza
+  let baseUrlPath: string;
+  let provider: 'eleven' | 'edge';
   if (env.TTS_PROVIDER === 'eleven') {
     if (!env.ELEVENLABS_API_KEY) {
       throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_API_KEY lipseste');
@@ -64,11 +89,82 @@ export async function synthesizeTts(text: string, voiceId: string): Promise<TtsR
     if (!env.ELEVENLABS_VOICE_ID) {
       throw new Error('TTS_PROVIDER=eleven dar ELEVENLABS_VOICE_ID lipseste');
     }
-    const urlPath = await synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
-    return { urlPath, provider: 'eleven' };
+    baseUrlPath = await synthesizeEleven(text, env.ELEVENLABS_VOICE_ID);
+    provider = 'eleven';
+  } else {
+    baseUrlPath = await synthesizeEdge(text, voiceId);
+    provider = 'edge';
   }
-  const urlPath = await synthesizeEdge(text, voiceId);
-  return { urlPath, provider: 'edge' };
+
+  // Step 2 — RVC overlay (optional). Daca lipsesc preconditii, livram TTS direct.
+  if (!rvc) return { urlPath: baseUrlPath, provider, rvcApplied: false };
+  if (!isRvcConfigured()) {
+    logger.warn(
+      { rvcModelUrl: rvc.modelZipUrl },
+      'rvc.requested_but_not_configured — livrez TTS direct (REPLICATE_API_TOKEN lipseste)',
+    );
+    return { urlPath: baseUrlPath, provider, rvcApplied: false };
+  }
+  if (!env.PUBLIC_BASE_URL) {
+    logger.warn(
+      'rvc.public_base_url_missing — Replicate nu poate fetch-ui MP3-ul intermediar; livrez TTS direct',
+    );
+    return { urlPath: baseUrlPath, provider, rvcApplied: false };
+  }
+
+  try {
+    const rvcUrlPath = await applyRvc(baseUrlPath, provider, voiceId, text, rvc);
+    return { urlPath: rvcUrlPath, provider, rvcApplied: true };
+  } catch (err) {
+    // Fallback: TTS-ul de baza ramane utilizabil daca RVC pica.
+    logger.error({ err, rvc }, 'rvc.failed — livrez TTS de baza ca fallback');
+    return { urlPath: baseUrlPath, provider, rvcApplied: false };
+  }
+}
+
+async function applyRvc(
+  baseUrlPath: string,
+  provider: 'eleven' | 'edge',
+  voiceId: string,
+  text: string,
+  rvc: RvcOverlay,
+): Promise<string> {
+  await ensureCacheDir();
+  const hash = createHash('sha256')
+    .update(`rvc::${provider}::${voiceId}::${text}::${rvc.modelZipUrl}::${rvc.pitchShift}`)
+    .digest('hex')
+    .slice(0, 32);
+  const filename = `${hash}.mp3`;
+  const filePath = join(env.TTS_CACHE_DIR, filename);
+  const urlPath = `${TTS_URL_PREFIX}/${filename}`;
+
+  if (await fileExists(filePath)) return urlPath;
+
+  // Audio-ul de baza trebuie sa fie accesibil PUBLIC pentru ca Replicate sa-l
+  // poata fetch-ui. baseUrlPath e relative ("/tts-cache/<hash>.mp3") — il
+  // facem absolut prin PUBLIC_BASE_URL.
+  const audioUrl = `${env.PUBLIC_BASE_URL}${baseUrlPath}`;
+
+  const replicateOutputUrl = await convertVoiceRvc({
+    audioUrl,
+    modelZipUrl: rvc.modelZipUrl,
+    pitchShift: rvc.pitchShift,
+  });
+
+  // Descarcam output-ul Replicate si-l persistam local. Link-ul Replicate
+  // expira (cateva ore), cache-ul nostru ramane permanent.
+  const dlRes = await fetch(replicateOutputUrl);
+  if (!dlRes.ok) {
+    throw new Error(`Download RVC output ${dlRes.status}: ${replicateOutputUrl}`);
+  }
+  const buf = Buffer.from(await dlRes.arrayBuffer());
+  await writeFile(filePath, buf);
+
+  logger.info(
+    { hash, bytes: buf.length, modelZipUrl: rvc.modelZipUrl, pitchShift: rvc.pitchShift },
+    'rvc.cached',
+  );
+  return urlPath;
 }
 
 async function synthesizeEdge(text: string, voiceId: string): Promise<string> {

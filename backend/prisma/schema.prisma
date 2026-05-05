@@ -221,6 +221,14 @@ model PetSpecies {
   interests    String[] @default([])
   minAge       Int      @default(6)
   unlockLevel  Int      @default(1)
+  // RVC voice conversion: URL la .zip cu .pth + .index (HuggingFace, voice-models.com).
+  // Daca null → TTS-ul se livreaza direct, fara conversie. Daca setat → backendul
+  // ruleaza pipeline 2-pasi (TTS romana → Replicate RVC) si livreaza vocea
+  // personajului. Vezi lib/ai/voiceConvert.ts.
+  rvcModelUrl   String?
+  // Semitone shift aplicat in RVC. Pt voce grava (Vader) -3 / -4. Pt voce de
+  // copil (Stitch) +2 / +3. 0 = fara shift.
+  rvcPitchShift Int     @default(0)
 
   pets  Pet[]
   cards NfcPetCard[]

@@ -25,6 +25,11 @@ const SPECIES = {
   interests: ['spatiu', 'destin', 'tehnica', 'curaj'],
   minAge: 8,
   unlockLevel: 1,
+  // RVC voice conversion: Vader Ultimate (10 min training, RMVPE, RVC v2) de la
+  // OwlCity pe HuggingFace. Pitch -3 ca TTS-ul de baza (Emil) sa coboare la
+  // registrul lui Vader. Tweak daca suna prea ascutit / prea grav.
+  rvcModelUrl: 'https://huggingface.co/OwlCity/OwlCityRVC/resolve/main/Darth%20Vader%20Ultimate.zip',
+  rvcPitchShift: -3,
 };
 
 async function main() {
