@@ -16,6 +16,19 @@ export type RvcParams = {
   pitchShift: number;
 };
 
+// Modelul Replicate creeaza folderul /src/rvc_models/<NAME> in care extrage
+// zip-ul. NAME = numele fisierului fara ".zip" si fara URL encoding. Daca nu
+// pasezi `custom_rvc_model_download_name`, foloseste valoarea lui `rvc_model`
+// (care la noi e "CUSTOM" → folder "CUSTOM" inexistent → eroarea pe care am
+// vazut-o).
+function deriveModelName(zipUrl: string): string {
+  const last = zipUrl.split('/').pop() ?? 'CustomModel';
+  const decoded = decodeURIComponent(last).replace(/\.zip$/i, '');
+  // Fara spatii / caractere ciudate ca sa nu sparga path-ul de pe disc al
+  // modelului Replicate (au avut bug-uri pe nume cu paranteze sau spatii).
+  return decoded.replace(/[^A-Za-z0-9_-]+/g, '_') || 'CustomModel';
+}
+
 // Minim necesar din shape-ul Replicate prediction.
 type Prediction = {
   id: string;
@@ -50,6 +63,8 @@ export async function convertVoiceRvc({
     throw new Error('REPLICATE_API_TOKEN lipseste — RVC dezactivat');
   }
 
+  const modelName = deriveModelName(modelZipUrl);
+
   const startRes = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
     headers: {
@@ -59,11 +74,14 @@ export async function convertVoiceRvc({
     body: JSON.stringify({
       version: env.REPLICATE_RVC_VERSION,
       input: {
-        // Numele param-ului in zsxkib/realistic-voice-cloning. Sursa = audio,
-        // model = "CUSTOM" + URL la .zip.
+        // Sursa = audio MP3 publicat pe domeniul nostru (TTS-ul de baza).
         song_input: audioUrl,
+        // "CUSTOM" activeaza modul download. Folderul rezultat NU e "CUSTOM" —
+        // e numele derivat din zip (vezi deriveModelName), deci trebuie sa-l
+        // dam explicit prin `custom_rvc_model_download_name`.
         rvc_model: 'CUSTOM',
         custom_rvc_model_download_url: modelZipUrl,
+        custom_rvc_model_download_name: modelName,
         pitch_change: pitchShift,
         // Setari blande pt voce vorbita (NU canta). Daca audio-ul de input e
         // deja un MP3 de TTS curat, nu vrem sa amestecam cu vocala / instrumental.
@@ -87,7 +105,7 @@ export async function convertVoiceRvc({
 
   let pred = (await startRes.json()) as Prediction;
   logger.info(
-    { id: pred.id, status: pred.status, modelZipUrl, pitchShift },
+    { id: pred.id, status: pred.status, modelZipUrl, modelName, pitchShift },
     'rvc.started',
   );
 
