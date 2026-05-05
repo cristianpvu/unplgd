@@ -1,11 +1,21 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import type Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
+import { petChatRateLimit } from '../middleware/rateLimit.js';
 import { ensureDefaultPet } from '../lib/pet.js';
-import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
+import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
 import { getSignedUrl, isStorageConfigured } from '../lib/storage/gcs.js';
 import { logger } from '../lib/logger.js';
+import { anthropic, ANTHROPIC_MODEL } from '../lib/ai/client.js';
+import { petChatSystemPrompt } from '../lib/ai/petChatPrompt.js';
+import {
+  appendChatTurn,
+  clearChatHistory,
+  loadChatHistory,
+} from '../lib/ai/chatContext.js';
+import { synthesizeTts } from '../lib/ai/tts.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -283,6 +293,128 @@ petsRouter.patch('/cards/:id', async (req, res, next) => {
         species: await speciesDto(updated.species),
       },
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// =====================================================================
+// Chat AI cu pet-ul echipat. Persona = species (systemHint, catchphrases,
+// interests). Istoricul stocat in Redis 1h cu cap pe turn-uri (vezi
+// chatContext.ts). NU exista "task done" — chat liber.
+//
+// Cheie Redis: pet:chat:{userId} — istoricul e pe user, NU pe specie. Daca
+// echipezi alt card, conversatia continua dar persona se schimba (pet-ul
+// nou "tine minte" ce s-a discutat cu cel anterior, oarecum). Acceptabil
+// pentru MVP — alternativa (history per specie) ar duce la fragmentare.
+// =====================================================================
+
+const chatMessageSchema = z.object({
+  message: z.string().trim().min(1).max(500),
+});
+
+function chatCacheKey(userId: string): string {
+  return `pet:chat:${userId}`;
+}
+
+function calcAge(birthDate: Date | null): number | null {
+  if (!birthDate) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const m = now.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < birthDate.getDate())) age--;
+  return age;
+}
+
+// GET /pets/chat — istoric curent (mobile-ul afiseaza la deschiderea ecranului).
+// Returneaza max ultimele MAX_TURNS mesaje, in ordine cronologica.
+petsRouter.get('/chat', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const history = await loadChatHistory(chatCacheKey(userId));
+    res.json({
+      messages: history.map((t, i) => ({
+        id: `h-${i}`,
+        role: t.role,
+        content: t.content,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /pets/chat — trimite mesaj, primeste raspuns + audio TTS al pet-ului.
+petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const { message } = chatMessageSchema.parse(req.body);
+
+    const [user, pet] = await Promise.all([
+      prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { id: true, name: true, birthDate: true },
+      }),
+      ensureDefaultPet(userId).then((p) =>
+        prisma.pet.findUniqueOrThrow({
+          where: { id: p.id },
+          include: { species: true },
+        }),
+      ),
+    ]);
+
+    const cacheKey = chatCacheKey(userId);
+    const history = await loadChatHistory(cacheKey);
+    const userTurn = { role: 'user' as const, content: message };
+
+    const completion = await anthropic.messages.create({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 400,
+      system: petChatSystemPrompt({
+        name: pet.name,
+        speciesName: pet.species.name,
+        systemHint: pet.species.systemHint,
+        catchphrases: pet.species.catchphrases,
+        interests: pet.species.interests,
+        childName: user.name,
+        childAge: calcAge(user.birthDate),
+      }),
+      messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
+    });
+
+    const replyText = completion.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+      .trim();
+
+    if (!replyText) throw serverError('ai_empty', 'Pet-ul nu a raspuns');
+
+    await appendChatTurn(cacheKey, userTurn);
+    await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
+
+    let replyAudioUrl: string | null = null;
+    let ttsProvider: string | null = null;
+    try {
+      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      replyAudioUrl = tts.urlPath;
+      ttsProvider = tts.provider;
+    } catch (err) {
+      req.log.error({ err }, 'tts.pet_chat_reply_failed');
+    }
+
+    res.json({ reply: replyText, replyAudioUrl, ttsProvider });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /pets/chat — sterge istoricul (button "conversatie noua" in mobile).
+petsRouter.delete('/chat', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    await clearChatHistory(chatCacheKey(userId));
+    res.status(204).end();
   } catch (e) {
     next(e);
   }

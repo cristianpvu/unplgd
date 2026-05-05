@@ -20,3 +20,7 @@ export const checkinRateLimit = make({ windowMs: 60_000, limit: 10 });
 
 // Bonus: protectie brute-force pe auth.
 export const authRateLimit = make({ windowMs: 60_000, limit: 10 });
+
+// Chat AI cu pet-ul — 20 mesaje/min/user (cap rezonabil pentru interactiune
+// continua, dar protejeaza bill-ul Anthropic de abuz copy-paste).
+export const petChatRateLimit = make({ windowMs: 60_000, limit: 20 });
