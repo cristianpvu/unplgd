@@ -19,6 +19,7 @@ import { getMyPet, petImageUrl } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
+import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
 import { colors } from '../../src/theme/colors';
 
 type SheetKind = 'friends' | 'settings' | null;
@@ -51,6 +52,7 @@ export default function Home() {
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
   const petImage = petImageUrl(petQuery.data?.pet.species.imagePath ?? null);
   const petName = petQuery.data?.pet.name ?? null;
+  const petCatchphrases = petQuery.data?.pet.species.catchphrases ?? [];
 
   // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
   // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
@@ -99,7 +101,8 @@ export default function Home() {
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.petContainer, pressed && styles.petContainerPressed]}
-              onPress={() => router.push('/(app)/pets')}
+              onPress={() => router.push('/(app)/chat')}
+              onLongPress={() => router.push('/(app)/pets')}
               hitSlop={8}
             >
               {petImage ? (
@@ -110,6 +113,15 @@ export default function Home() {
                 </View>
               )}
             </Pressable>
+            {petQuery.data && (
+              <View style={styles.bubbleAnchor} pointerEvents="box-none">
+                <PetSpeechBubble
+                  phrases={petCatchphrases}
+                  petName={petName ?? 'Buddy'}
+                  onPress={() => router.push('/(app)/chat')}
+                />
+              </View>
+            )}
           </View>
         </View>
 
@@ -407,6 +419,17 @@ const styles = StyleSheet.create({
   },
   petPlaceholderEmoji: { fontSize: 36 },
   petName: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  // Pozitionat deasupra pet-ului. Pet-ul e la bottom: 8, right: -30, dimensiune
+  // 120×120 → ancora bula la ~140 deasupra (peste capul pet-ului) si centrata
+  // pe latimea pet-ului. Folosim "right" cu offset astfel incat bula sa fie
+  // peste pet, nu peste avatar.
+  bubbleAnchor: {
+    position: 'absolute',
+    bottom: 130,
+    right: -30,
+    width: 120,
+    alignItems: 'center',
+  },
 
   playButton: {
     flexDirection: 'row',

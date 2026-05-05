@@ -69,3 +69,45 @@ export function petImageUrl(imagePath: string | null): string | null {
   if (/^https?:\/\//i.test(imagePath)) return imagePath;
   return `${API_BASE_URL}${imagePath}`;
 }
+
+// =====================================================================
+// Chat AI cu pet-ul echipat
+// =====================================================================
+
+export type PetChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type PetChatHistoryResponse = {
+  messages: PetChatMessage[];
+};
+
+export type PetChatSendResponse = {
+  reply: string;
+  replyAudioUrl: string | null;
+  ttsProvider: 'eleven' | 'edge' | null;
+};
+
+export function getPetChatHistory() {
+  return api<PetChatHistoryResponse>('/pets/chat');
+}
+
+export function sendPetChat(message: string) {
+  return api<PetChatSendResponse>('/pets/chat', {
+    method: 'POST',
+    body: { message },
+  });
+}
+
+export function clearPetChat() {
+  return api<void>('/pets/chat', { method: 'DELETE' });
+}
+
+// MP3 URL absolut pt expo-audio (backend serveste relative /tts-cache/...).
+export function absolutePetAudioUrl(path: string | null): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path}`;
+}
