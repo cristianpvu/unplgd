@@ -1,19 +1,14 @@
 import { SAFETY_PROMPT } from './safetyPrompt.js';
+import { NARRATOR_NAME, NARRATOR_SYSTEM_HINT } from './narrator.js';
 
-export type PetContext = {
-  name: string;       // numele pet-ului (default "Buddy")
-  speciesName: string; // "Catelus", "Pisica", etc.
-  systemHint: string; // personalitate per specie (din DB)
-};
-
-// System prompt pt faza de creare poveste. Pet-ul e "intervievator creativ"
-// care extrage de la copil 5 elemente (erou, ce e, unde, ce a patit, final),
-// pe rand. Cand are toate datele, returneaza JSON structurat ca trigger
-// pentru salvarea in DB.
-export function storyCreateSystemPrompt(pet: PetContext, childName: string): string {
+// System prompt pt faza de creare poveste. Naratorul (independent de pet) e
+// "intervievator creativ" care extrage de la copil 5 elemente (erou, ce e,
+// unde, ce a patit, final), pe rand. Cand are toate datele, returneaza JSON
+// structurat ca trigger pentru salvarea in DB.
+export function storyCreateSystemPrompt(childName: string): string {
   return `
-Esti ${pet.name}, ${pet.speciesName} prieten al copilului ${childName}.
-${pet.systemHint}
+Esti ${NARRATOR_NAME}, ghidul povestilor pt copilul ${childName}.
+${NARRATOR_SYSTEM_HINT}
 
 ${SAFETY_PROMPT}
 
@@ -53,14 +48,13 @@ si povestea e salvata.
 }
 
 // System prompt pt faza de extindere. Copilul curent (extender) a verificat
-// deja povestea de la A si vrea sa adauge propriul capitol. Pet-ul primeste
+// deja povestea de la A si vrea sa adauge propriul capitol. Naratorul primeste
 // capitolele anterioare ca CONTEXT (text complet) si extrage de la copil un
 // nou capitol coerent. La final emite JSON cu:
 //  - body = capitolul nou (text propriu, NU concatenarea cu cele anterioare),
 //  - keyFacts = 5 fapte CUMULATIVE acoperind tot lantul de capitole anterioare
 //    + capitolul nou (folosite de un viitor listener care va asculta tot).
 export function storyExtendSystemPrompt(
-  pet: PetContext,
   childName: string,
   priorChapters: { authorName: string; body: string }[],
 ): string {
@@ -69,8 +63,8 @@ export function storyExtendSystemPrompt(
     .join('\n\n');
 
   return `
-Esti ${pet.name}, ${pet.speciesName} prieten al copilului ${childName}.
-${pet.systemHint}
+Esti ${NARRATOR_NAME}, ghidul povestilor pt copilul ${childName}.
+${NARRATOR_SYSTEM_HINT}
 
 ${SAFETY_PROMPT}
 
@@ -117,10 +111,9 @@ si dupa block-ul JSON nu adauga nimic.
 `.trim();
 }
 
-// System prompt pt faza de verify. Pet-ul lui B (ascultatorul) primeste
+// System prompt pt faza de verify. Naratorul (acelasi pt toti copiii) primeste
 // keyFacts (NU body-ul) si pune intrebarile pe rand, judecand semantic.
 export function storyVerifySystemPrompt(
-  pet: PetContext,
   listenerName: string,
   authorName: string,
   keyFacts: { q: string; expected: string }[],
@@ -130,8 +123,8 @@ export function storyVerifySystemPrompt(
     .join('\n');
 
   return `
-Esti ${pet.name}, ${pet.speciesName} prieten al copilului ${listenerName}.
-${pet.systemHint}
+Esti ${NARRATOR_NAME}, ghidul povestilor pt copilul ${listenerName}.
+${NARRATOR_SYSTEM_HINT}
 
 ${SAFETY_PROMPT}
 

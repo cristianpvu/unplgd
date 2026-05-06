@@ -9,7 +9,6 @@ import {
   storyCreateSystemPrompt,
   storyExtendSystemPrompt,
   storyVerifySystemPrompt,
-  type PetContext,
 } from '../lib/ai/storyPrompts.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import {
@@ -19,8 +18,20 @@ import {
 } from '../lib/ai/chatContext.js';
 import { extractJsonBlock } from '../lib/ai/jsonExtract.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
-import { ensureDefaultPet } from '../lib/pet.js';
+import {
+  NARRATOR_EDGE_VOICE,
+  narratorElevenVoiceId,
+} from '../lib/ai/narrator.js';
 import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
+
+// TTS pt joculetul de povesti — voce narator fixa, independent de pet-ul
+// user-ului. Forteaza ElevenLabs cand NARRATOR_VOICE_ID/ELEVENLABS_VOICE_ID e
+// in env; altfel cade pe Edge TTS cu vocea NARRATOR_EDGE_VOICE.
+function ttsNarrator(text: string) {
+  return synthesizeTts(text, NARRATOR_EDGE_VOICE, {
+    elevenVoiceId: narratorElevenVoiceId(),
+  });
+}
 
 export const storiesRouter = Router();
 storiesRouter.use(requireAuth);
@@ -67,22 +78,7 @@ storiesRouter.post('/', async (req, res, next) => {
       );
     }
 
-    // Pet + user info pt persona
-    const [user, pet] = await Promise.all([
-      prisma.user.findUniqueOrThrow({ where: { id: userId } }),
-      ensureDefaultPet(userId).then((p) =>
-        prisma.pet.findUniqueOrThrow({
-          where: { id: p.id },
-          include: { species: true },
-        }),
-      ),
-    ]);
-
-    const petContext: PetContext = {
-      name: pet.name,
-      speciesName: pet.species.name,
-      systemHint: pet.species.systemHint,
-    };
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
 
     const cacheKey = `story:create:${userId}`;
     const history = await loadChatHistory(cacheKey);
@@ -91,7 +87,7 @@ storiesRouter.post('/', async (req, res, next) => {
     const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
-      system: storyCreateSystemPrompt(petContext, user.name),
+      system: storyCreateSystemPrompt(user.name),
       messages: [...history, userTurn].map((t) => ({
         role: t.role,
         content: t.content,
@@ -129,13 +125,13 @@ storiesRouter.post('/', async (req, res, next) => {
       });
       await clearChatHistory(cacheKey);
 
-      // TTS pe body — vocea pet-ului. Daca trece, persistam si pe Story
-      // (audioUrl + audioProvider) ca alte ecrane sa nu re-renteze.
+      // TTS pe body — vocea Povestitorului (fixa pt toti, independent de pet).
+      // Daca trece, persistam pe Story (audioUrl + audioProvider).
       let bodyAudioUrl: string | null = null;
       let ttsProvider: string | null = null;
       let ttsError: string | null = null;
       try {
-        const tts = await synthesizeTts(json.body, pet.species.voiceId);
+        const tts = await ttsNarrator(json.body);
         bodyAudioUrl = tts.urlPath;
         ttsProvider = tts.provider;
         await prisma.story.update({
@@ -164,10 +160,10 @@ storiesRouter.post('/', async (req, res, next) => {
     await appendChatTurn(cacheKey, userTurn);
     await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
 
-    // TTS pe replica curenta a pet-ului. Best-effort, nu blocheaza response-ul.
+    // TTS pe replica curenta a naratorului. Best-effort, nu blocheaza response.
     let replyAudioUrl: string | null = null;
     try {
-      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      const tts = await ttsNarrator(replyText);
       replyAudioUrl = tts.urlPath;
     } catch (err) {
       req.log.error({ err }, 'tts.reply_failed');
@@ -222,26 +218,17 @@ async function loadAncestry(leafStoryId: string): Promise<ChainEntry[]> {
   return chain;
 }
 
-// POST /stories/tts — sintetizeaza un text arbitrar cu vocea pet-ului user-ului.
-// Folosit de mobile pentru replicile hardcodate (intro etc.) si orice text
-// scurt pe care vrem sa-l auzim cu vocea premium, nu cu OS-TTS-ul.
+// POST /stories/tts — sintetizeaza un text arbitrar cu vocea Povestitorului
+// (independent de pet). Folosit de mobile pt replicile hardcodate ale
+// joculetului de povesti (intro etc.).
 const ttsSchema = z.object({
   text: z.string().trim().min(1).max(500),
 });
 
 storiesRouter.post('/tts', async (req, res, next) => {
   try {
-    const userId = req.userId!;
     const { text } = ttsSchema.parse(req.body);
-
-    const pet = await ensureDefaultPet(userId).then((p) =>
-      prisma.pet.findUniqueOrThrow({
-        where: { id: p.id },
-        include: { species: true },
-      }),
-    );
-
-    const tts = await synthesizeTts(text, pet.species.voiceId);
+    const tts = await ttsNarrator(text);
     res.json({ audioUrl: tts.urlPath, provider: tts.provider });
   } catch (e) {
     next(e);
@@ -550,22 +537,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
       throw conflict('claim_closed', 'Verificarea e deja inchisa');
     }
 
-    // Pet-ul listener-ului
-    const [listener, pet] = await Promise.all([
-      prisma.user.findUniqueOrThrow({ where: { id: me } }),
-      ensureDefaultPet(me).then((p) =>
-        prisma.pet.findUniqueOrThrow({
-          where: { id: p.id },
-          include: { species: true },
-        }),
-      ),
-    ]);
-
-    const petContext: PetContext = {
-      name: pet.name,
-      speciesName: pet.species.name,
-      systemHint: pet.species.systemHint,
-    };
+    const listener = await prisma.user.findUniqueOrThrow({ where: { id: me } });
 
     const keyFacts = claim.story.keyFacts as unknown as { q: string; expected: string }[];
     if (!Array.isArray(keyFacts) || keyFacts.length !== 5) {
@@ -580,7 +552,6 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyVerifySystemPrompt(
-        petContext,
         listener.name,
         claim.story.author.name,
         keyFacts,
@@ -633,12 +604,12 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
 
       await clearChatHistory(cacheKey);
 
-      // TTS pe summary — pet-ul lui B "vorbeste" la inchidere.
+      // TTS pe summary — Povestitorul (acelasi pt toti) inchide verificarea.
       let summaryAudioUrl: string | null = null;
       let ttsProvider: string | null = null;
       let ttsError: string | null = null;
       try {
-        const tts = await synthesizeTts(json.summary, pet.species.voiceId);
+        const tts = await ttsNarrator(json.summary);
         summaryAudioUrl = tts.urlPath;
         ttsProvider = tts.provider;
       } catch (err) {
@@ -667,7 +638,7 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
 
     let replyAudioUrl: string | null = null;
     try {
-      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      const tts = await ttsNarrator(replyText);
       replyAudioUrl = tts.urlPath;
     } catch (err) {
       req.log.error({ err }, 'tts.verify_reply_failed');
@@ -763,21 +734,7 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
       );
     }
 
-    const [user, pet] = await Promise.all([
-      prisma.user.findUniqueOrThrow({ where: { id: me } }),
-      ensureDefaultPet(me).then((p) =>
-        prisma.pet.findUniqueOrThrow({
-          where: { id: p.id },
-          include: { species: true },
-        }),
-      ),
-    ]);
-
-    const petContext: PetContext = {
-      name: pet.name,
-      speciesName: pet.species.name,
-      systemHint: pet.species.systemHint,
-    };
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: me } });
 
     const cacheKey = `story:extend:${me}:${storyId}`;
     const history = await loadChatHistory(cacheKey);
@@ -787,7 +744,6 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyExtendSystemPrompt(
-        petContext,
         user.name,
         ancestry.map((c) => ({ authorName: c.authorName, body: c.body })),
       ),
@@ -825,7 +781,7 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
       let ttsProvider: string | null = null;
       let ttsError: string | null = null;
       try {
-        const tts = await synthesizeTts(json.body, pet.species.voiceId);
+        const tts = await ttsNarrator(json.body);
         bodyAudioUrl = tts.urlPath;
         ttsProvider = tts.provider;
         await prisma.story.update({
@@ -884,7 +840,7 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
 
     let replyAudioUrl: string | null = null;
     try {
-      const tts = await synthesizeTts(replyText, pet.species.voiceId);
+      const tts = await ttsNarrator(replyText);
       replyAudioUrl = tts.urlPath;
     } catch (err) {
       req.log.error({ err }, 'tts.extend_reply_failed');

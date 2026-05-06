@@ -25,6 +25,9 @@ const schema = z.object({
   // Voice ID din ElevenLabs Voice Library (string opaque). Default global daca
   // pet-urile inca nu au voce proprie per specie.
   ELEVENLABS_VOICE_ID: z.string().optional(),
+  // Voice ID ElevenLabs pentru naratorul din joculetul de povesti (independent
+  // de pet). Cand lipseste, cade pe ELEVENLABS_VOICE_ID, apoi pe Edge TTS.
+  NARRATOR_VOICE_ID: z.string().optional(),
   // Model ElevenLabs — multilingual v2 are calitate top pe romana cu accent.
   ELEVENLABS_MODEL: z.string().default('eleven_multilingual_v2'),
   // GCP — folosit pt co-creatii (storage poze + Vertex AI Imagen). Service
