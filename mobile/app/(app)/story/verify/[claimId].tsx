@@ -3,8 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -45,21 +43,23 @@ export default function StoryVerify() {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<VerifyDoneState | null>(null);
-  const [kbOpen, setKbOpen] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
   const sttBaseRef = useRef('');
 
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
-    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.endCoordinates.height);
+    });
+    const sHide = Keyboard.addListener('keyboardDidHide', () => {
+      setKbHeight(0);
+    });
     return () => {
       sShow.remove();
       sHide.remove();
     };
   }, []);
 
-  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
+  const bottomPad = kbHeight > 0 ? 6 : 10 + insets.bottom;
 
   const claimQuery = useQuery({
     queryKey: ['stories', 'claim', claimId],
@@ -121,7 +121,7 @@ export default function StoryVerify() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (err: any) => {
-      Alert.alert('Hopa', err?.message ?? 'Buddy nu raspunde acum');
+      Alert.alert('Hopa', err?.message ?? 'Povestitorul nu raspunde acum');
     },
   });
 
@@ -171,11 +171,7 @@ export default function StoryVerify() {
         <View style={{ width: 44 }} />
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
+      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -188,13 +184,13 @@ export default function StoryVerify() {
           {send.isPending && (
             <View style={styles.typing}>
               <ActivityIndicator color={colors.accent} size="small" />
-              <Text style={styles.typingText}>Buddy se gandeste...</Text>
+              <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
             </View>
           )}
         </ScrollView>
 
         {final ? (
-          <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
+          <View style={[styles.finalActions, { paddingBottom: kbHeight > 0 ? 14 : 14 + insets.bottom }]}>
             {final.status === 'VERIFIED' && (
               <Pressable
                 onPress={() => router.replace(`/(app)/story/extend/${claim.story.id}`)}
@@ -246,7 +242,7 @@ export default function StoryVerify() {
             </Pressable>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

@@ -44,7 +44,7 @@ export default function StoryHub() {
           <Text style={styles.cardSubtitle}>
             {createdToday
               ? 'Ai creat povestea de azi! Vino maine.'
-              : 'Inventeaza o poveste cu Buddy si spune-o unui prieten.'}
+              : 'Inventeaza o poveste cu Povestitorul si spune-o unui prieten.'}
           </Text>
         </Pressable>
 

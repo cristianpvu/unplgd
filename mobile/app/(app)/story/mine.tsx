@@ -29,7 +29,7 @@ export default function StoryMine() {
             <Text style={styles.emptyEmoji}>📖</Text>
             <Text style={styles.emptyTitle}>Carnetelul e gol</Text>
             <Text style={styles.emptySub}>
-              Cand creezi povesti cu Buddy, raman aici.
+              Cand creezi povesti cu Povestitorul, raman aici.
             </Text>
           </View>
         )}

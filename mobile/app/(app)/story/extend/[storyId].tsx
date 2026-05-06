@@ -3,8 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -52,7 +50,7 @@ export default function StoryExtend() {
   ]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<ExtendDoneState | null>(null);
-  const [kbOpen, setKbOpen] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
   const sttBaseRef = useRef('');
 
   useEffect(() => {
@@ -75,17 +73,19 @@ export default function StoryExtend() {
   }, []);
 
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
-    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.endCoordinates.height);
+    });
+    const sHide = Keyboard.addListener('keyboardDidHide', () => {
+      setKbHeight(0);
+    });
     return () => {
       sShow.remove();
       sHide.remove();
     };
   }, []);
 
-  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
+  const bottomPad = kbHeight > 0 ? 6 : 10 + insets.bottom;
 
   const send = useMutation({
     mutationFn: (msg: string) => postExtendChat(storyId, msg),
@@ -112,7 +112,7 @@ export default function StoryExtend() {
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (err: any) => {
-      let msg = err?.message ?? 'Buddy nu raspunde acum';
+      let msg = err?.message ?? 'Povestitorul nu raspunde acum';
       if (err instanceof ApiError) {
         if (err.code === 'daily_limit') {
           msg = 'Ai creat sau continuat deja o poveste azi! Vino maine.';
@@ -180,7 +180,7 @@ export default function StoryExtend() {
         )}
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -193,13 +193,13 @@ export default function StoryExtend() {
           {send.isPending && (
             <View style={styles.typing}>
               <ActivityIndicator color={colors.accent} size="small" />
-              <Text style={styles.typingText}>Buddy se gandeste...</Text>
+              <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
             </View>
           )}
         </ScrollView>
 
         {final ? (
-          <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
+          <View style={[styles.finalActions, { paddingBottom: kbHeight > 0 ? 14 : 14 + insets.bottom }]}>
             <Pressable
               onPress={() => {
                 void playPetVoice(
@@ -260,7 +260,7 @@ export default function StoryExtend() {
             </Pressable>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }

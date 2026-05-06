@@ -3,8 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -37,7 +35,7 @@ type ChatBubble =
   | { id: string; role: 'final'; story: FinalStory };
 
 const INTRO_TEXT =
-  'Hey! Sunt Buddy! Hai sa cream o poveste impreuna. Imi spui despre ce vrei sa fie?';
+  'Salut! Sunt Povestitorul. Hai sa cream o poveste impreuna. Imi spui despre ce vrei sa fie?';
 const INTRO_BUBBLE: ChatBubble = { id: 'intro', role: 'pet', text: INTRO_TEXT };
 
 export default function StoryCreate() {
@@ -47,7 +45,7 @@ export default function StoryCreate() {
   const [bubbles, setBubbles] = useState<ChatBubble[]>([INTRO_BUBBLE]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<FinalStory | null>(null);
-  const [kbOpen, setKbOpen] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
   // Pastram draft-ul pre-existent cand pornim STT, ca live transcript-ul sa
   // se concateneze in spate fara sa stearga ce a tastat user-ul deja.
   const sttBaseRef = useRef('');
@@ -74,20 +72,20 @@ export default function StoryCreate() {
     };
   }, []);
 
-  // Track keyboard ca sa eliminam padding-ul bottom inset cand e deschisa
-  // (altfel input ramane suspendat deasupra tastaturii cu spatiu gol).
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
-    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.endCoordinates.height);
+    });
+    const sHide = Keyboard.addListener('keyboardDidHide', () => {
+      setKbHeight(0);
+    });
     return () => {
       sShow.remove();
       sHide.remove();
     };
   }, []);
 
-  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
+  const bottomPad = kbHeight > 0 ? 6 : 10 + insets.bottom;
 
   const send = useMutation({
     mutationFn: (msg: string) => postCreateChat(msg),
@@ -123,7 +121,7 @@ export default function StoryCreate() {
       const msg =
         err instanceof ApiError && err.code === 'daily_limit'
           ? 'Ai creat deja o poveste azi! Vino maine.'
-          : err?.message ?? 'Buddy nu raspunde acum';
+          : err?.message ?? 'Povestitorul nu raspunde acum';
       Alert.alert('Hopa', msg);
     },
   });
@@ -179,11 +177,7 @@ export default function StoryCreate() {
         )}
       </View>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-        keyboardVerticalOffset={0}
-      >
+      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -196,13 +190,13 @@ export default function StoryCreate() {
           {send.isPending && (
             <View style={styles.typing}>
               <ActivityIndicator color={colors.accent} size="small" />
-              <Text style={styles.typingText}>Buddy se gandeste...</Text>
+              <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
             </View>
           )}
         </ScrollView>
 
         {final ? (
-          <View style={[styles.finalActions, { paddingBottom: kbOpen ? 14 : 14 + insets.bottom }]}>
+          <View style={[styles.finalActions, { paddingBottom: kbHeight > 0 ? 14 : 14 + insets.bottom }]}>
             <Pressable
               onPress={() => {
                 void playPetVoice(final.body, absoluteAudioUrl(final.bodyAudioUrl));
@@ -254,7 +248,7 @@ export default function StoryCreate() {
             </Pressable>
           </View>
         )}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
