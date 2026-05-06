@@ -59,6 +59,9 @@ export default function PetChat() {
   const liveSttRef = useRef<SttHandle | null>(null);
   // marker ca intro-ul a fost redat — nu il redam la fiecare schimbare de bubbles
   const introPlayedRef = useRef(false);
+  // Daca user-ul a anulat redarea (pauza/back/switch), nu pornim auto-mic dupa
+  // ce speakingul se rezolva — distingem cancel vs finish natural.
+  const speakCancelledRef = useRef(false);
   // pulse animat pe avatar in live mode
   const pulse = useRef(new Animated.Value(1)).current;
 
@@ -95,6 +98,7 @@ export default function PetChat() {
 
   useEffect(() => {
     return () => {
+      speakCancelledRef.current = true;
       stopDevice();
       void stopRemoteAudio();
       liveSttRef.current?.stop();
@@ -176,6 +180,7 @@ export default function PetChat() {
   }, [bubbles, mode]);
 
   async function liveSpeak(text: string, audioUrl: string | null) {
+    speakCancelledRef.current = false;
     setPhase('speaking');
     setLivePetText(text);
     try {
@@ -185,6 +190,13 @@ export default function PetChat() {
     }
     setLivePetShown(text);
     setPhase('idle');
+    // Auto-mic dupa ce a terminat de vorbit, doar daca nu a fost anulat.
+    if (!speakCancelledRef.current) {
+      // mic delay sa lasam phase sa se aseze inainte sa trecem la 'listening'
+      setTimeout(() => {
+        if (!speakCancelledRef.current) void liveStartListening();
+      }, 200);
+    }
   }
 
   async function liveStartListening() {
@@ -210,6 +222,7 @@ export default function PetChat() {
     setLivePartialUser('');
     setPhase('listening');
     liveSttRef.current = await startListening({
+      silenceTimeoutMs: 1500,
       onInterim: (text) => setLivePartialUser(text),
       onResult: (text) => {
         liveSttRef.current = null;
@@ -242,6 +255,7 @@ export default function PetChat() {
   }
 
   function liveCancelSpeaking() {
+    speakCancelledRef.current = true;
     stopDevice();
     void stopRemoteAudio();
     setLivePetShown(livePetText);
@@ -250,6 +264,7 @@ export default function PetChat() {
 
   function switchMode(target: Mode) {
     if (target === mode) return;
+    speakCancelledRef.current = true;
     liveSttRef.current?.stop();
     liveSttRef.current = null;
     stopDevice();
@@ -294,6 +309,9 @@ export default function PetChat() {
     mutationFn: () => clearPetChat(),
     onSuccess: () => {
       const intro = pickIntro();
+      speakCancelledRef.current = true;
+      liveSttRef.current?.stop();
+      liveSttRef.current = null;
       setBubbles([{ id: 'intro', role: 'assistant', text: intro }]);
       qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
       stopDevice();
@@ -522,7 +540,11 @@ function LiveView({
 
         <Text style={liveStyles.statusText}>{status}</Text>
 
-        <View style={liveStyles.transcriptBox}>
+        <ScrollView
+          style={liveStyles.transcriptScroll}
+          contentContainerStyle={liveStyles.transcriptContent}
+          showsVerticalScrollIndicator={false}
+        >
           {phase === 'thinking' ? (
             <ActivityIndicator color={colors.accent} />
           ) : livePartialUser ? (
@@ -537,7 +559,7 @@ function LiveView({
               Spune-i orice — il vad pe {petName} ca e curios.
             </Text>
           )}
-        </View>
+        </ScrollView>
       </View>
 
       <View style={liveStyles.controls}>
@@ -698,14 +720,14 @@ const liveStyles = StyleSheet.create({
   body: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
     paddingHorizontal: 24,
-    gap: 18,
+    paddingTop: 12,
+    gap: 14,
   },
   avatarWrap: {
-    width: 240,
-    height: 240,
-    borderRadius: 120,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
@@ -719,8 +741,8 @@ const liveStyles = StyleSheet.create({
   },
   avatarWrapListening: { borderColor: colors.danger },
   avatarWrapSpeaking: { borderColor: colors.accent },
-  avatarImg: { width: 200, height: 200 },
-  avatarEmoji: { fontSize: 96 },
+  avatarImg: { width: 168, height: 168 },
+  avatarEmoji: { fontSize: 80 },
 
   statusText: {
     color: colors.textMuted,
@@ -729,11 +751,14 @@ const liveStyles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.3,
   },
-  transcriptBox: {
-    minHeight: 80,
-    maxHeight: 220,
+  transcriptScroll: {
+    flex: 1,
     width: '100%',
+  },
+  transcriptContent: {
+    flexGrow: 1,
     paddingHorizontal: 16,
+    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },

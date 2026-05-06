@@ -147,8 +147,13 @@ export async function startListening(opts: {
   onInterim?: (text: string) => void;
   onError?: (err: string, message?: string) => void;
   lang?: string;
+  // Daca > 0, dupa ce primim primul interim, reseteaza un timer la fiecare
+  // event nou; cand expira fara activitate, oprim engine-ul (silence detection
+  // pe iOS, complementar fata de auto-stop nativ care e prea relaxat).
+  silenceTimeoutMs?: number;
 }): Promise<SttHandle> {
   const lang = opts.lang ?? 'ro-RO';
+  const silenceMs = opts.silenceTimeoutMs ?? 0;
 
   // Cleanup orice sesiune anterioara
   try {
@@ -162,7 +167,40 @@ export async function startListening(opts: {
   // `closed` ca poarta — odata true, nimic nu mai pleaca catre consumer.
   let closed = false;
   let lastTranscript = '';
+  // Pe iOS, `end` poate fi emis INAINTEA `result(isFinal=true)` cand cerem
+  // stop() programatic (silence trigger). Daca facem removeAll() pe `end`
+  // imediat, pierdem result-ul final. Folosim flag-ul ca sa nu emitem dublu.
+  let resultEmitted = false;
+  let silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearSilenceTimer = () => {
+    if (silenceTimer) {
+      clearTimeout(silenceTimer);
+      silenceTimer = null;
+    }
+  };
+  const flushOnSilence = () => {
+    if (closed || resultEmitted) return;
+    // Folosim DIRECT ultimul interim ca rezultat final, fara sa asteptam
+    // event-urile post-stop() (care pe iOS/Android sosesc in ordini diferite
+    // si uneori se pierd). Apoi rugam engine-ul sa se opreasca.
+    if (lastTranscript) {
+      resultEmitted = true;
+      opts.onResult(lastTranscript);
+      removeAll();
+    }
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch {
+      // ignore
+    }
+  };
+  const armSilenceTimer = () => {
+    if (silenceMs <= 0) return;
+    clearSilenceTimer();
+    silenceTimer = setTimeout(flushOnSilence, silenceMs);
+  };
   const removeAll = () => {
+    clearSilenceTimer();
     if (closed) return;
     closed = true;
     subs.forEach((s) => s.remove());
@@ -170,25 +208,35 @@ export async function startListening(opts: {
 
   const subs = [
     ExpoSpeechRecognitionModule.addListener('end', () => {
-      // Daca avem un transcript salvat dar n-a venit ca event final, il trimitem.
-      if (!closed && lastTranscript) {
-        opts.onResult(lastTranscript);
-      }
-      removeAll();
+      if (closed || resultEmitted) return;
+      // Lasam 350ms ca un eventual `result(isFinal=true)` sa apuce sa fie
+      // procesat (pe iOS poate veni dupa `end` la stop programatic). Daca nu
+      // vine nimic, folosim ultimul interim ca fallback.
+      setTimeout(() => {
+        if (closed || resultEmitted) return;
+        if (lastTranscript) {
+          resultEmitted = true;
+          opts.onResult(lastTranscript);
+        } else {
+          opts.onError?.('nomatch', 'Buddy n-a inteles ce ai zis. Mai incearca.');
+        }
+        removeAll();
+      }, 350);
     }),
     ExpoSpeechRecognitionModule.addListener('nomatch', () => {
-      if (closed) return;
+      if (closed || resultEmitted) return;
       opts.onError?.('nomatch', 'Buddy n-a inteles ce ai zis. Mai incearca.');
       removeAll();
     }),
     ExpoSpeechRecognitionModule.addListener(
       'result',
       (e: ExpoSpeechRecognitionResultEvent) => {
-        if (closed) return;
+        if (closed || resultEmitted) return;
         const transcript = e.results[0]?.transcript?.trim();
         if (!transcript) return;
         lastTranscript = transcript;
         if (e.isFinal) {
+          resultEmitted = true;
           opts.onResult(transcript);
           lastTranscript = '';
           // Inchidem imediat dupa final ca event-uri buffered (interim
@@ -196,11 +244,22 @@ export async function startListening(opts: {
           removeAll();
         } else {
           opts.onInterim?.(transcript);
+          armSilenceTimer();
         }
       },
     ),
     ExpoSpeechRecognitionModule.addListener('error', (e) => {
-      if (closed) return;
+      if (closed || resultEmitted) return;
+      // Pe Android, dupa silence detection sau alte triggere, engine-ul poate
+      // emite `error: no_match` / `no_speech` chiar daca am cules transcript
+      // valid din interim. Promovam lastTranscript la rezultat in loc sa
+      // pierdem mesajul user-ului.
+      if (lastTranscript) {
+        resultEmitted = true;
+        opts.onResult(lastTranscript);
+        removeAll();
+        return;
+      }
       opts.onError?.(e.error ?? 'unknown', e.message);
       removeAll();
     }),
@@ -226,7 +285,38 @@ export async function startListening(opts: {
       continuous: false,
       requiresOnDeviceRecognition: false,
       addsPunctuation: false,
+      // Android: scurteaza ferestrele de tacere ca recognizer-ul sa termine
+      // automat dupa ~1.5s de liniste, similar cu comportamentul nostru iOS-side.
+      ...(silenceMs > 0
+        ? {
+            androidIntentOptions: {
+              EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: silenceMs,
+              EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: silenceMs,
+              EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS: 600,
+            },
+          }
+        : {}),
     });
+    // Daca n-ai zis nimic in N secunde (de ~3x silenceMs), oprim sesiunea ca
+    // engine-ul sa nu astepte la nesfarsit pe iOS.
+    if (silenceMs > 0) {
+      silenceTimer = setTimeout(() => {
+        if (closed || resultEmitted) return;
+        if (lastTranscript) {
+          resultEmitted = true;
+          opts.onResult(lastTranscript);
+          removeAll();
+        } else {
+          opts.onError?.('nomatch', 'N-am auzit nimic. Mai incearca.');
+          removeAll();
+        }
+        try {
+          ExpoSpeechRecognitionModule.stop();
+        } catch {
+          // ignore
+        }
+      }, Math.max(silenceMs * 3, 4000));
+    }
   } catch (err) {
     removeAll();
     opts.onError?.('start_failed', String(err));
