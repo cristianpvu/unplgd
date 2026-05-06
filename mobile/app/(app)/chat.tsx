@@ -4,8 +4,6 @@ import {
   Alert,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -36,7 +34,7 @@ export default function PetChat() {
   const scrollRef = useRef<ScrollView>(null);
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState('');
-  const [kbOpen, setKbOpen] = useState(false);
+  const [kbHeight, setKbHeight] = useState(0);
 
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
   const historyQuery = useQuery({ queryKey: ['pet', 'chat'], queryFn: getPetChatHistory });
@@ -81,17 +79,17 @@ export default function PetChat() {
   }, []);
 
   useEffect(() => {
-    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const sShow = Keyboard.addListener(showEvt, () => setKbOpen(true));
-    const sHide = Keyboard.addListener(hideEvt, () => setKbOpen(false));
+    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKbHeight(e.endCoordinates.height);
+    });
+    const sHide = Keyboard.addListener('keyboardDidHide', () => {
+      setKbHeight(0);
+    });
     return () => {
       sShow.remove();
       sHide.remove();
     };
   }, []);
-
-  const bottomPad = kbOpen ? 6 : 10 + insets.bottom;
 
   const send = useMutation({
     mutationFn: (msg: string) => sendPetChat(msg),
@@ -174,7 +172,7 @@ export default function PetChat() {
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={0}>
+      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
         <ScrollView
           ref={scrollRef}
           style={styles.chat}
@@ -197,7 +195,7 @@ export default function PetChat() {
           )}
         </ScrollView>
 
-        <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
+        <View style={[styles.inputRow, { paddingBottom: kbHeight > 0 ? 6 : insets.bottom + 10 }]}>
           <TextInput
             style={styles.input}
             value={draft}
@@ -220,7 +218,7 @@ export default function PetChat() {
             <Text style={styles.sendText}>↑</Text>
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
