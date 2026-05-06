@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   Keyboard,
   Pressable,
@@ -23,10 +25,21 @@ import {
   sendPetChat,
 } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
-import { playPetVoice, stopDevice, stopRemoteAudio } from '../../src/lib/speech';
+import {
+  ensureMicPermission,
+  isSttAvailable,
+  playPetVoice,
+  playPetVoiceAwait,
+  startListening,
+  stopDevice,
+  stopRemoteAudio,
+  type SttHandle,
+} from '../../src/lib/speech';
 import { colors } from '../../src/theme/colors';
 
 type Bubble = { id: string; role: 'user' | 'assistant'; text: string };
+type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
+type Mode = 'live' | 'chat';
 
 export default function PetChat() {
   const qc = useQueryClient();
@@ -35,6 +48,19 @@ export default function PetChat() {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [draft, setDraft] = useState('');
   const [kbHeight, setKbHeight] = useState(0);
+  const [mode, setMode] = useState<Mode>('live');
+  const [phase, setPhase] = useState<Phase>('idle');
+  // textul complet pe care vrem sa-l "scriem" cuvant cu cuvant in live mode
+  const [livePetText, setLivePetText] = useState('');
+  // ce s-a aratat pana acum din livePetText (typewriter)
+  const [livePetShown, setLivePetShown] = useState('');
+  // STT interim (cand vorbesti tu)
+  const [livePartialUser, setLivePartialUser] = useState('');
+  const liveSttRef = useRef<SttHandle | null>(null);
+  // marker ca intro-ul a fost redat — nu il redam la fiecare schimbare de bubbles
+  const introPlayedRef = useRef(false);
+  // pulse animat pe avatar in live mode
+  const pulse = useRef(new Animated.Value(1)).current;
 
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
   const historyQuery = useQuery({ queryKey: ['pet', 'chat'], queryFn: getPetChatHistory });
@@ -43,16 +69,12 @@ export default function PetChat() {
   const petImage = petImageUrl(pet?.species.imagePath ?? null);
   const petName = pet?.name ?? 'Pet';
 
-  // Mesaj de intro la chat gol — random din catchphrases-urile speciei (per
-  // personaj, deja in DB). NU il salvam in Redis: e doar UI, modelul nu-l
-  // vede, iar el saluta natural la primul reply real.
   function pickIntro(): string {
     const phrases = pet?.species.catchphrases ?? [];
     if (phrases.length === 0) return `Hei.`;
     return phrases[Math.floor(Math.random() * phrases.length)] ?? phrases[0]!;
   }
 
-  // La prima incarcare, hidratam bubbles din history.
   useEffect(() => {
     if (!historyQuery.data) return;
     if (historyQuery.data.messages.length === 0) {
@@ -75,6 +97,7 @@ export default function PetChat() {
     return () => {
       stopDevice();
       void stopRemoteAudio();
+      liveSttRef.current?.stop();
     };
   }, []);
 
@@ -91,6 +114,157 @@ export default function PetChat() {
     };
   }, []);
 
+  // Pulse pe avatar cand asculta sau vorbeste
+  useEffect(() => {
+    if (phase === 'idle' || phase === 'thinking') {
+      pulse.stopAnimation();
+      Animated.timing(pulse, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: phase === 'listening' ? 1.1 : 1.06,
+          duration: phase === 'listening' ? 500 : 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: phase === 'listening' ? 500 : 700,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [phase, pulse]);
+
+  // Typewriter — afisam livePetText cuvant cu cuvant in livePetShown
+  useEffect(() => {
+    if (!livePetText) {
+      setLivePetShown('');
+      return;
+    }
+    setLivePetShown('');
+    const tokens = livePetText.split(/(\s+)/);
+    let i = 0;
+    const id = setInterval(() => {
+      i = Math.min(i + 1, tokens.length);
+      setLivePetShown(tokens.slice(0, i).join(''));
+      if (i >= tokens.length) clearInterval(id);
+    }, 140);
+    return () => clearInterval(id);
+  }, [livePetText]);
+
+  // Intro live: cand intram in live mode si avem un assistant message in coada,
+  // il citim cu voce. introPlayedRef previne re-redarea la fiecare schimbare.
+  useEffect(() => {
+    if (mode !== 'live') return;
+    if (introPlayedRef.current) return;
+    if (bubbles.length === 0) return;
+    const lastAsst = [...bubbles].reverse().find((b) => b.role === 'assistant');
+    if (!lastAsst) return;
+    introPlayedRef.current = true;
+    void liveSpeak(lastAsst.text, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubbles, mode]);
+
+  async function liveSpeak(text: string, audioUrl: string | null) {
+    setPhase('speaking');
+    setLivePetText(text);
+    try {
+      await playPetVoiceAwait(text, audioUrl);
+    } catch {
+      // ignore
+    }
+    setLivePetShown(text);
+    setPhase('idle');
+  }
+
+  async function liveStartListening() {
+    if (!isSttAvailable()) {
+      Alert.alert(
+        'Microfon indisponibil',
+        'Recunoasterea vocala nu e activa. Foloseste modul scris.',
+      );
+      return;
+    }
+    const ok = await ensureMicPermission();
+    if (!ok) {
+      Alert.alert(
+        'Microfon necesar',
+        `${petName} nu te poate auzi fara permisiune. Activeaza microfonul din Setari.`,
+      );
+      return;
+    }
+    stopDevice();
+    void stopRemoteAudio();
+    setLivePetText('');
+    setLivePetShown('');
+    setLivePartialUser('');
+    setPhase('listening');
+    liveSttRef.current = await startListening({
+      onInterim: (text) => setLivePartialUser(text),
+      onResult: (text) => {
+        liveSttRef.current = null;
+        const final = text.trim();
+        setLivePartialUser('');
+        if (!final) {
+          setPhase('idle');
+          return;
+        }
+        setBubbles((b) => [...b, { id: `u-${Date.now()}`, role: 'user', text: final }]);
+        setPhase('thinking');
+        send.mutate(final);
+      },
+      onError: (code, message) => {
+        liveSttRef.current = null;
+        setPhase('idle');
+        setLivePartialUser('');
+        if (code !== 'nomatch') {
+          Alert.alert('Hopa', message ?? 'N-am inteles. Mai incearca.');
+        }
+      },
+    });
+  }
+
+  function liveStopListening() {
+    liveSttRef.current?.stop();
+    liveSttRef.current = null;
+    setPhase('idle');
+    setLivePartialUser('');
+  }
+
+  function liveCancelSpeaking() {
+    stopDevice();
+    void stopRemoteAudio();
+    setLivePetShown(livePetText);
+    setPhase('idle');
+  }
+
+  function switchMode(target: Mode) {
+    if (target === mode) return;
+    liveSttRef.current?.stop();
+    liveSttRef.current = null;
+    stopDevice();
+    void stopRemoteAudio();
+    setLivePartialUser('');
+    setLivePetText('');
+    setLivePetShown('');
+    setPhase('idle');
+    if (target === 'live') {
+      // re-redam ultimul assistant cand revenim in live
+      introPlayedRef.current = false;
+    }
+    setMode(target);
+  }
+
   const send = useMutation({
     mutationFn: (msg: string) => sendPetChat(msg),
     onSuccess: (resp) => {
@@ -98,8 +272,13 @@ export default function PetChat() {
         ...b,
         { id: `a-${Date.now()}`, role: 'assistant', text: resp.reply },
       ]);
-      void playPetVoice(resp.reply, absolutePetAudioUrl(resp.replyAudioUrl));
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      const audio = absolutePetAudioUrl(resp.replyAudioUrl);
+      if (mode === 'live') {
+        void liveSpeak(resp.reply, audio);
+      } else {
+        void playPetVoice(resp.reply, audio);
+        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+      }
     },
     onError: (err: any) => {
       const msg =
@@ -107,16 +286,23 @@ export default function PetChat() {
           ? 'Prea multe mesaje, ia o pauza scurta.'
           : err?.message ?? `${petName} nu raspunde acum.`;
       Alert.alert('Hopa', msg);
+      if (mode === 'live') setPhase('idle');
     },
   });
 
   const reset = useMutation({
     mutationFn: () => clearPetChat(),
     onSuccess: () => {
-      setBubbles([{ id: 'intro', role: 'assistant', text: pickIntro() }]);
+      const intro = pickIntro();
+      setBubbles([{ id: 'intro', role: 'assistant', text: intro }]);
       qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
       stopDevice();
       void stopRemoteAudio();
+      setLivePartialUser('');
+      setPhase('idle');
+      if (mode === 'live') {
+        introPlayedRef.current = false;
+      }
     },
   });
 
@@ -130,6 +316,38 @@ export default function PetChat() {
     setDraft('');
     send.mutate(trimmed);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  }
+
+  function onResetPress() {
+    Alert.alert(
+      'Conversatie noua?',
+      `Stergi ce ai vorbit cu ${petName} pana acum.`,
+      [
+        { text: 'Anuleaza' },
+        { text: 'Sterge', style: 'destructive', onPress: () => reset.mutate() },
+      ],
+    );
+  }
+
+  if (mode === 'live') {
+    return (
+      <LiveView
+        petImage={petImage}
+        petName={petName}
+        phase={phase}
+        livePetShown={livePetShown}
+        livePartialUser={livePartialUser}
+        pulse={pulse}
+        onBack={() => router.back()}
+        onSwitchToChat={() => switchMode('chat')}
+        onReset={onResetPress}
+        onMicPress={() => {
+          if (phase === 'listening') liveStopListening();
+          else if (phase === 'speaking') liveCancelSpeaking();
+          else if (phase === 'idle') void liveStartListening();
+        }}
+      />
+    );
   }
 
   return (
@@ -154,22 +372,19 @@ export default function PetChat() {
             {petName}
           </Text>
         </Pressable>
-        <Pressable
-          onPress={() => {
-            Alert.alert(
-              'Conversatie noua?',
-              `Stergi ce ai vorbit cu ${petName} pana acum.`,
-              [
-                { text: 'Anuleaza' },
-                { text: 'Sterge', style: 'destructive', onPress: () => reset.mutate() },
-              ],
-            );
-          }}
-          hitSlop={12}
-          style={styles.iconBtn}
-        >
-          <Text style={styles.iconText}>↺</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => switchMode('live')}
+            hitSlop={12}
+            style={styles.iconBtn}
+            accessibilityLabel="Mod apel"
+          >
+            <Text style={styles.iconText}>🎙️</Text>
+          </Pressable>
+          <Pressable onPress={onResetPress} hitSlop={12} style={styles.iconBtn}>
+            <Text style={styles.iconText}>↺</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
@@ -223,6 +438,128 @@ export default function PetChat() {
   );
 }
 
+type LiveProps = {
+  petImage: string | null;
+  petName: string;
+  phase: Phase;
+  livePetShown: string;
+  livePartialUser: string;
+  pulse: Animated.Value;
+  onBack: () => void;
+  onSwitchToChat: () => void;
+  onReset: () => void;
+  onMicPress: () => void;
+};
+
+function LiveView({
+  petImage,
+  petName,
+  phase,
+  livePetShown,
+  livePartialUser,
+  pulse,
+  onBack,
+  onSwitchToChat,
+  onReset,
+  onMicPress,
+}: LiveProps) {
+  const status =
+    phase === 'listening'
+      ? 'Te ascult...'
+      : phase === 'thinking'
+        ? `${petName} se gandeste...`
+        : phase === 'speaking'
+          ? `${petName} vorbeste`
+          : `Apasa pe microfon si vorbeste cu ${petName}`;
+
+  const micIcon =
+    phase === 'listening' ? '⏹' : phase === 'speaking' ? '⏸' : '🎤';
+  const micLabel =
+    phase === 'listening'
+      ? 'Opreste'
+      : phase === 'speaking'
+        ? 'Pauza'
+        : phase === 'thinking'
+          ? '...'
+          : 'Vorbeste';
+
+  return (
+    <SafeAreaView style={liveStyles.safe} edges={['top', 'bottom']}>
+      <View style={liveStyles.topRow}>
+        <Pressable onPress={onBack} hitSlop={14} style={liveStyles.smallBtn}>
+          <Text style={liveStyles.smallBtnText}>×</Text>
+        </Pressable>
+        <Text style={liveStyles.headerName}>{petName}</Text>
+        <View style={liveStyles.topActions}>
+          <Pressable onPress={onReset} hitSlop={14} style={liveStyles.smallBtn}>
+            <Text style={liveStyles.smallBtnText}>↺</Text>
+          </Pressable>
+          <Pressable onPress={onSwitchToChat} hitSlop={14} style={liveStyles.smallBtn}>
+            <Text style={liveStyles.smallBtnText}>💬</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={liveStyles.body}>
+        <Animated.View
+          style={[
+            liveStyles.avatarWrap,
+            phase === 'listening' && liveStyles.avatarWrapListening,
+            phase === 'speaking' && liveStyles.avatarWrapSpeaking,
+            { transform: [{ scale: pulse }] },
+          ]}
+        >
+          {petImage ? (
+            <Image
+              source={{ uri: petImage }}
+              style={liveStyles.avatarImg}
+              resizeMode="contain"
+            />
+          ) : (
+            <Text style={liveStyles.avatarEmoji}>🐾</Text>
+          )}
+        </Animated.View>
+
+        <Text style={liveStyles.statusText}>{status}</Text>
+
+        <View style={liveStyles.transcriptBox}>
+          {phase === 'thinking' ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : livePartialUser ? (
+            <Text style={liveStyles.userTranscript}>{livePartialUser}</Text>
+          ) : livePetShown ? (
+            <Text style={liveStyles.petTranscript}>
+              {livePetShown}
+              {phase === 'speaking' && <Text style={liveStyles.cursor}>▍</Text>}
+            </Text>
+          ) : (
+            <Text style={liveStyles.placeholder}>
+              Spune-i orice — il vad pe {petName} ca e curios.
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View style={liveStyles.controls}>
+        <Pressable
+          onPress={onMicPress}
+          disabled={phase === 'thinking'}
+          style={({ pressed }) => [
+            liveStyles.micBtn,
+            phase === 'listening' && liveStyles.micBtnListening,
+            phase === 'speaking' && liveStyles.micBtnSpeaking,
+            phase === 'thinking' && liveStyles.micBtnDisabled,
+            pressed && liveStyles.micBtnPressed,
+          ]}
+        >
+          <Text style={liveStyles.micIcon}>{micIcon}</Text>
+        </Pressable>
+        <Text style={liveStyles.micLabel}>{micLabel}</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 function BubbleRow({ bubble }: { bubble: Bubble }) {
   const isMe = bubble.role === 'user';
   return (
@@ -245,6 +582,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     gap: 8,
   },
+  headerActions: { flexDirection: 'row', gap: 8 },
   iconBtn: {
     width: 44,
     height: 44,
@@ -334,4 +672,122 @@ const styles = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
   btnPressed: { transform: [{ scale: 0.95 }], opacity: 0.85 },
+});
+
+const liveStyles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  topActions: { flexDirection: 'row', gap: 8 },
+  smallBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallBtnText: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  headerName: { color: colors.text, fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' },
+
+  body: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 18,
+  },
+  avatarWrap: {
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 1,
+    shadowRadius: 22,
+    elevation: 8,
+    borderWidth: 4,
+    borderColor: 'transparent',
+  },
+  avatarWrapListening: { borderColor: colors.danger },
+  avatarWrapSpeaking: { borderColor: colors.accent },
+  avatarImg: { width: 200, height: 200 },
+  avatarEmoji: { fontSize: 96 },
+
+  statusText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.3,
+  },
+  transcriptBox: {
+    minHeight: 80,
+    maxHeight: 220,
+    width: '100%',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petTranscript: {
+    color: colors.text,
+    fontSize: 22,
+    lineHeight: 30,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  userTranscript: {
+    color: colors.accent,
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  cursor: { color: colors.accent, fontWeight: '800' },
+  placeholder: {
+    color: colors.textMuted,
+    fontSize: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+
+  controls: {
+    alignItems: 'center',
+    paddingBottom: 24,
+    gap: 10,
+  },
+  micBtn: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  micBtnListening: { backgroundColor: colors.danger, shadowColor: colors.danger },
+  micBtnSpeaking: { backgroundColor: colors.cardAlt, shadowOpacity: 0.2 },
+  micBtnDisabled: { opacity: 0.5 },
+  micBtnPressed: { transform: [{ scale: 0.94 }], opacity: 0.9 },
+  micIcon: { fontSize: 38, color: '#FFFFFF' },
+  micLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
 });
