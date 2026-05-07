@@ -47,6 +47,8 @@
         "android.permission.BLUETOOTH",
         "android.permission.BLUETOOTH_ADMIN",
         "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -64,7 +66,6 @@
           "nfcPermission": "Unplgd foloseste NFC pentru a conecta prieteni si a colectiona pet-uri prin carduri."
         }
       ],
-      "./node_modules/react-native-beacon-kit/app.plugin.js",
       [
         "expo-speech-recognition",
         {

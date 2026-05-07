@@ -16,3 +16,15 @@ export type Friend = {
 export function listFriends(): Promise<{ friends: Friend[] }> {
   return api<{ friends: Friend[] }>('/friends');
 }
+
+export type AddFriendResponse = {
+  friendship: { id: string };
+  created: boolean;
+};
+
+export function addFriend(friendUserId: string, method: 'nfc' | 'ble' | 'manual' = 'manual') {
+  return api<AddFriendResponse>('/friends', {
+    method: 'POST',
+    body: { friendUserId, method },
+  });
+}

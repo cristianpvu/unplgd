@@ -9,6 +9,10 @@ export type PresenceState = {
   peers: Peer[];
   sessions: CoWalkSession[];
   error: string | null;
+  // Pe iOS in special advertising-ul iBeacon poate sa pice (BT off, permisiune
+  // refuzata, race CBPeripheralManager). Scan-ul continua, dar user-ul e
+  // invizibil pt ceilalti pana se reactiveaza.
+  advertiseFailed: boolean;
 };
 
 export function usePresence() {
@@ -19,6 +23,7 @@ export function usePresence() {
     peers: [],
     sessions: [],
     error: null,
+    advertiseFailed: false,
   });
 
   useEffect(() => {
@@ -29,6 +34,7 @@ export function usePresence() {
         myToken: snap.myToken,
         sessions: snap.sessions,
         active: presence.isRunning(),
+        advertiseFailed: snap.advertiseFailed,
       }));
     });
     return unsub;
@@ -39,14 +45,19 @@ export function usePresence() {
     const perm = await requestBlePermissions();
     setState((s) => ({ ...s, permission: perm }));
     if (perm !== 'granted') {
-      setState((s) => ({ ...s, error: `Permisiuni BLE refuzate (${perm})` }));
+      setState((s) => ({ ...s, error: `Permisiuni refuzate: ${perm}. Activeaza Locatie + Bluetooth in Setari.` }));
       return;
     }
     try {
       await presence.start();
       setState((s) => ({ ...s, active: true }));
     } catch (e: any) {
-      setState((s) => ({ ...s, error: e?.message ?? 'BLE start failed' }));
+      // eslint-disable-next-line no-console
+      console.warn('[usePresence] presence.start failed:', e);
+      setState((s) => ({
+        ...s,
+        error: e?.message ? `BLE start: ${e.message}` : 'BLE start failed (vezi Metro logs)',
+      }));
     }
   }
 

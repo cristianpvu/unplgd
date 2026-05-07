@@ -176,10 +176,17 @@ export default function Home() {
               </Pressable>
             ))}
             <SheetItem
-              label="Adauga prieten"
+              label="Scaneaza bratara (NFC)"
               onPress={() => {
                 setSheet(null);
                 router.push('/(app)/scan-friend');
+              }}
+            />
+            <SheetItem
+              label="Cauta in apropiere (BLE)"
+              onPress={() => {
+                setSheet(null);
+                router.push('/(app)/nearby');
               }}
             />
           </View>

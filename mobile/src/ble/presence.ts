@@ -1,11 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BleAdvertise: any = require('react-native-ble-advertise').default;
-import Beacon, { type Beacon as DetectedBeacon } from 'react-native-beacon-kit';
+import { BleManager, type Device, type State, type Subscription } from 'react-native-ble-plx';
 import { Pedometer } from 'expo-sensors';
+import { Buffer } from 'buffer';
 import {
   UNPLGD_PROXIMITY_UUID,
-  UNPLGD_REGION_IDENTIFIER,
   RSSI_THRESHOLD_DBM,
   STALE_AFTER_MS,
   RESOLVE_INTERVAL_MS,
@@ -36,11 +36,7 @@ export type CoWalkSession = {
   startedAt: number;
   lastSeenAt: number;
   committed: boolean;
-  // Snapshot al contorului de pasi cumulativ la deschiderea sesiunii. La commit
-  // calculam delta vs contorul curent ca dovada ca userul nostru s-a miscat.
   startStepCount: number;
-  // Ring-buffer cu samples RSSI pe durata sesiunii. La commit calculam stddev:
-  // o valoare prea plata indica telefoane stationare lipite (ex. lasate pe masa).
   rssiSamples: number[];
 };
 
@@ -52,6 +48,10 @@ export type PresenceSnapshot = {
   peers: Peer[];
   myToken: string | null;
   sessions: CoWalkSession[];
+  // Pe iOS advertising-ul iBeacon poate sa pice (BT off, permisiune refuzata,
+  // race CBPeripheralManager). Scan-ul continua, dar UI-ul anunta user-ul.
+  advertiseFailed: boolean;
+  bleState: string;
 };
 
 type StateListener = (state: PresenceSnapshot) => void;
@@ -64,8 +64,6 @@ function dayKeyUTC(d: Date = new Date()): string {
 }
 const committedKey = (day: string, userId: string) => `cowalk:committed:${day}:${userId}`;
 
-// Token = 4 bytes hex (8 chars). Encode in major (top 2B) + minor (bottom 2B)
-// pentru iBeacon advertising. Ambele iOS si Android scaneaza nativ formatul.
 function tokenToMajorMinor(tokenHex: string): { major: number; minor: number } {
   if (!/^[0-9a-fA-F]{8}$/.test(tokenHex)) {
     throw new Error(`Token BLE invalid (asteptat 8 hex chars, primit ${tokenHex.length})`);
@@ -81,6 +79,59 @@ function majorMinorToToken(major: number, minor: number): string {
   return `${m}${n}`;
 }
 
+// Parseaza un manufacturerData base64 ca iBeacon. Format standard:
+// bytes 0..1: company ID (Apple = 0x004c, little-endian → "4c 00")
+// byte  2:    type (0x02 pt iBeacon)
+// byte  3:    length (0x15)
+// bytes 4..19: proximity UUID (16 bytes, big-endian)
+// bytes 20..21: major (big-endian)
+// bytes 22..23: minor (big-endian)
+// byte  24:   txPower (signed)
+function parseIBeacon(
+  manufacturerDataB64: string,
+): { uuid: string; major: number; minor: number } | null {
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(manufacturerDataB64, 'base64');
+  } catch {
+    return null;
+  }
+  if (buf.length < 25) return null;
+  // Apple company ID
+  if (buf[0] !== 0x4c || buf[1] !== 0x00) return null;
+  // iBeacon header
+  if (buf[2] !== 0x02 || buf[3] !== 0x15) return null;
+  const uuidBytes = buf.subarray(4, 20).toString('hex');
+  const uuid = `${uuidBytes.substring(0, 8)}-${uuidBytes.substring(8, 12)}-${uuidBytes.substring(
+    12,
+    16,
+  )}-${uuidBytes.substring(16, 20)}-${uuidBytes.substring(20, 32)}`.toUpperCase();
+  const major = buf.readUInt16BE(20);
+  const minor = buf.readUInt16BE(22);
+  return { uuid, major, minor };
+}
+
+async function broadcastWithRetry(
+  uuid: string,
+  major: number,
+  minor: number,
+): Promise<void> {
+  const delaysMs = [0, 300, 600, 1000];
+  let lastErr: any = null;
+  for (const wait of delaysMs) {
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    try {
+      await BleAdvertise.broadcast(uuid, major, minor);
+      return;
+    } catch (e: any) {
+      lastErr = e;
+      const code = e?.code ?? e?.message ?? '';
+      if (!String(code).includes('BLE_NOT_POWERED_ON')) throw e;
+    }
+  }
+  throw lastErr ?? new Error('Bluetooth nu raspunde. Verifica daca e pornit.');
+}
+
 function stdDev(values: number[]): number {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
@@ -89,6 +140,7 @@ function stdDev(values: number[]): number {
 }
 
 class PresenceEngine {
+  private manager: BleManager | null = null;
   private myToken: string | null = null;
   private peers = new Map<string, Peer>();
   private sessions = new Map<string, CoWalkSession>();
@@ -100,15 +152,32 @@ class PresenceEngine {
   private running = false;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private resolveTimer: ReturnType<typeof setInterval> | null = null;
-  private rangedSub: { remove: () => void } | null = null;
   private pedometerSub: { remove: () => void } | null = null;
   private pedometerAvailable = false;
-  // Cumulativ de la subscribe-ul curent; sesiunile snapshoot-uiesc la creare
-  // si calculeaza delta la commit.
   private myStepCount = 0;
+  private advertiseFailed = false;
+  private bleState: State | 'Unknown' = 'Unknown';
+  private stateSub: Subscription | null = null;
 
   isRunning() {
     return this.running;
+  }
+
+  getBleState() {
+    return this.bleState;
+  }
+
+  // Lazy singleton — instantiat la primul start. BleManager e greu (deschide
+  // CBCentralManager pe iOS); il pastram pe toata viata app-ului dupa creare.
+  private getManager(): BleManager {
+    if (!this.manager) {
+      this.manager = new BleManager();
+      this.stateSub = this.manager.onStateChange((s) => {
+        this.bleState = s;
+        this.emit();
+      }, true);
+    }
+    return this.manager;
   }
 
   subscribe(fn: StateListener): () => void {
@@ -128,76 +197,103 @@ class PresenceEngine {
 
   async start() {
     if (this.running) return;
-    this.running = true;
 
-    await this.loadCommittedToday();
+    const manager = this.getManager();
 
-    // Pedometer porneste inainte de scan pentru ca prima sesiune sa aiba un
-    // startStepCount sincronizat. Daca device-ul nu suporta (simulator, Android
-    // sub 4.4), engine-ul scaneaza dar nu valideaza co-walks — emit failed la commit.
+    try {
+      await this.loadCommittedToday();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] loadCommittedToday failed:', e);
+    }
+
     this.pedometerAvailable = await Pedometer.isAvailableAsync().catch(() => false);
     this.myStepCount = 0;
     if (this.pedometerAvailable) {
-      this.pedometerSub = Pedometer.watchStepCount((result) => {
-        this.myStepCount = result.steps;
-      });
+      try {
+        this.pedometerSub = Pedometer.watchStepCount((result) => {
+          this.myStepCount = result.steps;
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[presence] pedometer watch failed:', e);
+      }
     }
 
-    const { token } = await getMyBleToken();
+    let token: string;
+    try {
+      const r = await getMyBleToken();
+      token = r.token;
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] getMyBleToken failed:', e);
+      throw new Error(`Nu am primit token de la backend: ${e?.message ?? e}`);
+    }
     this.myToken = token;
     const { major, minor } = tokenToMajorMinor(token);
 
-    // Advertise iBeacon. Pe iOS company ID-ul e fortat la Apple; pe Android
-    // setCompanyId nu e relevant pt formatul iBeacon (header standardizat).
     BleAdvertise.setCompanyId(0x004c);
-    await BleAdvertise.broadcast(UNPLGD_PROXIMITY_UUID, major, minor);
+    this.advertiseFailed = false;
+    try {
+      await broadcastWithRetry(UNPLGD_PROXIMITY_UUID, major, minor);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] advertise failed, continuing scan-only:', e?.message ?? e);
+      this.advertiseFailed = true;
+    }
 
-    // Foreground service e gestionat de beacon-kit cat scanul ruleaza:
-    // notification persistenta pe Android, plus PARTIAL_WAKE_LOCK pe device-uri
-    // OEM agresive.
-    Beacon.configure({
-      scanPeriod: 1100,
-      betweenScanPeriod: 0,
-      foregroundService: true,
-      foregroundServiceNotification: {
-        title: 'Unplgd cauta prieteni in apropiere',
-        text: 'Atinge ca sa deschizi sau opresti scanarea.',
-      },
-    });
+    // Asteapta starea PoweredOn — startDeviceScan pe iOS arunca daca radio-ul
+    // n-a primit inca didUpdateState. Up la 5s sa nu blocheze permanent.
+    if (this.bleState !== 'PoweredOn') {
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => resolve(), 5000);
+        const sub = manager.onStateChange((s) => {
+          if (s === 'PoweredOn') {
+            clearTimeout(timeout);
+            sub.remove();
+            resolve();
+          }
+        }, true);
+      });
+    }
 
-    this.rangedSub = Beacon.onBeaconsRanged((event) => {
-      const now = Date.now();
-      for (const b of event.beacons) {
-        this.handleBeacon(b, now);
-      }
-    });
-
-    await Beacon.startRanging({
-      identifier: UNPLGD_REGION_IDENTIFIER,
-      uuid: UNPLGD_PROXIMITY_UUID,
-    });
+    // allowDuplicates=true e necesar pe iOS ca sa primim updateuri RSSI continue
+    // pe acelasi device, nu doar la prima detectie.
+    try {
+      manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
+        if (error) {
+          // eslint-disable-next-line no-console
+          console.warn('[presence] scan error:', error.message ?? error);
+          return;
+        }
+        if (!device) return;
+        this.handleDevice(device);
+      });
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] startDeviceScan failed:', e);
+      this.pedometerSub?.remove();
+      this.pedometerSub = null;
+      try {
+        await BleAdvertise.stopBroadcast();
+      } catch {}
+      throw new Error(`Scanare BLE: ${e?.message ?? e}`);
+    }
 
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.resolveTimer = setInterval(() => void this.resolveUnknownTokens(), RESOLVE_INTERVAL_MS);
+    this.running = true;
     this.emit();
   }
 
   async stop() {
-    if (!this.running) return;
     this.running = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.resolveTimer) clearInterval(this.resolveTimer);
     this.tickTimer = null;
     this.resolveTimer = null;
-    if (this.rangedSub) {
-      this.rangedSub.remove();
-      this.rangedSub = null;
-    }
     try {
-      await Beacon.stopRanging({
-        identifier: UNPLGD_REGION_IDENTIFIER,
-        uuid: UNPLGD_PROXIMITY_UUID,
-      });
+      this.manager?.stopDeviceScan();
     } catch {}
     try {
       await BleAdvertise.stopBroadcast();
@@ -208,6 +304,7 @@ class PresenceEngine {
     }
     this.pedometerAvailable = false;
     this.myStepCount = 0;
+    this.advertiseFailed = false;
     this.peers.clear();
     this.sessions.clear();
     this.myToken = null;
@@ -235,19 +332,28 @@ class PresenceEngine {
     }
   }
 
-  private handleBeacon(b: DetectedBeacon, now: number) {
-    if (b.rssi < RSSI_THRESHOLD_DBM) return;
-    const token = majorMinorToToken(b.major, b.minor);
+  private handleDevice(device: Device) {
+    const md = device.manufacturerData;
+    const rssi = device.rssi;
+    if (!md || rssi == null) return;
+    if (rssi < RSSI_THRESHOLD_DBM) return;
+
+    const beacon = parseIBeacon(md);
+    if (!beacon) return;
+    if (beacon.uuid.toUpperCase() !== UNPLGD_PROXIMITY_UUID.toUpperCase()) return;
+
+    const token = majorMinorToToken(beacon.major, beacon.minor);
     if (this.myToken && token === this.myToken) return;
 
+    const now = Date.now();
     const existing = this.peers.get(token);
     if (existing) {
-      existing.rssi = b.rssi;
+      existing.rssi = rssi;
       existing.lastSeenAt = now;
     } else {
       this.peers.set(token, {
         token,
-        rssi: b.rssi,
+        rssi,
         firstSeenAt: now,
         lastSeenAt: now,
       });
@@ -257,14 +363,12 @@ class PresenceEngine {
   private tick() {
     const now = Date.now();
 
-    // Day rollover — reseteaza sesiunile si reincarca dedup-ul.
     const today = dayKeyUTC();
     if (today !== this.currentDay) {
       this.sessions.clear();
       void this.loadCommittedToday();
     }
 
-    // Push state-ul peer-ilor in sesiuni: doar prieteni acceptati, neasignati azi.
     for (const peer of this.peers.values()) {
       if (!peer.userId || !peer.name || !peer.isFriend) continue;
       if (this.committedToday.has(peer.userId)) continue;
@@ -272,9 +376,6 @@ class PresenceEngine {
       if (existing) {
         if (peer.lastSeenAt > existing.lastSeenAt) {
           existing.lastSeenAt = peer.lastSeenAt;
-          // Esantion RSSI per tick (1Hz). Daca peer-ul a re-aparut dupa un gap
-          // <RESUME, acelasi peer object e reconstruit cu rssi proaspat — sample-ul
-          // reflecta acel moment. Cap-ul previne crestere nelimitata pe sesiuni lungi.
           existing.rssiSamples.push(peer.rssi);
           if (existing.rssiSamples.length > RSSI_SAMPLES_CAP) existing.rssiSamples.shift();
         }
@@ -291,7 +392,6 @@ class PresenceEngine {
       }
     }
 
-    // Sterge sesiunile cu gap mai mare ca pragul; commit cele care au prins 10 min.
     for (const [userId, s] of this.sessions) {
       if (s.committed) continue;
       const gap = now - s.lastSeenAt;
@@ -306,8 +406,6 @@ class PresenceEngine {
       }
     }
 
-    // Stale-uirea peer-ilor (UI) e separata de sesiuni: peer dispare din lista
-    // dupa 30s, dar sesiunea ramane vie pana la COWALK_RESUME_GAP_MS.
     for (const [token, peer] of this.peers) {
       if (now - peer.lastSeenAt > STALE_AFTER_MS) {
         this.peers.delete(token);
@@ -324,11 +422,6 @@ class PresenceEngine {
     const steps = Math.max(0, this.myStepCount - s.startStepCount);
     const rssiStdDev = stdDev(s.rssiSamples);
 
-    // Squad auto-detect: alti prieteni vazuti in aceeasi fereastra cu durata
-    // sustinuta (>= MIN_DURATION) si inca recent prezenti (in RESUME_GAP). Sesiunile
-    // committed raman in map cat peer-ul e activ — astfel se prind si membrii care
-    // au atins pragul mai devreme. Backend-ul valideaza ca toti sunt prieteni reali
-    // si calculeaza multiplier-ul (1x/1.5x/2x).
     const squadFriendIds: string[] = [];
     for (const [otherId, other] of this.sessions) {
       if (otherId === s.userId) continue;
@@ -339,9 +432,6 @@ class PresenceEngine {
       }
     }
 
-    // Anti-cheat local: dropam sesiunea inainte sa lovim backend-ul daca semnalele
-    // de miscare sunt slabe. Backend-ul aplica acelasi check (defense in depth) —
-    // local-ul economiseste un round-trip si ofera feedback UX imediat.
     const reject = (reason: string) => {
       this.sessions.delete(s.userId);
       this.fireEvent({ type: 'failed', userId: s.userId, name: s.name, durationSec, error: reason });
@@ -383,8 +473,6 @@ class PresenceEngine {
       });
       this.emit();
     } catch (e: any) {
-      // Pe esec: scoatem sesiunea sa nu loop-uim. Daca peer-ul ramane in raza,
-      // urmatorul tick recreeaza sesiunea cu startedAt nou.
       this.sessions.delete(s.userId);
       this.fireEvent({
         type: 'failed',
@@ -426,6 +514,8 @@ class PresenceEngine {
       peers: [...this.peers.values()].sort((a, b) => a.firstSeenAt - b.firstSeenAt),
       myToken: this.myToken,
       sessions: [...this.sessions.values()].sort((a, b) => a.startedAt - b.startedAt),
+      advertiseFailed: this.advertiseFailed,
+      bleState: this.bleState,
     };
   }
 

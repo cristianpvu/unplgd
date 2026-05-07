@@ -215,6 +215,10 @@ export default function PetChat() {
       );
       return;
     }
+    // Daca intre timp am navigat away / am schimbat modul / am anulat
+    // speak-ul, NU pornim mic-ul. Altfel AVAudioEngine.connect poate sa
+    // arunce o exceptie pe iOS si crapa app-ul.
+    if (speakCancelledRef.current) return;
     stopDevice();
     void stopRemoteAudio();
     setLivePetText('');
