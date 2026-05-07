@@ -93,7 +93,7 @@ export default function Pets() {
   async function startScan() {
     setScanning(true);
     try {
-      const uid = await readTagUid();
+      const uid = await readTagUid({ alertMessage: 'Apropie cardul de iPhone' });
       scan.mutate(uid);
     } catch (e: any) {
       if (e?.message && !/cancel/i.test(e.message)) {

@@ -42,7 +42,7 @@ export default function LinkBracelet() {
   async function startScan() {
     setScanning(true);
     try {
-      const uid = await readTagUid();
+      const uid = await readTagUid({ alertMessage: 'Apropie bratara de iPhone' });
       provision.mutate(uid);
     } catch (e: any) {
       // Cancel-ul user-ului si erorile native NFC ajung tot aici — diferentiem

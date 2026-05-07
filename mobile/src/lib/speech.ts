@@ -1,4 +1,4 @@
-import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import {
   ExpoSpeechRecognitionModule,
@@ -162,6 +162,15 @@ export async function startListening(opts: {
     // nimic in progres
   }
 
+  // iOS: SFSpeechRecognizer cere PlayAndRecord. Fara comutare explicita primim
+  // kAFAssistantErrorDomain 209. Single setting prin expo-audio — cea mai
+  // stabila combinatie pe iOS 18 / iPhone 11.
+  try {
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+  } catch {
+    // best effort
+  }
+
   // Sesiunea poate emite evenimente intarziate dupa ce am decis ca s-a incheiat
   // (ex: result final + end care vine dupa, sau result-uri buffered). Folosim
   // `closed` ca poarta — odata true, nimic nu mai pleaca catre consumer.
@@ -204,6 +213,14 @@ export async function startListening(opts: {
     if (closed) return;
     closed = true;
     subs.forEach((s) => s.remove());
+    // Comutam iOS inapoi la categoria fara recording, ca ruta sa revina pe
+    // loudspeaker dupa STT. Altfel tot audio-ul care urmeaza (Vader, alte
+    // sunete) trece prin earpiece si suna incet.
+    setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(
+      () => {
+        // best effort
+      },
+    );
   };
 
   const subs = [
@@ -324,4 +341,3 @@ export async function startListening(opts: {
 
   return { stop: cleanup };
 }
-

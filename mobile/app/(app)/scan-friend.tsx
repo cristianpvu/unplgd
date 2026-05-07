@@ -47,7 +47,7 @@ export default function ScanFriend() {
     setResult(null);
     setScanning(true);
     try {
-      const uid = await readTagUid();
+      const uid = await readTagUid({ alertMessage: 'Apropie bratara prietenului de iPhone' });
       scan.mutate(uid);
     } catch (e: any) {
       if (e?.message && !/cancel/i.test(e.message)) {
