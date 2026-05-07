@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const BleAdvertise: any = require('react-native-ble-advertise').default;
 import { BleManager, type Device, type State, type Subscription } from 'react-native-ble-plx';
+import { iosBeaconScanner } from './iosBeaconScanner';
 import { Pedometer } from 'expo-sensors';
 import { Buffer } from 'buffer';
 import {
@@ -158,6 +160,9 @@ class PresenceEngine {
   private advertiseFailed = false;
   private bleState: State | 'Unknown' = 'Unknown';
   private stateSub: Subscription | null = null;
+  // Pe iOS scanam cu CLLocationManager (modul nativ local) — vezi
+  // iosBeaconScanner.ts. Pe Android scanam cu ble-plx central mode.
+  private iosScannerSub: { remove: () => void } | null = null;
 
   isRunning() {
     return this.running;
@@ -242,8 +247,8 @@ class PresenceEngine {
       this.advertiseFailed = true;
     }
 
-    // Asteapta starea PoweredOn — startDeviceScan pe iOS arunca daca radio-ul
-    // n-a primit inca didUpdateState. Up la 5s sa nu blocheze permanent.
+    // Asteapta starea PoweredOn — startDeviceScan / startRanging pe iOS arunca
+    // daca radio-ul n-a primit inca didUpdateState. Up la 5s.
     if (this.bleState !== 'PoweredOn') {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => resolve(), 5000);
@@ -257,27 +262,50 @@ class PresenceEngine {
       });
     }
 
-    // allowDuplicates=true e necesar pe iOS ca sa primim updateuri RSSI continue
-    // pe acelasi device, nu doar la prima detectie.
-    try {
-      manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
-        if (error) {
-          // eslint-disable-next-line no-console
-          console.warn('[presence] scan error:', error.message ?? error);
-          return;
-        }
-        if (!device) return;
-        this.handleDevice(device);
-      });
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('[presence] startDeviceScan failed:', e);
-      this.pedometerSub?.remove();
-      this.pedometerSub = null;
+    if (Platform.OS === 'ios') {
+      // iOS: CLLocationManager.startRangingBeacons via modulul nativ local.
+      // Apple ascunde iBeacon advertising din scanul generic, dar Core Location
+      // Ranging API ni-l da decoded (uuid + major + minor + rssi).
       try {
-        await BleAdvertise.stopBroadcast();
-      } catch {}
-      throw new Error(`Scanare BLE: ${e?.message ?? e}`);
+        await iosBeaconScanner.startRanging(UNPLGD_PROXIMITY_UUID);
+        this.iosScannerSub = iosBeaconScanner.onBeaconsRanged((event) => {
+          for (const b of event.beacons) {
+            this.handleRangedBeacon(b.uuid, b.major, b.minor, b.rssi);
+          }
+        });
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[presence] iosBeaconScanner.startRanging failed:', e);
+        this.pedometerSub?.remove();
+        this.pedometerSub = null;
+        try {
+          await BleAdvertise.stopBroadcast();
+        } catch {}
+        throw new Error(`Scanare iBeacon iOS: ${e?.message ?? e}`);
+      }
+    } else {
+      // Android: ble-plx central scan + parsing iBeacon din manufacturerData.
+      // allowDuplicates=true ca sa primim updateuri RSSI continue.
+      try {
+        manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
+          if (error) {
+            // eslint-disable-next-line no-console
+            console.warn('[presence] scan error:', error.message ?? error);
+            return;
+          }
+          if (!device) return;
+          this.handleDevice(device);
+        });
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[presence] startDeviceScan failed:', e);
+        this.pedometerSub?.remove();
+        this.pedometerSub = null;
+        try {
+          await BleAdvertise.stopBroadcast();
+        } catch {}
+        throw new Error(`Scanare BLE: ${e?.message ?? e}`);
+      }
     }
 
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
@@ -295,6 +323,15 @@ class PresenceEngine {
     try {
       this.manager?.stopDeviceScan();
     } catch {}
+    if (this.iosScannerSub) {
+      this.iosScannerSub.remove();
+      this.iosScannerSub = null;
+    }
+    if (Platform.OS === 'ios') {
+      try {
+        await iosBeaconScanner.stopAll();
+      } catch {}
+    }
     try {
       await BleAdvertise.stopBroadcast();
     } catch {}
@@ -332,6 +369,33 @@ class PresenceEngine {
     }
   }
 
+  // Path iOS: Core Location ne da deja UUID + major + minor decoded.
+  private handleRangedBeacon(uuid: string, major: number, minor: number, rssi: number) {
+    // CLBeacon.rssi == 0 inseamna "rssi neraportat" — sarim peste, nu il
+    // luam ca semnal real (altfel am polua RSSI samples).
+    if (rssi === 0) return;
+    if (rssi < RSSI_THRESHOLD_DBM) return;
+    if (uuid.toUpperCase() !== UNPLGD_PROXIMITY_UUID.toUpperCase()) return;
+
+    const token = majorMinorToToken(major, minor);
+    if (this.myToken && token === this.myToken) return;
+
+    const now = Date.now();
+    const existing = this.peers.get(token);
+    if (existing) {
+      existing.rssi = rssi;
+      existing.lastSeenAt = now;
+    } else {
+      this.peers.set(token, {
+        token,
+        rssi,
+        firstSeenAt: now,
+        lastSeenAt: now,
+      });
+    }
+  }
+
+  // Path Android: scan-ul ne da raw advertising packet → parsam iBeacon manual.
   private handleDevice(device: Device) {
     const md = device.manufacturerData;
     const rssi = device.rssi;
