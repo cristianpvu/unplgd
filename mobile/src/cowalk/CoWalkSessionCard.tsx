@@ -1,24 +1,21 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
 import { colors } from '../theme/colors';
 import { AvatarStack } from './AvatarStack';
+import { Landscape } from './Landscape';
 
 // Scena de co-walk activa: un strip imersiv care da senzatia ca grupul merge
 // continuu spre obiectivul XP. Trei layere de animatie:
-//  1. Background — linii oblice care se deruleaza orizontal in bucla (treadmill).
-//     Doua copii ale aceluiasi pattern translateX → cand prima ajunge la
-//     -PATTERN_W, salt instant la 0 (seamless loop, fara taietura vizibila).
+//  1. Background — peisaj parallax (cer/munti/copaci/iarba), vezi Landscape.tsx.
 //  2. Avatarele — bobbing translateY decalat pe index, ca pasi alternativi.
 //     Mount-ul lor ramane spring 0→1 (cand intra cineva nou in sesiune).
 //  3. Drumul — bara orizontala cu marker care urmareste ratio-ul real, capat
-//     decorat cu o pictograma de obiectiv (zap). Marker-ul anim spring catre
-//     pozitia noua la fiecare update de timp.
+//     decorat cu o stea-obiectiv care pulseaza pana la cucerire.
 
-const PATTERN_W = 220;
-const SCENE_HEIGHT = 168;
+const SCENE_HEIGHT = 192;
 
 function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -51,11 +48,9 @@ export function CoWalkSessionCard({
 
   return (
     <View style={styles.scene}>
-      {/* Banda fundal cu linii in miscare — efectul de "merg continuu". */}
-      <View style={styles.scrollWrap} pointerEvents="none">
-        <Treadmill paused={myAwarded} />
-        <View style={styles.skylineFade} />
-      </View>
+      {/* Peisaj parallax — 4 layere care curg cu viteze diferite. Cand
+          obiectivul e cucerit, layerele se opresc (sesiunea s-a terminat). */}
+      <Landscape paused={myAwarded} />
 
       {/* Header: LIVE pulse + count + textul "spre XP". */}
       <View style={styles.headerRow}>
@@ -88,64 +83,6 @@ export function CoWalkSessionCard({
         </Text>
       </View>
     </View>
-  );
-}
-
-// =====================================================================
-// Treadmill — fundal cu linii oblice care curg orizontal continuu
-// =====================================================================
-
-function Treadmill({ paused }: { paused: boolean }) {
-  const x = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (paused) {
-      x.stopAnimation();
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.timing(x, {
-        toValue: 1,
-        duration: 5200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [paused, x]);
-
-  const translate = x.interpolate({ inputRange: [0, 1], outputRange: [0, -PATTERN_W] });
-
-  return (
-    <Animated.View style={[styles.treadmill, { transform: [{ translateX: translate }] }]}>
-      <Pattern />
-      <Pattern />
-      <Pattern />
-    </Animated.View>
-  );
-}
-
-function Pattern() {
-  // Linii diagonale la fiecare 36px. PATTERN_W = 220 → ~6 linii vizibile per
-  // copie. Capatul stang al unei copii e identic cu capatul drept al copiei
-  // anterioare → scroll-ul e seamless cand reset la translateX 0.
-  const lines = useMemo(() => {
-    const out: number[] = [];
-    for (let i = 0; i < 8; i++) out.push(i * 36);
-    return out;
-  }, []);
-  return (
-    <Svg width={PATTERN_W} height={SCENE_HEIGHT} viewBox={`0 0 ${PATTERN_W} ${SCENE_HEIGHT}`}>
-      {lines.map((x, i) => (
-        <Path
-          key={i}
-          d={`M${x - 40} ${SCENE_HEIGHT + 20} L${x + 80} -20`}
-          stroke={colors.accent}
-          strokeWidth={2}
-          opacity={0.32}
-        />
-      ))}
-    </Svg>
   );
 }
 
@@ -289,21 +226,11 @@ function ProgressTrail({ ratio, awarded }: { ratio: number; awarded: boolean }) 
 const styles = StyleSheet.create({
   scene: {
     paddingVertical: 16,
-    paddingHorizontal: 4,
+    paddingHorizontal: 12,
     overflow: 'hidden',
     gap: 10,
-  },
-  scrollWrap: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-  },
-  treadmill: {
-    flexDirection: 'row',
-    height: SCENE_HEIGHT,
-  },
-  skylineFade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 226, 122, 0.55)',
+    borderRadius: 18,
+    minHeight: SCENE_HEIGHT,
   },
   headerRow: {
     flexDirection: 'row',
