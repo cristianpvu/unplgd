@@ -4,7 +4,13 @@ import { FriendshipStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { markSeen, viewersWhoSaw } from '../lib/presence.js';
 import { prisma } from '../lib/prisma.js';
-import { tickHeartbeat, getSessionForUser, leaveSession } from '../lib/cowalk/session.js';
+import {
+  tickHeartbeat,
+  getSessionForUser,
+  leaveSession,
+  isLeftRecently,
+  filterRecentlyLeft,
+} from '../lib/cowalk/session.js';
 import { emitSyncEvents } from '../lib/socket/cowalkEmit.js';
 import { awardCowalkParticipant } from '../lib/cowalk/award.js';
 export const presenceRouter = Router();
@@ -37,7 +43,22 @@ presenceRouter.post('/heartbeat', async (req, res, next) => {
     const sawMe = friendsSeen.length
       ? await viewersWhoSaw(friendsSeen, me)
       : new Set<string>();
-    const mutualPeers = friendsSeen.filter((id) => sawMe.has(id));
+    let mutualPeers = friendsSeen.filter((id) => sawMe.has(id));
+
+    // Guard "left recently": daca eu sau un peer am dat toggle off in
+    // ultimele LEFT_GUARD_TTL_SECONDS, nu re-cream sesiuni cu el. Asta
+    // acopera race-ul cand un heartbeat e in zbor in timp ce leaveSession
+    // tocmai a destruit sesiunea — fara guard, tickHeartbeat ar prinde din
+    // nou peer-ul mutual si ar emite cowalk:started, lasandu-l pe celalalt
+    // user blocat in sesiune fantoma.
+    if (await isLeftRecently(me)) {
+      mutualPeers = [];
+    } else if (mutualPeers.length > 0) {
+      const guarded = await filterRecentlyLeft(mutualPeers);
+      if (guarded.size > 0) {
+        mutualPeers = mutualPeers.filter((id) => !guarded.has(id));
+      }
+    }
 
     const { events } = await tickHeartbeat(me, mutualPeers, Date.now(), async (args) => {
       await awardCowalkParticipant({

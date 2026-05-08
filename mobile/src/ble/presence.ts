@@ -514,12 +514,23 @@ class PresenceEngine {
       return;
     }
     session.members.delete(p.userId);
+    // Scoate peer-ul si din BLE local cache. Altfel ramane in `peers` pana
+    // la STALE_AFTER_MS si heartbeat-urile noastre ar continua sa-l raporteze
+    // ca prieten vazut → backend l-ar prinde intr-o sesiune noua daca celalalt
+    // user inca il vede pe noi (race window 90s din TTL presence:seen).
+    this.dropPeerByUserId(p.userId);
     this.emit();
   }
 
   private onEnded(p: { sessionId: string }) {
     this.serverSessions.delete(p.sessionId);
     this.emit();
+  }
+
+  private dropPeerByUserId(userId: string) {
+    for (const [token, peer] of this.peers) {
+      if (peer.userId === userId) this.peers.delete(token);
+    }
   }
 
   private onCompleted(p: {

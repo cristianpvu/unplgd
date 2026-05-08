@@ -12,6 +12,25 @@ import { randomUUID } from 'node:crypto';
 // participant la GRACE_MS de la ultimul confirm.
 
 const SESSION_TTL_SECONDS = 4 * 60 * 60;
+const LEFT_GUARD_TTL_SECONDS = 120;
+const leftGuardKey = (userId: string) => `cowalk:left:${userId}`;
+
+export async function isLeftRecently(userId: string): Promise<boolean> {
+  return (await redis.exists(leftGuardKey(userId))) === 1;
+}
+
+export async function filterRecentlyLeft(userIds: string[]): Promise<Set<string>> {
+  if (userIds.length === 0) return new Set();
+  const pipeline = redis.pipeline();
+  for (const id of userIds) pipeline.exists(leftGuardKey(id));
+  const results = (await pipeline.exec()) ?? [];
+  const guarded = new Set<string>();
+  results.forEach(([_err, val], i) => {
+    const id = userIds[i];
+    if (id && val === 1) guarded.add(id);
+  });
+  return guarded;
+}
 
 export const PARTICIPANT_GRACE_MS = 90_000;
 export const COWALK_MIN_DURATION_MS = 10 * 60 * 1000;
@@ -307,7 +326,14 @@ export async function leaveSession(userId: string): Promise<SyncEvent[]> {
   }
 
   delete session.participants[userId];
-  await redis.del(uKey(userId));
+  await Promise.all([
+    redis.del(uKey(userId)),
+    // Guard impotriva re-crearii sesiunii: heartbeat-urile in zbor (proprii sau
+    // ale peer-ilor care inca vad BLE-ul user-ului) nu trebuie sa-l prinda din
+    // nou intr-o sesiune noua imediat. Vezi filterRecentlyLeft + check in
+    // route handler-ul de heartbeat.
+    redis.set(leftGuardKey(userId), '1', 'EX', LEFT_GUARD_TTL_SECONDS),
+  ]);
 
   events.push({
     type: 'left',
