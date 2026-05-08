@@ -106,7 +106,7 @@ export default function Nearby() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </Pressable>
-        <Text style={styles.title}>Prieteni in apropiere</Text>
+        <Text style={styles.title}>Co-walk</Text>
         <View style={{ width: 44 }} />
       </View>
 
