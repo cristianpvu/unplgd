@@ -328,17 +328,53 @@ function calcAge(birthDate: Date | null): number | null {
 }
 
 // GET /pets/chat — istoric curent (mobile-ul afiseaza la deschiderea ecranului).
-// Returneaza max ultimele MAX_TURNS mesaje, in ordine cronologica.
+// Returneaza max ultimele MAX_TURNS mesaje, in ordine cronologica. Cand
+// istoricul e gol, mai sintetizam un `intro` (catchphrase din specie) cu audio
+// TTS, ca live mode sa-l citeasca DIRECT in vocea pet-ului — fara fallback pe
+// expo-speech (robotic).
 petsRouter.get('/chat', async (req, res, next) => {
   try {
     const userId = req.userId!;
     const history = await loadChatHistory(chatCacheKey(userId));
+
+    let intro: { text: string; audioUrl: string | null; ttsProvider: string | null } | null = null;
+    if (history.length === 0) {
+      await ensureDefaultPet(userId);
+      const pet = await prisma.pet.findUniqueOrThrow({
+        where: { userId },
+        include: { species: true },
+      });
+      const phrases = pet.species.catchphrases;
+      const introText = phrases.length > 0
+        ? phrases[Math.floor(Math.random() * phrases.length)]!
+        : 'Hei.';
+      let audioUrl: string | null = null;
+      let ttsProvider: string | null = null;
+      try {
+        const tts = await synthesizeTts(introText, pet.species.voiceId, {
+          elevenVoiceId: pet.species.elevenVoiceId,
+          rvc: pet.species.rvcModelUrl
+            ? {
+                modelZipUrl: pet.species.rvcModelUrl,
+                pitchShift: pet.species.rvcPitchShift,
+              }
+            : undefined,
+        });
+        audioUrl = tts.urlPath;
+        ttsProvider = tts.provider;
+      } catch (err) {
+        req.log.error({ err }, 'tts.pet_chat_intro_failed');
+      }
+      intro = { text: introText, audioUrl, ttsProvider };
+    }
+
     res.json({
       messages: history.map((t, i) => ({
         id: `h-${i}`,
         role: t.role,
         content: t.content,
       })),
+      intro,
     });
   } catch (e) {
     next(e);

@@ -80,8 +80,15 @@ export type PetChatMessage = {
   content: string;
 };
 
+export type PetChatIntro = {
+  text: string;
+  audioUrl: string | null;
+  ttsProvider: 'eleven' | 'edge' | null;
+};
+
 export type PetChatHistoryResponse = {
   messages: PetChatMessage[];
+  intro: PetChatIntro | null;
 };
 
 export type PetChatSendResponse = {

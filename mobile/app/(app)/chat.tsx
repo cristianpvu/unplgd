@@ -37,7 +37,15 @@ import {
 } from '../../src/lib/speech';
 import { colors } from '../../src/theme/colors';
 
-type Bubble = { id: string; role: 'user' | 'assistant'; text: string };
+type Bubble = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  // Setat doar pe mesajele assistant pt care avem deja MP3 cache-uit pe backend
+  // (intro la prima intrare, replies de la /pets/chat). Lipseste pe history-ul
+  // mai vechi din Redis si pe mesajele user — atunci cadem pe device speak.
+  audioUrl?: string | null;
+};
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
 type Mode = 'live' | 'chat';
 
@@ -72,17 +80,28 @@ export default function PetChat() {
   const petImage = petImageUrl(pet?.species.imagePath ?? null);
   const petName = pet?.name ?? 'Pet';
 
-  function pickIntro(): string {
-    const phrases = pet?.species.catchphrases ?? [];
-    if (phrases.length === 0) return `Hei.`;
-    return phrases[Math.floor(Math.random() * phrases.length)] ?? phrases[0]!;
-  }
-
   useEffect(() => {
     if (!historyQuery.data) return;
     if (historyQuery.data.messages.length === 0) {
-      if (pet) {
-        setBubbles([{ id: 'intro', role: 'assistant', text: pickIntro() }]);
+      const intro = historyQuery.data.intro;
+      if (intro) {
+        setBubbles([
+          {
+            id: 'intro',
+            role: 'assistant',
+            text: intro.text,
+            audioUrl: absolutePetAudioUrl(intro.audioUrl),
+          },
+        ]);
+      } else if (pet) {
+        // Fallback defensiv pt clienti vechi / cazul in care backend-ul n-a
+        // putut sintetiza TTS — pastram macar un text vizibil. Liveul cade
+        // pe device speak, ca inainte.
+        const phrases = pet.species.catchphrases;
+        const text = phrases.length > 0
+          ? phrases[Math.floor(Math.random() * phrases.length)] ?? phrases[0]!
+          : 'Hei.';
+        setBubbles([{ id: 'intro', role: 'assistant', text }]);
       }
       return;
     }
@@ -168,6 +187,8 @@ export default function PetChat() {
 
   // Intro live: cand intram in live mode si avem un assistant message in coada,
   // il citim cu voce. introPlayedRef previne re-redarea la fiecare schimbare.
+  // audioUrl-ul vine de la backend (intro sau reply) ca sa cantam in vocea
+  // pet-ului; altfel `liveSpeak` cade pe expo-speech (robotic) — vezi speech.ts.
   useEffect(() => {
     if (mode !== 'live') return;
     if (introPlayedRef.current) return;
@@ -175,7 +196,7 @@ export default function PetChat() {
     const lastAsst = [...bubbles].reverse().find((b) => b.role === 'assistant');
     if (!lastAsst) return;
     introPlayedRef.current = true;
-    void liveSpeak(lastAsst.text, null);
+    void liveSpeak(lastAsst.text, lastAsst.audioUrl ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bubbles, mode]);
 
@@ -287,11 +308,11 @@ export default function PetChat() {
   const send = useMutation({
     mutationFn: (msg: string) => sendPetChat(msg),
     onSuccess: (resp) => {
+      const audio = absolutePetAudioUrl(resp.replyAudioUrl);
       setBubbles((b) => [
         ...b,
-        { id: `a-${Date.now()}`, role: 'assistant', text: resp.reply },
+        { id: `a-${Date.now()}`, role: 'assistant', text: resp.reply, audioUrl: audio },
       ]);
-      const audio = absolutePetAudioUrl(resp.replyAudioUrl);
       if (mode === 'live') {
         void liveSpeak(resp.reply, audio);
       } else {
@@ -312,19 +333,18 @@ export default function PetChat() {
   const reset = useMutation({
     mutationFn: () => clearPetChat(),
     onSuccess: () => {
-      const intro = pickIntro();
       speakCancelledRef.current = true;
       liveSttRef.current?.stop();
       liveSttRef.current = null;
-      setBubbles([{ id: 'intro', role: 'assistant', text: intro }]);
+      // Bubbles se vor repopula din historyQuery cand refetch-ul aduce
+      // intro-ul nou de la backend (cu audio TTS). Pana atunci, golim ecranul.
+      setBubbles([]);
+      introPlayedRef.current = false;
       qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
       stopDevice();
       void stopRemoteAudio();
       setLivePartialUser('');
       setPhase('idle');
-      if (mode === 'live') {
-        introPlayedRef.current = false;
-      }
     },
   });
 
