@@ -30,25 +30,31 @@ type AdventurerEyebrows = NonNullable<AdventurerOptions['eyebrows']>[number];
 // (e wink, doar un ochi).
 export const BLINK_EYES_VARIANT: AdventurerEyes = 'variant20';
 
-// Expresii faciale: overrides pe eyes/mouth/eyebrows aplicate peste outfitul
-// curent al user-ului. Pre-randate la save (vezi routes/avatar.ts) si swap-uite
-// pe mobil ca raspuns la evenimente (tap, level up, NFC scan, friend add).
-// Variantele alese sunt sigure (subset al celor folosite deja in seed) ca sa
-// nu crape DiceBear schema validation.
-export type Expression = 'happy' | 'sad' | 'surprise' | 'focused';
-export const EXPRESSIONS: readonly Expression[] = ['happy', 'sad', 'surprise', 'focused'] as const;
+// "Sideways" — ochii privesc lateral, pastrand restul fetei. Folosit ca frame
+// idle de tip "looking around" peste varianta neutrala a user-ului. Daca user-ul
+// si-a ales chiar variant15 ca eyes, swap-ul devine no-op (frame identic) —
+// nicio paguba.
+export const GAZE_EYES_VARIANT: AdventurerEyes = 'variant15';
+
+// Mapare gura inchisa -> gura deschisa "din aceeasi familie". Pre-randam un
+// singur frame "MouthOpen" care intra scurt in loop idle (simuleaza respiratie
+// /talking). Pentru gurile deja deschise (Surpriza/Ras mare) pereche-ul e
+// identic → animatia devine no-op, OK.
+const MOUTH_OPEN_PAIR: Record<string, AdventurerMouth> = {
+  variant01: 'variant22', // Zambet mic   -> Dinti
+  variant05: 'variant22', // Fericire     -> Dinti
+  variant10: 'variant14', // Serios       -> Surpriza
+  variant14: 'variant14', // Surpriza     -> identic (no-op)
+  variant18: 'variant30', // Limba        -> Ras mare
+  variant22: 'variant30', // Dinti        -> Ras mare
+  variant26: 'variant14', // Buze         -> Surpriza
+  variant30: 'variant30', // Ras mare     -> identic (no-op)
+};
 
 type FaceOverrides = {
   eyes?: AdventurerEyes;
   mouth?: AdventurerMouth;
   eyebrows?: AdventurerEyebrows;
-};
-
-const EXPRESSION_OVERRIDES: Record<Expression, FaceOverrides> = {
-  happy:    { eyes: 'variant03', mouth: 'variant05', eyebrows: 'variant05' },
-  sad:      { eyes: 'variant12', mouth: 'variant10', eyebrows: 'variant12' },
-  surprise: { eyes: 'variant26', mouth: 'variant14', eyebrows: 'variant15' },
-  focused:  { eyes: 'variant19', mouth: 'variant10', eyebrows: 'variant08' },
 };
 
 function itemsToOptions(items: EquippedItems, overrides: FaceOverrides = {}): AdventurerOptions {
@@ -100,6 +106,13 @@ export function renderAvatarBlinkSvg(items: EquippedItems): string {
   return renderHead(items, { eyes: BLINK_EYES_VARIANT });
 }
 
-export function renderAvatarExpressionSvg(items: EquippedItems, expression: Expression): string {
-  return renderHead(items, EXPRESSION_OVERRIDES[expression]);
+export function renderAvatarGazeSvg(items: EquippedItems): string {
+  return renderHead(items, { eyes: GAZE_EYES_VARIANT });
+}
+
+export function renderAvatarMouthOpenSvg(items: EquippedItems): string {
+  const current = items.mouth.feature as AdventurerMouth | null | undefined;
+  if (!current) return renderHead(items);
+  const open: AdventurerMouth = MOUTH_OPEN_PAIR[current] ?? current;
+  return renderHead(items, { mouth: open });
 }

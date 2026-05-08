@@ -14,7 +14,8 @@ import {
 } from '../lib/avatar/catalog.js';
 import {
   renderAvatarBlinkSvg,
-  renderAvatarExpressionSvg,
+  renderAvatarGazeSvg,
+  renderAvatarMouthOpenSvg,
   renderAvatarSvg,
 } from '../lib/avatar/render.js';
 
@@ -101,21 +102,19 @@ function validateLevels(items: Record<Slot, Item>, userLevel: number): string | 
   return null;
 }
 
-// Randeaza toate variantele (neutral + blink + 4 expresii) intr-un singur loc.
+// Randeaza toate variantele (neutral + blink + gaze + mouthOpen) intr-un loc.
 // Folosit la PATCH (overwrite complet) si la backfill (campurile lipsa).
 function renderAllSvgs(items: Record<Slot, AvatarWithItems['skinItem']>) {
   return {
     svg: renderAvatarSvg(items),
     svgBlink: renderAvatarBlinkSvg(items),
-    svgHappy: renderAvatarExpressionSvg(items, 'happy'),
-    svgSad: renderAvatarExpressionSvg(items, 'sad'),
-    svgSurprise: renderAvatarExpressionSvg(items, 'surprise'),
-    svgFocused: renderAvatarExpressionSvg(items, 'focused'),
+    svgGaze: renderAvatarGazeSvg(items),
+    svgMouthOpen: renderAvatarMouthOpenSvg(items),
   };
 }
 
 // Serializeaza un Avatar cu relatii in payload-ul API: { picks, svg, svgBlink,
-// svgHappy/Sad/Surprise/Focused, level }
+// svgGaze, svgMouthOpen, level }
 function serializeAvatar(avatar: AvatarWithItems, level: number) {
   const equipped = equippedBySlot(avatar);
   const picks: Record<Slot, string> = {} as Record<Slot, string>;
@@ -124,10 +123,8 @@ function serializeAvatar(avatar: AvatarWithItems, level: number) {
     picks,
     svg: avatar.svg,
     svgBlink: avatar.svgBlink,
-    svgHappy: avatar.svgHappy,
-    svgSad: avatar.svgSad,
-    svgSurprise: avatar.svgSurprise,
-    svgFocused: avatar.svgFocused,
+    svgGaze: avatar.svgGaze,
+    svgMouthOpen: avatar.svgMouthOpen,
     level,
     updatedAt: avatar.updatedAt,
   };
@@ -147,16 +144,14 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
     if (!avatar) throw notFound('avatar_not_found', 'Avatar not created yet');
 
     // Backfill lazy pentru orice frame de animatie lipsa (avataruri create
-    // inainte ca expresiile sa existe). Re-randam doar campurile null ca sa
-    // nu suprascriem nimic deja salvat.
-    const missing: Partial<Record<'svgBlink' | 'svgHappy' | 'svgSad' | 'svgSurprise' | 'svgFocused', string>> = {};
-    if (!avatar.svgBlink || !avatar.svgHappy || !avatar.svgSad || !avatar.svgSurprise || !avatar.svgFocused) {
+    // inainte ca animatiile idle sa existe). Re-randam doar campurile null ca
+    // sa nu suprascriem nimic deja salvat.
+    const missing: Partial<Record<'svgBlink' | 'svgGaze' | 'svgMouthOpen', string>> = {};
+    if (!avatar.svgBlink || !avatar.svgGaze || !avatar.svgMouthOpen) {
       const equipped = equippedBySlot(avatar);
       if (!avatar.svgBlink) missing.svgBlink = renderAvatarBlinkSvg(equipped);
-      if (!avatar.svgHappy) missing.svgHappy = renderAvatarExpressionSvg(equipped, 'happy');
-      if (!avatar.svgSad) missing.svgSad = renderAvatarExpressionSvg(equipped, 'sad');
-      if (!avatar.svgSurprise) missing.svgSurprise = renderAvatarExpressionSvg(equipped, 'surprise');
-      if (!avatar.svgFocused) missing.svgFocused = renderAvatarExpressionSvg(equipped, 'focused');
+      if (!avatar.svgGaze) missing.svgGaze = renderAvatarGazeSvg(equipped);
+      if (!avatar.svgMouthOpen) missing.svgMouthOpen = renderAvatarMouthOpenSvg(equipped);
     }
     if (Object.keys(missing).length) {
       avatar = await prisma.avatar.update({
