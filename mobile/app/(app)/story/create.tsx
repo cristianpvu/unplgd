@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
-  Animated,
-  Easing,
   Platform,
   Pressable,
   ScrollView,
@@ -12,15 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import Svg, {
-  Circle,
-  Defs,
-  RadialGradient,
-  Stop,
-  G,
-  Path,
-} from 'react-native-svg';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Orb, BackgroundMesh, type OrbPhase } from '../../../src/ui/voice/Orb';
 import {
   postCreateChat,
   resetCreateDraft,
@@ -41,14 +32,11 @@ import {
 } from '../../../src/lib/speech';
 import { colors } from '../../../src/theme/colors';
 
-type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
+type Phase = OrbPhase;
 
 const INTRO_TEXT =
   'Salut! Sunt Povestitorul. Hai sa cream o poveste impreuna. Despre ce vrei sa fie?';
 const FINISH_NOW_MESSAGE = 'Vreau sa termin povestea acum, te rog!';
-
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 export default function StoryCreate() {
   const qc = useQueryClient();
@@ -62,162 +50,6 @@ export default function StoryCreate() {
   const sttRef = useRef<SttHandle | null>(null);
   const introPlayedRef = useRef(false);
   const cancelledRef = useRef(false);
-
-  // Animated values pt orb si fundal
-  const orbPulse = useRef(new Animated.Value(1)).current;
-  const orbGlow = useRef(new Animated.Value(0.6)).current;
-  const ring1 = useRef(new Animated.Value(0)).current;
-  const ring2 = useRef(new Animated.Value(0)).current;
-  const ring3 = useRef(new Animated.Value(0)).current;
-  const bgRotation = useRef(new Animated.Value(0)).current;
-
-  // Background mesh — rotatie infinita lenta indiferent de faza, da impresia
-  // ca "magia" e mereu in miscare.
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.timing(bgRotation, {
-        toValue: 1,
-        duration: 60_000,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [bgRotation]);
-
-  // Orb animation per faza
-  useEffect(() => {
-    orbPulse.stopAnimation();
-    orbGlow.stopAnimation();
-    ring1.stopAnimation();
-    ring2.stopAnimation();
-    ring3.stopAnimation();
-
-    if (phase === 'idle') {
-      // Breathe lent
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(orbPulse, {
-            toValue: 1.04,
-            duration: 1800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbPulse, {
-            toValue: 1,
-            duration: 1800,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      loop.start();
-      return () => loop.stop();
-    }
-
-    if (phase === 'listening') {
-      // Ripples expanding outward, pulse rapid pe orb
-      const pulseLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(orbPulse, {
-            toValue: 1.12,
-            duration: 450,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbPulse, {
-            toValue: 1,
-            duration: 450,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      const rippleSeq = (anim: Animated.Value, delay: number) =>
-        Animated.loop(
-          Animated.sequence([
-            Animated.delay(delay),
-            Animated.timing(anim, {
-              toValue: 1,
-              duration: 1600,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
-          ]),
-        );
-      pulseLoop.start();
-      const r1 = rippleSeq(ring1, 0);
-      const r2 = rippleSeq(ring2, 533);
-      const r3 = rippleSeq(ring3, 1066);
-      r1.start();
-      r2.start();
-      r3.start();
-      return () => {
-        pulseLoop.stop();
-        r1.stop();
-        r2.stop();
-        r3.stop();
-      };
-    }
-
-    if (phase === 'thinking') {
-      // Glow oscileaza puternic — "se gandeste"
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(orbGlow, {
-            toValue: 1,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbGlow, {
-            toValue: 0.4,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      loop.start();
-      return () => loop.stop();
-    }
-
-    if (phase === 'speaking') {
-      // Pulse rapid varied — ca o "voce" care varieaza
-      const pulseLoop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(orbPulse, {
-            toValue: 1.08,
-            duration: 280,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbPulse, {
-            toValue: 0.96,
-            duration: 220,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbPulse, {
-            toValue: 1.04,
-            duration: 320,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(orbPulse, {
-            toValue: 1,
-            duration: 200,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-      pulseLoop.start();
-      return () => pulseLoop.stop();
-    }
-  }, [phase, orbPulse, orbGlow, ring1, ring2, ring3]);
 
   // Typewriter AI: scriu aiText cuvant cu cuvant in aiShown
   useEffect(() => {
@@ -444,7 +276,7 @@ export default function StoryCreate() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <BackgroundMesh rotation={bgRotation} />
+      <BackgroundMesh />
 
       <View style={styles.topRow}>
         <Pressable onPress={() => router.back()} hitSlop={14} style={styles.smallBtn}>
@@ -457,14 +289,7 @@ export default function StoryCreate() {
       </View>
 
       <View style={styles.body}>
-        <Orb
-          phase={phase}
-          orbPulse={orbPulse}
-          orbGlow={orbGlow}
-          ring1={ring1}
-          ring2={ring2}
-          ring3={ring3}
-        />
+        <Orb phase={phase} />
 
         <Text style={styles.statusText}>{statusForPhase(phase, final)}</Text>
 
@@ -582,163 +407,6 @@ function micLabelForPhase(phase: Phase): string {
 }
 
 // ───────────── ORB ─────────────
-function Orb({
-  phase,
-  orbPulse,
-  orbGlow,
-  ring1,
-  ring2,
-  ring3,
-}: {
-  phase: Phase;
-  orbPulse: Animated.Value;
-  orbGlow: Animated.Value;
-  ring1: Animated.Value;
-  ring2: Animated.Value;
-  ring3: Animated.Value;
-}) {
-  const SIZE = 220;
-  // Ripples cresc de la r=60 la r=110 cu fade
-  const ringScaleFrom = 60;
-  const ringScaleTo = 110;
-
-  return (
-    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
-      {/* Halo + ripples in SVG bottom layer */}
-      <Svg
-        width={SIZE}
-        height={SIZE}
-        viewBox="0 0 240 240"
-        style={StyleSheet.absoluteFillObject}
-      >
-        <Defs>
-          <RadialGradient id="orbGlow" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.5" />
-            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <AnimatedG opacity={orbGlow}>
-          <Circle cx="120" cy="120" r="115" fill="url(#orbGlow)" />
-        </AnimatedG>
-        {phase === 'listening' && (
-          <>
-            <Ripple anim={ring1} from={ringScaleFrom} to={ringScaleTo} />
-            <Ripple anim={ring2} from={ringScaleFrom} to={ringScaleTo} />
-            <Ripple anim={ring3} from={ringScaleFrom} to={ringScaleTo} />
-          </>
-        )}
-      </Svg>
-
-      {/* Orb core — Animated.View pt scale, SVG inauntru pt gradient lucios */}
-      <Animated.View
-        style={{
-          width: SIZE,
-          height: SIZE,
-          alignItems: 'center',
-          justifyContent: 'center',
-          transform: [{ scale: orbPulse }],
-        }}
-      >
-        <Svg width={SIZE} height={SIZE} viewBox="0 0 240 240">
-          <Defs>
-            <RadialGradient id="orbGradient" cx="0.5" cy="0.45" r="0.65">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
-              <Stop offset="35%" stopColor="#FFD9B0" stopOpacity="0.95" />
-              <Stop offset="70%" stopColor={colors.accent} stopOpacity="0.85" />
-              <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0.6" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx="120" cy="120" r="78" fill="url(#orbGradient)" />
-          <Circle cx="98" cy="92" r="22" fill="#FFFFFF" opacity={0.55} />
-          <Circle cx="92" cy="86" r="8" fill="#FFFFFF" opacity={0.95} />
-        </Svg>
-      </Animated.View>
-    </View>
-  );
-}
-
-function Ripple({
-  anim,
-  from,
-  to,
-}: {
-  anim: Animated.Value;
-  from: number;
-  to: number;
-}) {
-  const radius = anim.interpolate({ inputRange: [0, 1], outputRange: [from, to] });
-  const opacity = anim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0, 0.5, 0],
-  });
-  return (
-    <AnimatedCircle
-      cx="120"
-      cy="120"
-      r={radius}
-      stroke={colors.accent}
-      strokeWidth={2}
-      fill="none"
-      opacity={opacity}
-    />
-  );
-}
-
-// ───────────── BACKGROUND MESH ─────────────
-function BackgroundMesh({ rotation }: { rotation: Animated.Value }) {
-  const rotateZ = rotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
-        <Defs>
-          <RadialGradient id="bg1" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.35" />
-            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="bg2" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0%" stopColor="#7B3FBF" stopOpacity="0.32" />
-            <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="bg3" cx="0.5" cy="0.5" r="0.5">
-            <Stop offset="0%" stopColor="#3FA3BF" stopOpacity="0.28" />
-            <Stop offset="100%" stopColor="#3FA3BF" stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <Path d="M0 0 H400 V800 H0 Z" fill={colors.bg} />
-      </Svg>
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          { transform: [{ rotate: rotateZ }] },
-        ]}
-      >
-        <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
-          <Defs>
-            <RadialGradient id="g1" cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.45" />
-              <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
-            </RadialGradient>
-            <RadialGradient id="g2" cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0%" stopColor="#9B3FBF" stopOpacity="0.4" />
-              <Stop offset="100%" stopColor="#9B3FBF" stopOpacity="0" />
-            </RadialGradient>
-            <RadialGradient id="g3" cx="0.5" cy="0.5" r="0.5">
-              <Stop offset="0%" stopColor="#3F8FBF" stopOpacity="0.35" />
-              <Stop offset="100%" stopColor="#3F8FBF" stopOpacity="0" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx="120" cy="180" r="280" fill="url(#g1)" />
-          <Circle cx="320" cy="320" r="320" fill="url(#g2)" />
-          <Circle cx="180" cy="600" r="300" fill="url(#g3)" />
-        </Svg>
-      </Animated.View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
