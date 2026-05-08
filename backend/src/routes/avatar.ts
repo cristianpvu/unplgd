@@ -12,12 +12,7 @@ import {
   type AvatarWithItems,
   type Slot,
 } from '../lib/avatar/catalog.js';
-import {
-  renderAvatarBlinkSvg,
-  renderAvatarGazeSvg,
-  renderAvatarMouthOpenSvg,
-  renderAvatarSvg,
-} from '../lib/avatar/render.js';
+import { renderAvatarBlinkSvg, renderAvatarSvg } from '../lib/avatar/render.js';
 
 export const avatarRouter = Router();
 
@@ -102,19 +97,7 @@ function validateLevels(items: Record<Slot, Item>, userLevel: number): string | 
   return null;
 }
 
-// Randeaza toate variantele (neutral + blink + gaze + mouthOpen) intr-un loc.
-// Folosit la PATCH (overwrite complet) si la backfill (campurile lipsa).
-function renderAllSvgs(items: Record<Slot, AvatarWithItems['skinItem']>) {
-  return {
-    svg: renderAvatarSvg(items),
-    svgBlink: renderAvatarBlinkSvg(items),
-    svgGaze: renderAvatarGazeSvg(items),
-    svgMouthOpen: renderAvatarMouthOpenSvg(items),
-  };
-}
-
-// Serializeaza un Avatar cu relatii in payload-ul API: { picks, svg, svgBlink,
-// svgGaze, svgMouthOpen, level }
+// Serializeaza un Avatar cu relatii in payload-ul API: { picks: slug-uri, svg, svgBlink, level }
 function serializeAvatar(avatar: AvatarWithItems, level: number) {
   const equipped = equippedBySlot(avatar);
   const picks: Record<Slot, string> = {} as Record<Slot, string>;
@@ -123,8 +106,6 @@ function serializeAvatar(avatar: AvatarWithItems, level: number) {
     picks,
     svg: avatar.svg,
     svgBlink: avatar.svgBlink,
-    svgGaze: avatar.svgGaze,
-    svgMouthOpen: avatar.svgMouthOpen,
     level,
     updatedAt: avatar.updatedAt,
   };
@@ -143,20 +124,14 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
     let avatar = user.avatar;
     if (!avatar) throw notFound('avatar_not_found', 'Avatar not created yet');
 
-    // Backfill lazy pentru orice frame de animatie lipsa (avataruri create
-    // inainte ca animatiile idle sa existe). Re-randam doar campurile null ca
-    // sa nu suprascriem nimic deja salvat.
-    const missing: Partial<Record<'svgBlink' | 'svgGaze' | 'svgMouthOpen', string>> = {};
-    if (!avatar.svgBlink || !avatar.svgGaze || !avatar.svgMouthOpen) {
+    if (!avatar.svgBlink) {
+      // Backfill lazy pentru avataruri create inainte de coloana svgBlink:
+      // re-randam frame-ul de blink din item-urile echipate curent.
       const equipped = equippedBySlot(avatar);
-      if (!avatar.svgBlink) missing.svgBlink = renderAvatarBlinkSvg(equipped);
-      if (!avatar.svgGaze) missing.svgGaze = renderAvatarGazeSvg(equipped);
-      if (!avatar.svgMouthOpen) missing.svgMouthOpen = renderAvatarMouthOpenSvg(equipped);
-    }
-    if (Object.keys(missing).length) {
+      const svgBlink = renderAvatarBlinkSvg(equipped);
       avatar = await prisma.avatar.update({
         where: { userId: user.id },
-        data: missing,
+        data: { svgBlink },
         include: AVATAR_INCLUDE,
       });
     }
@@ -180,13 +155,14 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
     const lockedReason = validateLevels(items, user.level);
     if (lockedReason) throw badRequest('locked', lockedReason);
 
-    const svgs = renderAllSvgs(items);
+    const svg = renderAvatarSvg(items);
+    const svgBlink = renderAvatarBlinkSvg(items);
     const fkData = itemsToFkData(items);
 
     const avatar = await prisma.avatar.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, ...svgs, ...fkData },
-      update: { ...svgs, ...fkData },
+      create: { userId: user.id, svg, svgBlink, ...fkData },
+      update: { svg, svgBlink, ...fkData },
       include: AVATAR_INCLUDE,
     });
 

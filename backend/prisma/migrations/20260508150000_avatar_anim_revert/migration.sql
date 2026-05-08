@@ -1,0 +1,2 @@
+ALTER TABLE "Avatar" DROP COLUMN IF EXISTS "svgGaze";
+ALTER TABLE "Avatar" DROP COLUMN IF EXISTS "svgMouthOpen";

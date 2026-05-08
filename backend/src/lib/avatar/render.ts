@@ -20,44 +20,15 @@ const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbabilit
   earrings: 'earringsProbability',
 };
 
-type AdventurerEyes = NonNullable<AdventurerOptions['eyes']>[number];
-type AdventurerMouth = NonNullable<AdventurerOptions['mouth']>[number];
-type AdventurerEyebrows = NonNullable<AdventurerOptions['eyebrows']>[number];
+type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
 
 // Variant Adventurer cu ambii ochi inchisi (curbe "u" simple, fara pupile) —
 // folosit pentru frame-ul de blink. Crossfade pe mobil intre svg si svgBlink
 // simuleaza clipitul fara a re-randa nimic la runtime. NU folosi variant22
 // (e wink, doar un ochi).
-export const BLINK_EYES_VARIANT: AdventurerEyes = 'variant20';
+export const BLINK_EYES_VARIANT: AdventurerVariant = 'variant20';
 
-// "Sideways" — ochii privesc lateral, pastrand restul fetei. Folosit ca frame
-// idle de tip "looking around" peste varianta neutrala a user-ului. Daca user-ul
-// si-a ales chiar variant15 ca eyes, swap-ul devine no-op (frame identic) —
-// nicio paguba.
-export const GAZE_EYES_VARIANT: AdventurerEyes = 'variant15';
-
-// Mapare gura inchisa -> gura deschisa "din aceeasi familie". Pre-randam un
-// singur frame "MouthOpen" care intra scurt in loop idle (simuleaza respiratie
-// /talking). Pentru gurile deja deschise (Surpriza/Ras mare) pereche-ul e
-// identic → animatia devine no-op, OK.
-const MOUTH_OPEN_PAIR: Record<string, AdventurerMouth> = {
-  variant01: 'variant22', // Zambet mic   -> Dinti
-  variant05: 'variant22', // Fericire     -> Dinti
-  variant10: 'variant14', // Serios       -> Surpriza
-  variant14: 'variant14', // Surpriza     -> identic (no-op)
-  variant18: 'variant30', // Limba        -> Ras mare
-  variant22: 'variant30', // Dinti        -> Ras mare
-  variant26: 'variant14', // Buze         -> Surpriza
-  variant30: 'variant30', // Ras mare     -> identic (no-op)
-};
-
-type FaceOverrides = {
-  eyes?: AdventurerEyes;
-  mouth?: AdventurerMouth;
-  eyebrows?: AdventurerEyebrows;
-};
-
-function itemsToOptions(items: EquippedItems, overrides: FaceOverrides = {}): AdventurerOptions {
+function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant): AdventurerOptions {
   const skin = items.skin.feature ?? 'ecad80';
   const hairColor = items.hairColor.feature ?? '6a4e35';
 
@@ -67,12 +38,10 @@ function itemsToOptions(items: EquippedItems, overrides: FaceOverrides = {}): Ad
     featuresProbability: 0,
   };
 
-  const eyesFeature = overrides.eyes ?? (items.eyes.feature as AdventurerEyes | undefined);
+  const eyesFeature = eyesOverride ?? (items.eyes.feature as AdventurerVariant | undefined);
   if (eyesFeature) opts.eyes = [eyesFeature];
-  const mouthFeature = overrides.mouth ?? (items.mouth.feature as AdventurerMouth | undefined);
-  if (mouthFeature) opts.mouth = [mouthFeature];
-  const eyebrowsFeature = overrides.eyebrows ?? (items.eyebrows.feature as AdventurerEyebrows | undefined);
-  if (eyebrowsFeature) opts.eyebrows = [eyebrowsFeature];
+  if (items.mouth.feature) opts.mouth = [items.mouth.feature as NonNullable<AdventurerOptions['mouth']>[number]];
+  if (items.eyebrows.feature) opts.eyebrows = [items.eyebrows.feature as NonNullable<AdventurerOptions['eyebrows']>[number]];
 
   for (const slot of Object.keys(OPTIONAL_PROB) as OptionalSlot[]) {
     const feature = items[slot].feature;
@@ -88,8 +57,8 @@ function itemsToOptions(items: EquippedItems, overrides: FaceOverrides = {}): Ad
   return opts;
 }
 
-function renderHead(items: EquippedItems, overrides: FaceOverrides = {}): string {
-  const options = itemsToOptions(items, overrides);
+function renderHead(items: EquippedItems, eyesOverride?: AdventurerVariant): string {
+  const options = itemsToOptions(items, eyesOverride);
   const head = createAvatar(adventurer, {
     seed: 'unplgd',
     backgroundColor: ['transparent'],
@@ -103,16 +72,5 @@ export function renderAvatarSvg(items: EquippedItems): string {
 }
 
 export function renderAvatarBlinkSvg(items: EquippedItems): string {
-  return renderHead(items, { eyes: BLINK_EYES_VARIANT });
-}
-
-export function renderAvatarGazeSvg(items: EquippedItems): string {
-  return renderHead(items, { eyes: GAZE_EYES_VARIANT });
-}
-
-export function renderAvatarMouthOpenSvg(items: EquippedItems): string {
-  const current = items.mouth.feature as AdventurerMouth | null | undefined;
-  if (!current) return renderHead(items);
-  const open: AdventurerMouth = MOUTH_OPEN_PAIR[current] ?? current;
-  return renderHead(items, { mouth: open });
+  return renderHead(items, BLINK_EYES_VARIANT);
 }
