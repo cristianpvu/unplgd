@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { notFound } from '../lib/errors.js';
 import { getOrCreateDailyToken } from '../lib/bleToken.js';
 import { getUsageStats } from '../lib/ai/usage.js';
+import { getPetSummaryByUserId } from '../lib/petImage.js';
 
 export const meRouter = Router();
 
@@ -11,6 +12,7 @@ meRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId! } });
     if (!user) throw notFound('user_not_found', 'User not found');
+    const pet = await getPetSummaryByUserId(user.id);
     res.json({
       id: user.id,
       email: user.email,
@@ -19,6 +21,7 @@ meRouter.get('/', requireAuth, async (req, res, next) => {
       xp: user.xp,
       level: user.level,
       createdAt: user.createdAt,
+      pet,
     });
   } catch (e) {
     next(e);

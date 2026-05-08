@@ -2,6 +2,7 @@ import { getIO } from './io.js';
 import { userRoomName } from './io.js';
 import { prisma } from '../prisma.js';
 import type { Participant, SyncEvent } from '../cowalk/session.js';
+import { getPetSummariesByUserIds, type PetSummary } from '../petImage.js';
 
 // Toate event-urile co-walk merg pe room-ul `user:<userId>` (auto-join la
 // connection in io.ts). Recipients vin in event-ul insusi din state machine.
@@ -14,9 +15,18 @@ export type ThinParticipant = {
   // SVG-ul capului (Avatar.svg din DB) cand exista — null daca user-ul nu si-a
   // generat inca avatarul. Mobile-ul il randeaza in stack-ul co-walk-ului.
   avatarSvg: string | null;
+  // Pet-ul echipat al user-ului (mobile-l afiseaza ca un mic chip in coltul
+  // avatarului). null cand userul n-are pet (extrem de rar — ensureDefaultPet
+  // se ruleaza la register).
+  pet: PetSummary | null;
 };
 
-type Resolved = { name: string; level: number; avatarSvg: string | null };
+type Resolved = {
+  name: string;
+  level: number;
+  avatarSvg: string | null;
+  pet: PetSummary | null;
+};
 
 // Cache mic in-memory pt nume/level/avatar — TTL 5 min ca update-urile (XP,
 // level, avatar nou) sa apara fara reload de container. Acces la fiecare emit
@@ -34,26 +44,30 @@ export async function resolveParticipantInfo(
   for (const id of userIds) {
     const c = nameCache.get(id);
     if (c && now - c.cachedAt < NAME_CACHE_TTL_MS) {
-      out.set(id, { name: c.name, level: c.level, avatarSvg: c.avatarSvg });
+      out.set(id, { name: c.name, level: c.level, avatarSvg: c.avatarSvg, pet: c.pet });
     } else {
       missing.push(id);
     }
   }
   if (missing.length > 0) {
-    const users = await prisma.user.findMany({
-      where: { id: { in: missing } },
-      select: {
-        id: true,
-        name: true,
-        level: true,
-        avatar: { select: { svg: true } },
-      },
-    });
+    const [users, pets] = await Promise.all([
+      prisma.user.findMany({
+        where: { id: { in: missing } },
+        select: {
+          id: true,
+          name: true,
+          level: true,
+          avatar: { select: { svg: true } },
+        },
+      }),
+      getPetSummariesByUserIds(missing),
+    ]);
     for (const u of users) {
       const entry: Resolved = {
         name: u.name,
         level: u.level,
         avatarSvg: u.avatar?.svg ?? null,
+        pet: pets.get(u.id) ?? null,
       };
       nameCache.set(u.id, { ...entry, cachedAt: now });
       out.set(u.id, entry);
@@ -72,6 +86,7 @@ async function thin(ps: Participant[]): Promise<ThinParticipant[]> {
       name: n?.name ?? 'Unknown',
       level: n?.level ?? 1,
       avatarSvg: n?.avatarSvg ?? null,
+      pet: n?.pet ?? null,
     };
   });
 }

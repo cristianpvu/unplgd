@@ -6,8 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { petChatRateLimit } from '../middleware/rateLimit.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
-import { getSignedUrl, isStorageConfigured } from '../lib/storage/gcs.js';
-import { logger } from '../lib/logger.js';
+import { resolvePetImagePath } from '../lib/petImage.js';
 import { ANTHROPIC_MODEL } from '../lib/ai/client.js';
 import { claudeMessages } from '../lib/ai/usage.js';
 import { petChatSystemPrompt } from '../lib/ai/petChatPrompt.js';
@@ -43,34 +42,6 @@ type SpeciesSummary = {
   interests: string[];
 };
 
-// Rezolva `imagePath` din DB intr-un URL utilizabil de mobile.
-// Format suportat:
-//  - `https://...` sau `http://...` → URL absolut (CDN/extern), pasat ca atare
-//  - `/pets/foo.png` → ruta servita static din backend/public/pets/, pasata
-//    ca atare; mobile-ul prepend-uieste API_BASE_URL
-//  - `gs://<bucket>/<key>` sau `<key>` (orice altceva) → key GCS pe bucket-ul
-//    privat (cel folosit la co-creations), generam signed URL cu TTL 1h
-async function resolveImagePath(imagePath: string | null): Promise<string | null> {
-  if (!imagePath) return null;
-  if (/^https?:\/\//i.test(imagePath)) return imagePath;
-  if (imagePath.startsWith('/')) return imagePath;
-
-  if (!isStorageConfigured()) {
-    logger.warn({ imagePath }, 'pet imagePath looks like GCS key but storage not configured');
-    return null;
-  }
-
-  const key = imagePath.startsWith('gs://')
-    ? imagePath.replace(/^gs:\/\/[^/]+\//, '')
-    : imagePath;
-  try {
-    return await getSignedUrl(key, 3600);
-  } catch (err) {
-    logger.error({ err, imagePath }, 'Failed to sign pet image URL');
-    return null;
-  }
-}
-
 async function speciesDto(s: {
   slug: string;
   name: string;
@@ -83,7 +54,7 @@ async function speciesDto(s: {
   return {
     slug: s.slug,
     name: s.name,
-    imagePath: await resolveImagePath(s.imagePath),
+    imagePath: await resolvePetImagePath(s.imagePath),
     shortLore: s.shortLore,
     tone: s.tone,
     catchphrases: s.catchphrases,

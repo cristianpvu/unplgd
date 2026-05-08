@@ -121,6 +121,7 @@ presenceRouter.get('/cowalk/current', async (req, res, next) => {
             name: u?.name ?? 'Unknown',
             level: u?.level ?? 1,
             avatarSvg: u?.avatarSvg ?? null,
+            pet: u?.pet ?? null,
           };
         }),
       },

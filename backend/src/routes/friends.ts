@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
+import { getPetSummariesByUserIds } from '../lib/petImage.js';
 
 export const friendsRouter = Router();
 friendsRouter.use(requireAuth);
@@ -85,6 +86,13 @@ friendsRouter.get('/', async (req, res, next) => {
       orderBy: { acceptedAt: 'desc' },
     });
 
+    // Fetch petsSummary in batch — un singur query Prisma + N rezolvari URL
+    // paralele in loc de N round-trips secventiale.
+    const otherIds = friendships.map((f) =>
+      f.requesterId === me ? f.receiverId : f.requesterId,
+    );
+    const pets = await getPetSummariesByUserIds(otherIds);
+
     const friends = friendships.map((f) => {
       const u = f.requesterId === me ? f.receiver : f.requester;
       return {
@@ -99,6 +107,7 @@ friendsRouter.get('/', async (req, res, next) => {
           // Doar SVG-ul cu ochii deschisi — frame-ul de blink ar dubla payload-ul
           // degeaba pentru thumbnail-uri mici in lista.
           avatarSvg: u.avatar?.svg ?? null,
+          pet: pets.get(u.id) ?? null,
         },
       };
     });

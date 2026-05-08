@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getSignedUrl } from '../lib/storage/gcs.js';
+import { getPetSummaryByUserId } from '../lib/petImage.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -27,6 +28,8 @@ usersRouter.get('/:id', async (req, res, next) => {
     });
     if (!user) throw notFound('user_not_found', 'Utilizator inexistent');
 
+    const pet = await getPetSummaryByUserId(user.id);
+
     res.json({
       id: user.id,
       name: user.name,
@@ -35,6 +38,7 @@ usersRouter.get('/:id', async (req, res, next) => {
       createdAt: user.createdAt,
       avatarSvg: user.avatar?.svg ?? null,
       avatarSvgBlink: user.avatar?.svgBlink ?? null,
+      pet,
     });
   } catch (e) {
     next(e);
