@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useAuth } from '../../src/lib/auth';
@@ -11,7 +11,6 @@ import { colors } from '../../src/theme/colors';
 export default function AppLayout() {
   const { token, ready } = useAuth();
   const cowalkEnabled = useCowalkEnabled();
-  const prevEnabledRef = useRef(cowalkEnabled);
 
   useEffect(() => {
     if (ready && !token) {
@@ -20,10 +19,9 @@ export default function AppLayout() {
   }, [ready, token]);
 
   // Auto-start presence engine cand user-ul e logat SI a optat in (default
-  // true). La toggle-off manual cerem backend-ului sa ne scoata instant din
-  // sesiunile active (cowalk:left catre prieteni). La logout / unmount
-  // pastram comportament de "grace 90s" — un disconnect scurt nu omoara
-  // sesiunile altora pe loc.
+  // true). Dezactivarea manuala se face in nearby.tsx (toggle Switch) — acolo
+  // chemam si /presence/cowalk/leave inainte sa setam preferinta, ca peer-ii
+  // sa primeasca cowalk:left instant. Cleanup-ul de aici doar opreste local.
   useEffect(() => {
     if (!ready || !token) return;
     let cancelled = false;
@@ -44,12 +42,9 @@ export default function AppLayout() {
         console.warn('[layout] presence start failed:', e);
       }
     })();
-    const wasEnabled = prevEnabledRef.current;
-    prevEnabledRef.current = cowalkEnabled;
     return () => {
       cancelled = true;
-      const userTurnedOff = wasEnabled && !cowalkEnabled;
-      void presence.stop({ leaveServerSessions: userTurnedOff });
+      void presence.stop();
     };
   }, [ready, token, cowalkEnabled]);
 

@@ -22,7 +22,6 @@ import {
   resolveBleTokens,
   postPresenceHeartbeat,
   getCurrentCoWalk,
-  leaveCoWalk,
   type ServerSession,
 } from '../api/ble';
 import { getMe } from '../api/me';
@@ -319,19 +318,7 @@ class PresenceEngine {
     this.emit();
   }
 
-  // `leaveServerSessions=true` cere backend-ului sa scoata user-ul instant
-  // din sesiunile active (cowalk:left catre ceilalti). Folosit la dezactivare
-  // manuala. La logout / app-close lasam fals ca grace-ul de 90s sa absoarba
-  // disconnect-uri scurte (utilizatorul revine in <90s, sesiunea continua).
-  async stop(opts: { leaveServerSessions?: boolean } = {}) {
-    if (opts.leaveServerSessions && this.serverSessions.size > 0) {
-      try {
-        await leaveCoWalk();
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[presence] leaveCoWalk failed:', e);
-      }
-    }
+  async stop() {
     this.running = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.resolveTimer) clearInterval(this.resolveTimer);

@@ -19,6 +19,7 @@ import type { ClientSession, Peer } from '../../src/ble/presence';
 import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
 import { useCowalkEnabled, setCowalkEnabled } from '../../src/ble/cowalkPref';
 import { addFriend } from '../../src/api/friends';
+import { leaveCoWalk } from '../../src/api/ble';
 import { ApiError } from '../../src/api/client';
 import { colors } from '../../src/theme/colors';
 
@@ -71,6 +72,23 @@ export default function Nearby() {
     add.mutate(peer.userId);
   }
 
+  // Toggle co-walk on/off. La OFF: chemam /presence/cowalk/leave INAINTE sa
+  // setam preferinta — asa peer-ii primesc cowalk:left instant pe socket,
+  // independent de cand opreste _layout.tsx engine-ul local. Daca lasam pe
+  // cleanup-ul useEffect, closure-ul prinde valoarea veche a flag-ului si
+  // detectia "user a oprit" pica.
+  async function handleToggle(value: boolean) {
+    if (!value) {
+      try {
+        await leaveCoWalk();
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[nearby] leaveCoWalk failed:', e);
+      }
+    }
+    await setCowalkEnabled(value);
+  }
+
   // Sortare: necunoscuti rezolvati intai (cei care pot fi adaugati), apoi
   // prieteni deja, apoi token-uri inca nerezolvate.
   const sorted = [...peers].sort((a, b) => {
@@ -106,7 +124,7 @@ export default function Nearby() {
           </View>
           <Switch
             value={cowalkEnabled}
-            onValueChange={(v) => void setCowalkEnabled(v)}
+            onValueChange={(v) => void handleToggle(v)}
             trackColor={{ false: colors.border, true: colors.accent }}
             thumbColor="#FFFFFF"
           />
