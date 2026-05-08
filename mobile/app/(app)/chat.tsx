@@ -110,6 +110,7 @@ export default function PetChat() {
         id: m.id,
         role: m.role,
         text: m.content,
+        audioUrl: absolutePetAudioUrl(m.audioUrl),
       })),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps

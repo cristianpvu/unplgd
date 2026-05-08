@@ -328,54 +328,94 @@ function calcAge(birthDate: Date | null): number | null {
 }
 
 // GET /pets/chat — istoric curent (mobile-ul afiseaza la deschiderea ecranului).
-// Returneaza max ultimele MAX_TURNS mesaje, in ordine cronologica. Cand
-// istoricul e gol, mai sintetizam un `intro` (catchphrase din specie) cu audio
-// TTS, ca live mode sa-l citeasca DIRECT in vocea pet-ului — fara fallback pe
-// expo-speech (robotic).
+// Returneaza max ultimele MAX_TURNS mesaje, in ordine cronologica.
+//
+// Doua scenarii audio pt voce naturala in live mode:
+//  - history GOL → sintetizez un `intro` (catchphrase) → mobile afiseaza-l ca
+//    bubble de assistant si live mode il canta cu TTS (vezi `intro` de mai jos).
+//  - history NEGOL → sintetizez TTS-ul ultimului mesaj assistant si i-l atasez
+//    ca `audioUrl` pe mesaj. Daca textul a fost cantat la POST anterior, cache-ul
+//    sha256 face fileExists hit imediat (zero compute). Asa, cand user re-intra
+//    in chat dupa o conversatie, live mode redireaza ultima replica in voce
+//    naturala, fara fallback pe expo-speech (robotic).
 petsRouter.get('/chat', async (req, res, next) => {
   try {
     const userId = req.userId!;
     const history = await loadChatHistory(chatCacheKey(userId));
 
+    type ChatMessageDto = {
+      id: string;
+      role: 'user' | 'assistant';
+      content: string;
+      audioUrl: string | null;
+    };
+
+    const messages: ChatMessageDto[] = history.map((t, i) => ({
+      id: `h-${i}`,
+      role: t.role,
+      content: t.content,
+      audioUrl: null,
+    }));
+
     let intro: { text: string; audioUrl: string | null; ttsProvider: string | null } | null = null;
-    if (history.length === 0) {
+
+    // Pet-ul ne trebuie pt vocea TTS in ambele scenarii — il incarcam o data.
+    let pet: Awaited<ReturnType<typeof prisma.pet.findUniqueOrThrow>> & {
+      species: Awaited<ReturnType<typeof prisma.petSpecies.findUniqueOrThrow>>;
+    } | null = null;
+    const ensurePet = async () => {
+      if (pet) return pet;
       await ensureDefaultPet(userId);
-      const pet = await prisma.pet.findUniqueOrThrow({
+      pet = await prisma.pet.findUniqueOrThrow({
         where: { userId },
         include: { species: true },
       });
-      const phrases = pet.species.catchphrases;
+      return pet;
+    };
+    const ttsFor = (text: string) =>
+      ensurePet().then((p) =>
+        synthesizeTts(text, p.species.voiceId, {
+          elevenVoiceId: p.species.elevenVoiceId,
+          rvc: p.species.rvcModelUrl
+            ? { modelZipUrl: p.species.rvcModelUrl, pitchShift: p.species.rvcPitchShift }
+            : undefined,
+        }),
+      );
+
+    if (messages.length === 0) {
+      const p = await ensurePet();
+      const phrases = p.species.catchphrases;
       const introText = phrases.length > 0
         ? phrases[Math.floor(Math.random() * phrases.length)]!
         : 'Hei.';
       let audioUrl: string | null = null;
       let ttsProvider: string | null = null;
       try {
-        const tts = await synthesizeTts(introText, pet.species.voiceId, {
-          elevenVoiceId: pet.species.elevenVoiceId,
-          rvc: pet.species.rvcModelUrl
-            ? {
-                modelZipUrl: pet.species.rvcModelUrl,
-                pitchShift: pet.species.rvcPitchShift,
-              }
-            : undefined,
-        });
+        const tts = await ttsFor(introText);
         audioUrl = tts.urlPath;
         ttsProvider = tts.provider;
       } catch (err) {
         req.log.error({ err }, 'tts.pet_chat_intro_failed');
       }
       intro = { text: introText, audioUrl, ttsProvider };
+    } else {
+      // Resincronizam audio pe ultimul mesaj assistant (live mode il canta la
+      // re-deschiderea ecranului). Iteram de la coada catre cap ca sa luam
+      // primul `assistant` intalnit.
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i]!;
+        if (m.role !== 'assistant') continue;
+        try {
+          const tts = await ttsFor(m.content);
+          m.audioUrl = tts.urlPath;
+        } catch (err) {
+          req.log.error({ err }, 'tts.pet_chat_history_last_failed');
+        }
+        break;
+      }
     }
 
-    res.json({
-      messages: history.map((t, i) => ({
-        id: `h-${i}`,
-        role: t.role,
-        content: t.content,
-      })),
-      intro,
-    });
+    res.json({ messages, intro });
   } catch (e) {
     next(e);
   }

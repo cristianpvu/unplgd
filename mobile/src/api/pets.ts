@@ -78,6 +78,9 @@ export type PetChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  // Setat doar pe ultimul mesaj assistant din history (backend re-sintetizeaza
+  // TTS la GET pt live mode). null pe restul si pe mesajele user.
+  audioUrl: string | null;
 };
 
 export type PetChatIntro = {
