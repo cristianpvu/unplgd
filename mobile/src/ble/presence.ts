@@ -1,16 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const BleAdvertise: any = require('react-native-ble-advertise').default;
-import { BleManager, type Device, type State, type Subscription } from 'react-native-ble-plx';
-import { iosBeaconScanner } from './iosBeaconScanner';
+import {
+  BleManager,
+  ScanMode,
+  ScanCallbackType,
+  type Device,
+  type State,
+  type Subscription,
+} from 'react-native-ble-plx';
 import { Pedometer } from 'expo-sensors';
-import { Buffer } from 'buffer';
+import { blePresence } from 'ble-presence';
 import {
   UNPLGD_PROXIMITY_UUID,
   RSSI_THRESHOLD_DBM,
   STALE_AFTER_MS,
   RESOLVE_INTERVAL_MS,
+  HEARTBEAT_INTERVAL_MS,
   TICK_INTERVAL_MS,
   COWALK_MIN_DURATION_MS,
   COWALK_RESUME_GAP_MS,
@@ -19,7 +23,13 @@ import {
   COWALK_MIN_RSSI_SAMPLES,
   RSSI_SAMPLES_CAP,
 } from './constants';
-import { getMyBleToken, resolveBleTokens, postCoWalk, type CoWalkResult } from '../api/ble';
+import {
+  getMyBleToken,
+  resolveBleTokens,
+  postCoWalk,
+  postPresenceHeartbeat,
+  type CoWalkResult,
+} from '../api/ble';
 
 export type Peer = {
   token: string;
@@ -50,10 +60,14 @@ export type PresenceSnapshot = {
   peers: Peer[];
   myToken: string | null;
   sessions: CoWalkSession[];
-  // Pe iOS advertising-ul iBeacon poate sa pice (BT off, permisiune refuzata,
-  // race CBPeripheralManager). Scan-ul continua, dar UI-ul anunta user-ul.
   advertiseFailed: boolean;
+  advertiseLastError: string | null;
   bleState: string;
+  scanCounters: {
+    devicesSeen: number;
+    withServiceUuid: number;
+    tokenExtracted: number;
+  };
 };
 
 type StateListener = (state: PresenceSnapshot) => void;
@@ -66,72 +80,23 @@ function dayKeyUTC(d: Date = new Date()): string {
 }
 const committedKey = (day: string, userId: string) => `cowalk:committed:${day}:${userId}`;
 
-function tokenToMajorMinor(tokenHex: string): { major: number; minor: number } {
-  if (!/^[0-9a-fA-F]{8}$/.test(tokenHex)) {
-    throw new Error(`Token BLE invalid (asteptat 8 hex chars, primit ${tokenHex.length})`);
-  }
-  const major = parseInt(tokenHex.slice(0, 4), 16);
-  const minor = parseInt(tokenHex.slice(4, 8), 16);
-  return { major, minor };
-}
-
-function majorMinorToToken(major: number, minor: number): string {
-  const m = (major & 0xffff).toString(16).padStart(4, '0');
-  const n = (minor & 0xffff).toString(16).padStart(4, '0');
-  return `${m}${n}`;
-}
-
-// Parseaza un manufacturerData base64 ca iBeacon. Format standard:
-// bytes 0..1: company ID (Apple = 0x004c, little-endian → "4c 00")
-// byte  2:    type (0x02 pt iBeacon)
-// byte  3:    length (0x15)
-// bytes 4..19: proximity UUID (16 bytes, big-endian)
-// bytes 20..21: major (big-endian)
-// bytes 22..23: minor (big-endian)
-// byte  24:   txPower (signed)
-function parseIBeacon(
-  manufacturerDataB64: string,
-): { uuid: string; major: number; minor: number } | null {
-  let buf: Buffer;
+// Decodeaza ASCII text dintr-un buffer base64. ble-plx returneaza serviceData
+// ca base64. Token-ul nostru e 8 chars hex ASCII.
+function base64AsciiDecode(b64: string): string | null {
   try {
-    buf = Buffer.from(manufacturerDataB64, 'base64');
+    // RN Hermes are atob; aici e cea mai mica dependinta.
+    const bin = globalThis.atob(b64);
+    return bin;
   } catch {
     return null;
   }
-  if (buf.length < 25) return null;
-  // Apple company ID
-  if (buf[0] !== 0x4c || buf[1] !== 0x00) return null;
-  // iBeacon header
-  if (buf[2] !== 0x02 || buf[3] !== 0x15) return null;
-  const uuidBytes = buf.subarray(4, 20).toString('hex');
-  const uuid = `${uuidBytes.substring(0, 8)}-${uuidBytes.substring(8, 12)}-${uuidBytes.substring(
-    12,
-    16,
-  )}-${uuidBytes.substring(16, 20)}-${uuidBytes.substring(20, 32)}`.toUpperCase();
-  const major = buf.readUInt16BE(20);
-  const minor = buf.readUInt16BE(22);
-  return { uuid, major, minor };
 }
 
-async function broadcastWithRetry(
-  uuid: string,
-  major: number,
-  minor: number,
-): Promise<void> {
-  const delaysMs = [0, 300, 600, 1000];
-  let lastErr: any = null;
-  for (const wait of delaysMs) {
-    if (wait) await new Promise((r) => setTimeout(r, wait));
-    try {
-      await BleAdvertise.broadcast(uuid, major, minor);
-      return;
-    } catch (e: any) {
-      lastErr = e;
-      const code = e?.code ?? e?.message ?? '';
-      if (!String(code).includes('BLE_NOT_POWERED_ON')) throw e;
-    }
-  }
-  throw lastErr ?? new Error('Bluetooth nu raspunde. Verifica daca e pornit.');
+// Token-ul e 8 chars hex (ex "a3f2bc91"). Verificare format pt siguranta —
+// un peer corupt sau alt app care emite acelasi service UUID nu trebuie sa ne
+// strice peer map-ul.
+function isValidToken(s: string | null | undefined): s is string {
+  return !!s && /^[0-9a-fA-F]{8}$/.test(s);
 }
 
 function stdDev(values: number[]): number {
@@ -154,15 +119,17 @@ class PresenceEngine {
   private running = false;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private resolveTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pedometerSub: { remove: () => void } | null = null;
   private pedometerAvailable = false;
   private myStepCount = 0;
   private advertiseFailed = false;
   private bleState: State | 'Unknown' = 'Unknown';
   private stateSub: Subscription | null = null;
-  // Pe iOS scanam cu CLLocationManager (modul nativ local) — vezi
-  // iosBeaconScanner.ts. Pe Android scanam cu ble-plx central mode.
-  private iosScannerSub: { remove: () => void } | null = null;
+  private advertiseLastError: string | null = null;
+  private scanDevicesSeen = 0;
+  private scanWithServiceUuid = 0;
+  private scanTokenExtracted = 0;
 
   isRunning() {
     return this.running;
@@ -172,8 +139,6 @@ class PresenceEngine {
     return this.bleState;
   }
 
-  // Lazy singleton — instantiat la primul start. BleManager e greu (deschide
-  // CBCentralManager pe iOS); il pastram pe toata viata app-ului dupa creare.
   private getManager(): BleManager {
     if (!this.manager) {
       this.manager = new BleManager();
@@ -235,20 +200,9 @@ class PresenceEngine {
       throw new Error(`Nu am primit token de la backend: ${e?.message ?? e}`);
     }
     this.myToken = token;
-    const { major, minor } = tokenToMajorMinor(token);
 
-    BleAdvertise.setCompanyId(0x004c);
-    this.advertiseFailed = false;
-    try {
-      await broadcastWithRetry(UNPLGD_PROXIMITY_UUID, major, minor);
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('[presence] advertise failed, continuing scan-only:', e?.message ?? e);
-      this.advertiseFailed = true;
-    }
-
-    // Asteapta starea PoweredOn — startDeviceScan / startRanging pe iOS arunca
-    // daca radio-ul n-a primit inca didUpdateState. Up la 5s.
+    // Asteapta starea PoweredOn — startDeviceScan / startAdvertising arunca
+    // daca radio-ul n-a primit inca didUpdateState.
     if (this.bleState !== 'PoweredOn') {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => resolve(), 5000);
@@ -262,32 +216,45 @@ class PresenceEngine {
       });
     }
 
-    if (Platform.OS === 'ios') {
-      // iOS: CLLocationManager.startRangingBeacons via modulul nativ local.
-      // Apple ascunde iBeacon advertising din scanul generic, dar Core Location
-      // Ranging API ni-l da decoded (uuid + major + minor + rssi).
-      try {
-        await iosBeaconScanner.startRanging(UNPLGD_PROXIMITY_UUID);
-        this.iosScannerSub = iosBeaconScanner.onBeaconsRanged((event) => {
-          for (const b of event.beacons) {
-            this.handleRangedBeacon(b.uuid, b.major, b.minor, b.rssi);
+    // Advertise: GATT cu Service UUID + token in localName (iOS) sau
+    // serviceData (Android) — uniform via modulul nostru BlePresence.
+    this.advertiseFailed = false;
+    this.advertiseLastError = null;
+    try {
+      await blePresence.startAdvertising(UNPLGD_PROXIMITY_UUID, token);
+      // Verifica nativ daca chiar advertising-ul a pornit. Pe Android promise-ul
+      // se resolve sincron dar onStartFailure poate veni cativa ms mai tarziu.
+      setTimeout(() => {
+        void blePresence.getState().then((s) => {
+          if (!s.isAdvertising) {
+            const msg = `state=${s.state} lastError=${s.lastError ?? '?'}`;
+            // eslint-disable-next-line no-console
+            console.warn(`[presence] advertise NOT running. ${msg}`);
+            this.advertiseFailed = true;
+            this.advertiseLastError = msg;
+            this.emit();
           }
         });
-      } catch (e: any) {
-        // eslint-disable-next-line no-console
-        console.warn('[presence] iosBeaconScanner.startRanging failed:', e);
-        this.pedometerSub?.remove();
-        this.pedometerSub = null;
-        try {
-          await BleAdvertise.stopBroadcast();
-        } catch {}
-        throw new Error(`Scanare iBeacon iOS: ${e?.message ?? e}`);
-      }
-    } else {
-      // Android: ble-plx central scan + parsing iBeacon din manufacturerData.
-      // allowDuplicates=true ca sa primim updateuri RSSI continue.
-      try {
-        manager.startDeviceScan(null, { allowDuplicates: true }, (error, device) => {
+      }, 800);
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] advertise failed, continuing scan-only:', e?.message ?? e);
+      this.advertiseFailed = true;
+      this.advertiseLastError = e?.message ?? String(e);
+    }
+
+    // Scan: ble-plx pe ambele platforme cu filtru pe Service UUID Unplgd.
+    // Asa primim DOAR device-uri Unplgd, fara a scana zgomotul radio.
+    try {
+      manager.startDeviceScan(
+        [UNPLGD_PROXIMITY_UUID],
+        {
+          allowDuplicates: true,
+          scanMode: ScanMode.LowLatency,
+          callbackType: ScanCallbackType.AllMatches,
+          legacyScan: true,
+        },
+        (error, device) => {
           if (error) {
             // eslint-disable-next-line no-console
             console.warn('[presence] scan error:', error.message ?? error);
@@ -295,21 +262,29 @@ class PresenceEngine {
           }
           if (!device) return;
           this.handleDevice(device);
-        });
-      } catch (e: any) {
-        // eslint-disable-next-line no-console
-        console.warn('[presence] startDeviceScan failed:', e);
-        this.pedometerSub?.remove();
-        this.pedometerSub = null;
-        try {
-          await BleAdvertise.stopBroadcast();
-        } catch {}
-        throw new Error(`Scanare BLE: ${e?.message ?? e}`);
-      }
+        },
+      );
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] startDeviceScan failed:', e);
+      this.pedometerSub?.remove();
+      this.pedometerSub = null;
+      try {
+        await blePresence.stopAdvertising();
+      } catch {}
+      throw new Error(`Scanare BLE: ${e?.message ?? e}`);
     }
 
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.resolveTimer = setInterval(() => void this.resolveUnknownTokens(), RESOLVE_INTERVAL_MS);
+    this.heartbeatTimer = setInterval(
+      () => void this.sendHeartbeat(),
+      HEARTBEAT_INTERVAL_MS,
+    );
+    // Trimite primul heartbeat imediat (best-effort): cand auto-start ruleaza,
+    // user-ul poate fi deja langa un peer si nu vrem sa asteptam 25s pana
+    // backend-ul afla.
+    void this.sendHeartbeat();
     this.running = true;
     this.emit();
   }
@@ -318,22 +293,15 @@ class PresenceEngine {
     this.running = false;
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.resolveTimer) clearInterval(this.resolveTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.tickTimer = null;
     this.resolveTimer = null;
+    this.heartbeatTimer = null;
     try {
       this.manager?.stopDeviceScan();
     } catch {}
-    if (this.iosScannerSub) {
-      this.iosScannerSub.remove();
-      this.iosScannerSub = null;
-    }
-    if (Platform.OS === 'ios') {
-      try {
-        await iosBeaconScanner.stopAll();
-      } catch {}
-    }
     try {
-      await BleAdvertise.stopBroadcast();
+      await blePresence.stopAdvertising();
     } catch {}
     if (this.pedometerSub) {
       this.pedometerSub.remove();
@@ -342,6 +310,9 @@ class PresenceEngine {
     this.pedometerAvailable = false;
     this.myStepCount = 0;
     this.advertiseFailed = false;
+    this.scanDevicesSeen = 0;
+    this.scanWithServiceUuid = 0;
+    this.scanTokenExtracted = 0;
     this.peers.clear();
     this.sessions.clear();
     this.myToken = null;
@@ -364,49 +335,41 @@ class PresenceEngine {
         }
       }
       if (staleKeys.length) await AsyncStorage.multiRemove(staleKeys);
-    } catch {
-      // best-effort: backend-ul are oricum unique XpTransaction
-    }
+    } catch {}
   }
 
-  // Path iOS: Core Location ne da deja UUID + major + minor decoded.
-  private handleRangedBeacon(uuid: string, major: number, minor: number, rssi: number) {
-    // CLBeacon.rssi == 0 inseamna "rssi neraportat" — sarim peste, nu il
-    // luam ca semnal real (altfel am polua RSSI samples).
-    if (rssi === 0) return;
-    if (rssi < RSSI_THRESHOLD_DBM) return;
-    if (uuid.toUpperCase() !== UNPLGD_PROXIMITY_UUID.toUpperCase()) return;
-
-    const token = majorMinorToToken(major, minor);
-    if (this.myToken && token === this.myToken) return;
-
-    const now = Date.now();
-    const existing = this.peers.get(token);
-    if (existing) {
-      existing.rssi = rssi;
-      existing.lastSeenAt = now;
-    } else {
-      this.peers.set(token, {
-        token,
-        rssi,
-        firstSeenAt: now,
-        lastSeenAt: now,
-      });
-    }
-  }
-
-  // Path Android: scan-ul ne da raw advertising packet → parsam iBeacon manual.
+  // Scan callback: peer Unplgd vazut. Token-ul vine fie in localName (iOS-emis)
+  // fie in serviceData[SERVICE_UUID] (Android-emis). Incercam ambele path-uri.
   private handleDevice(device: Device) {
-    const md = device.manufacturerData;
+    this.scanDevicesSeen++;
     const rssi = device.rssi;
-    if (!md || rssi == null) return;
+    if (rssi == null) return;
     if (rssi < RSSI_THRESHOLD_DBM) return;
+    this.scanWithServiceUuid++;
 
-    const beacon = parseIBeacon(md);
-    if (!beacon) return;
-    if (beacon.uuid.toUpperCase() !== UNPLGD_PROXIMITY_UUID.toUpperCase()) return;
+    let token: string | null = null;
 
-    const token = majorMinorToToken(beacon.major, beacon.minor);
+    // Path 1: iOS-emis. CBAdvertisementDataLocalNameKey → device.localName.
+    if (isValidToken(device.localName)) {
+      token = device.localName.toLowerCase();
+    }
+
+    // Path 2: Android-emis. ServiceData[SERVICE_UUID] e bytes ASCII ai token-ului.
+    if (!token && device.serviceData) {
+      // ble-plx normalizeaza UUID-urile la lowercase 36-char form.
+      const lowerUuid = UNPLGD_PROXIMITY_UUID.toLowerCase();
+      const b64 = device.serviceData[lowerUuid] ?? device.serviceData[UNPLGD_PROXIMITY_UUID];
+      if (b64) {
+        const ascii = base64AsciiDecode(b64);
+        if (isValidToken(ascii)) {
+          token = ascii.toLowerCase();
+        }
+      }
+    }
+
+    if (!token) return;
+    this.scanTokenExtracted++;
+
     if (this.myToken && token === this.myToken) return;
 
     const now = Date.now();
@@ -550,6 +513,22 @@ class PresenceEngine {
     }
   }
 
+  // Trimite la backend lista prietenilor pe care ii vedem ACUM. Backend-ul
+  // foloseste asta pentru mutual visibility check la commit co-walk: respinge
+  // co-walk-ul daca peer-ul nu ne-a vazut recent. Best-effort — esecul nu
+  // blocheaza nimic local, doar urmatorul heartbeat va incerca din nou.
+  private async sendHeartbeat() {
+    const peerIds: string[] = [];
+    for (const peer of this.peers.values()) {
+      if (peer.userId && peer.isFriend) peerIds.push(peer.userId);
+    }
+    try {
+      await postPresenceHeartbeat(peerIds);
+    } catch {
+      // network jitter / token expirat / backend down — ignoram
+    }
+  }
+
   private async resolveUnknownTokens() {
     const unknown: string[] = [];
     for (const peer of this.peers.values()) {
@@ -568,9 +547,7 @@ class PresenceEngine {
         }
       }
       this.emit();
-    } catch {
-      // network jitter — vom retry la urmatorul interval
-    }
+    } catch {}
   }
 
   private snapshot(): PresenceSnapshot {
@@ -579,7 +556,13 @@ class PresenceEngine {
       myToken: this.myToken,
       sessions: [...this.sessions.values()].sort((a, b) => a.startedAt - b.startedAt),
       advertiseFailed: this.advertiseFailed,
+      advertiseLastError: this.advertiseLastError,
       bleState: this.bleState,
+      scanCounters: {
+        devicesSeen: this.scanDevicesSeen,
+        withServiceUuid: this.scanWithServiceUuid,
+        tokenExtracted: this.scanTokenExtracted,
+      },
     };
   }
 

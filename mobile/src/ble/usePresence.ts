@@ -9,9 +9,10 @@ export type PresenceState = {
   peers: Peer[];
   sessions: CoWalkSession[];
   error: string | null;
-  // Pe iOS in special advertising-ul iBeacon poate sa pice (BT off, permisiune
-  // refuzata, race CBPeripheralManager). Scan-ul continua, dar user-ul e
-  // invizibil pt ceilalti pana se reactiveaza.
+  // Advertising-ul (CBPeripheralManager pe iOS, BluetoothLeAdvertiser pe
+  // Android) poate sa pice independent de scan: BT off, permisiune refuzata,
+  // pachet prea mare. Scan-ul continua, dar user-ul e invizibil pt ceilalti
+  // pana se reactiveaza.
   advertiseFailed: boolean;
 };
 

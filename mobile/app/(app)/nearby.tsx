@@ -13,26 +13,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePresence } from '../../src/ble/usePresence';
-import type { Peer } from '../../src/ble/presence';
+import type { CoWalkSession, Peer } from '../../src/ble/presence';
+import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
 import { addFriend } from '../../src/api/friends';
 import { ApiError } from '../../src/api/client';
 import { colors } from '../../src/theme/colors';
 
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 export default function Nearby() {
   const qc = useQueryClient();
-  const { active, peers, error, advertiseFailed, start, stop } = usePresence();
+  // Presence engine ruleaza global (auto-start din (app)/_layout.tsx). Acest
+  // ecran doar consuma snapshot-ul; nu mai pornim/oprim la mount.
+  const { active, peers, sessions, error, advertiseFailed } = usePresence();
   const [adding, setAdding] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
-  // Pornim scanarea automat la deschidere; oprim la unmount doar daca am pornit
-  // noi (alt ecran — co-walk hunt — poate fi tot pe presence engine).
   useEffect(() => {
-    const wasActive = active;
-    if (!wasActive) void start();
-    return () => {
-      if (!wasActive) void stop();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (sessions.length === 0) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [sessions.length]);
 
   const add = useMutation({
     mutationFn: (userId: string) => addFriend(userId, 'ble'),
@@ -105,6 +111,18 @@ export default function Nearby() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
+        {sessions.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
+            {sessions.map((s) => (
+              <SessionCard key={s.userId} session={s} now={now} />
+            ))}
+          </>
+        )}
+
+        <Text style={[styles.sectionTitle, sessions.length > 0 && { marginTop: 18 }]}>
+          Prieteni in raza
+        </Text>
         {sorted.length === 0 ? (
           <View style={styles.emptyBox}>
             {active && <ActivityIndicator color={colors.accent} />}
@@ -126,6 +144,38 @@ export default function Nearby() {
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function SessionCard({ session, now }: { session: CoWalkSession; now: number }) {
+  const elapsed = session.lastSeenAt - session.startedAt;
+  const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
+  const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
+  const staleSec = Math.floor((now - session.lastSeenAt) / 1000);
+  const fillColor = session.committed ? colors.success : colors.accent;
+  return (
+    <View style={styles.sessionCard}>
+      <View style={styles.sessionHeader}>
+        <Text style={styles.sessionName} numberOfLines={1}>
+          🚶 {session.name}
+        </Text>
+        <Text style={[styles.sessionTimer, { color: fillColor }]}>
+          {session.committed ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
+        </Text>
+      </View>
+      <View style={styles.sessionTrack}>
+        <View
+          style={[styles.sessionFill, { width: `${ratio * 100}%`, backgroundColor: fillColor }]}
+        />
+      </View>
+      <Text style={styles.sessionHint}>
+        {session.committed
+          ? 'XP acordat azi · Co-walk reusit'
+          : staleSec > 30
+            ? `Apropie-te! Vazut ultima oara acum ${staleSec}s`
+            : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
+      </Text>
+    </View>
   );
 }
 
@@ -230,6 +280,38 @@ const styles = StyleSheet.create({
   settingsBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
 
   scrollBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20, gap: 10 },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    paddingBottom: 6,
+  },
+  sessionCard: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.accentDim,
+    gap: 8,
+  },
+  sessionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sessionName: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
+  sessionTimer: { fontSize: 13, fontWeight: '800' },
+  sessionTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  sessionFill: { height: '100%', borderRadius: 999 },
+  sessionHint: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
   emptyBox: { alignItems: 'center', gap: 12, paddingVertical: 40 },
   empty: { color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 },
 

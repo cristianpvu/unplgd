@@ -17,6 +17,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.parvucristian.unplgd",
       "infoPlist": {
+        "UIBackgroundModes": [
+          "bluetooth-central",
+          "bluetooth-peripheral",
+          "location"
+        ],
         "NFCReaderUsageDescription": "Unplgd foloseste NFC pentru a conecta prieteni si a colectiona pet-uri prin carduri.",
         "NSBluetoothAlwaysUsageDescription": "Unplgd foloseste Bluetooth pentru a detecta prieteni din apropiere.",
         "NSLocationWhenInUseUsageDescription": "Unplgd foloseste locatia pentru a detecta prieteni din apropiere prin BLE.",
@@ -49,6 +54,11 @@
         "android.permission.BLUETOOTH_ADVERTISE",
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK",
         "android.permission.ACTIVITY_RECOGNITION",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",

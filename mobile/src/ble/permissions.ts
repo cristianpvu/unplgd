@@ -10,10 +10,9 @@ export type BlePermissionResult = 'granted' | 'denied' | 'unavailable';
 //   pe care NU il pasam ca sa pastram un singur cod path comun).
 // - Android 11-: doar ACCESS_FINE_LOCATION.
 // - iOS: scan-ul GATT (ble-plx / CoreBluetooth) prompt-uieste singur dialogul
-//   pt Bluetooth la primul access. Pt iBeacon ranging Apple cere si Location
-//   "When in Use", deci il cerem aici proactiv (parsam manufacturer data ca
-//   iBeacon dar central scan-ul standard nu cere strict Location). Tinem
-//   cererea ca un guard preventiv.
+//   pt Bluetooth la primul access. Cerem si Location "When in Use" proactiv
+//   ca guard preventiv — unele API-uri Apple (CLLocationManager pt geofencing
+//   viitor, region monitoring) cer Location, si vrem un singur prompt up-front.
 export async function requestBlePermissions(): Promise<BlePermissionResult> {
   if (Platform.OS === 'ios') {
     try {
@@ -46,12 +45,14 @@ export async function requestBlePermissions(): Promise<BlePermissionResult> {
   >;
   for (const p of perms) {
     if (result[p] !== PermissionsAndroid.RESULTS.GRANTED) {
-      if (
-        p === PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS ||
-        p === PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE
-      ) {
+      // POST_NOTIFICATIONS e cosmetic (notificare foreground service); permitem
+      // sa lipseasca. BLUETOOTH_ADVERTISE NU e optional pe Android 12+ — fara
+      // ea, BluetoothLeAdvertiser arunca SecurityException si peer-ii nu ne vad.
+      if (p === PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
         continue;
       }
+      // eslint-disable-next-line no-console
+      console.warn(`[ble-perm] denied: ${p}`);
       return 'denied';
     }
   }

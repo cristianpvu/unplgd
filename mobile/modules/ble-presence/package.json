@@ -1,0 +1,8 @@
+{
+  "name": "ble-presence",
+  "version": "0.1.0",
+  "description": "Local BLE presence module: GATT advertising + scanning with service UUID, simetric pe iOS si Android.",
+  "main": "src/index.js",
+  "react-native": "src/index.ts",
+  "private": true
+}

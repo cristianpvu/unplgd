@@ -20,6 +20,7 @@ import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
+import { CoWalkProgressCard } from '../../src/ble/CoWalkProgress';
 import { colors } from '../../src/theme/colors';
 
 type SheetKind = 'friends' | 'settings' | null;
@@ -133,6 +134,8 @@ export default function Home() {
               : (error as Error).message}
           </Text>
         )}
+
+        <CoWalkProgressCard />
 
         <Pressable
           onPress={() => router.push('/(app)/play')}

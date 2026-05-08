@@ -39,3 +39,13 @@ export function postCoWalk(args: {
 }): Promise<CoWalkResult> {
   return api<CoWalkResult>('/interactions/co-walk', { method: 'POST', body: args });
 }
+
+// Heartbeat de prezenta — trimite lista de prieteni pe care ii vezi ACUM prin
+// BLE. Backend-ul stocheaza in Redis cu TTL 90s si verifica mutual visibility
+// la commit co-walk (refuza XP daca peer-ul nu te-a vazut).
+export function postPresenceHeartbeat(peers: string[]): Promise<{ ok: boolean; count: number }> {
+  return api<{ ok: boolean; count: number }>('/presence/heartbeat', {
+    method: 'POST',
+    body: { peers },
+  });
+}

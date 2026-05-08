@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml:1:1-72
+INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml:1:1-72
+	package
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml:1:11-69
+uses-sdk
+INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml
+INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/ble-presence/android/src/main/AndroidManifest.xml

@@ -42,7 +42,13 @@ export default function BleDebug() {
     sessions: [],
     myToken: null,
     advertiseFailed: false,
+    advertiseLastError: null,
     bleState: 'Unknown',
+    scanCounters: {
+      devicesSeen: 0,
+      withServiceUuid: 0,
+      tokenExtracted: 0,
+    },
   });
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [busy, setBusy] = useState(false);
@@ -175,7 +181,15 @@ export default function BleDebug() {
     setLogs([]);
   }
 
-  const { peers, sessions, myToken, bleState, advertiseFailed } = snapshot;
+  const {
+    peers,
+    sessions,
+    myToken,
+    bleState,
+    advertiseFailed,
+    advertiseLastError,
+    scanCounters,
+  } = snapshot;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -202,9 +216,16 @@ export default function BleDebug() {
             </Text>
           </View>
           {advertiseFailed && (
-            <Text style={styles.errorText}>
-              Advertise a esuat — esti invizibil pentru ceilalti.
-            </Text>
+            <View style={{ gap: 4, marginTop: 6 }}>
+              <Text style={styles.errorText}>
+                Advertise a esuat — esti invizibil pentru ceilalti.
+              </Text>
+              {advertiseLastError && (
+                <Text style={[styles.errorText, { fontWeight: '500' }]}>
+                  {advertiseLastError}
+                </Text>
+              )}
+            </View>
           )}
         </View>
 
@@ -226,6 +247,29 @@ export default function BleDebug() {
               <Text style={styles.tokenText}>{myToken}</Text>
             </View>
           )}
+        </View>
+
+        <View style={styles.statusCard}>
+          <Text style={styles.sectionTitle}>Scan counters</Text>
+          <View style={styles.kv}>
+            <Text style={styles.kvK}>devices Unplgd vazute</Text>
+            <Text style={styles.kvV}>{scanCounters.devicesSeen}</Text>
+          </View>
+          <View style={styles.kv}>
+            <Text style={styles.kvK}>cu service UUID match</Text>
+            <Text style={styles.kvV}>{scanCounters.withServiceUuid}</Text>
+          </View>
+          <View style={styles.kv}>
+            <Text style={styles.kvK}>token extras corect</Text>
+            <Text
+              style={[
+                styles.kvV,
+                { color: scanCounters.tokenExtracted > 0 ? colors.success : colors.textMuted },
+              ]}
+            >
+              {scanCounters.tokenExtracted}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.toggleRow}>
