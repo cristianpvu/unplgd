@@ -39,7 +39,12 @@ export default function AddFriend() {
       const perm = await requestBlePermissions();
       if (cancelled || perm !== 'granted') return;
       try {
-        await presence.start();
+        // Daca user-ul are co-walk-ul OFF, pornim doar SCAN — fara advertise
+        // si fara heartbeat. Altfel iPhone-ul s-ar face vizibil pe Android-ul
+        // unui prieten si backend-ul ar deschide sesiune co-walk fantoma chiar
+        // daca user-ul a ales explicit sa fie invizibil.
+        const cowalkOn = getCowalkEnabledCached();
+        await presence.start({ mode: cowalkOn ? 'full' : 'scan-only' });
       } catch {
         // engine-ul gestioneaza propriile log-uri
       }

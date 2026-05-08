@@ -136,6 +136,7 @@ class PresenceEngine {
   private scanTokenExtracted = 0;
   private socket: Socket | null = null;
   private socketHandlersAttached = false;
+  private scanOnlyMode = false;
 
   isRunning() {
     return this.running;
@@ -191,8 +192,19 @@ class PresenceEngine {
     };
   }
 
-  async start() {
+  // mode='full': advertise + scan + heartbeat + cowalk events. Default cand
+  // co-walk-ul e ENABLED in preferinte (porneste din _layout.tsx).
+  // mode='scan-only': doar scan + resolve, NU advertise si NU heartbeat. Folosit
+  // de add-friend cand user-ul are co-walk-ul OFF — vrea sa caute prieteni
+  // dar nu vrea sa fie vizibil pentru altii si nu vrea sa intre in sesiuni
+  // co-walk fara sa-si dea seama. Daca am pornit advertise + heartbeat in
+  // background-ul ecranului de "Adauga prieten", iPhone-ul aparea pe Android-ul
+  // unui prieten si backend-ul cream sesiune fantoma chiar daca user-ul iPhone
+  // se vedea ca "invizibil".
+  async start(opts?: { mode?: 'full' | 'scan-only' }) {
     if (this.running) return;
+    const mode = opts?.mode ?? 'full';
+    this.scanOnlyMode = mode === 'scan-only';
 
     const manager = this.getManager();
 
@@ -245,27 +257,30 @@ class PresenceEngine {
 
     // Advertise: GATT cu Service UUID + token in localName (iOS) sau
     // serviceData (Android) — uniform via modulul nostru BlePresence.
+    // Skip in scan-only — user-ul a optat "invizibil" deci NU emitem.
     this.advertiseFailed = false;
     this.advertiseLastError = null;
-    try {
-      await blePresence.startAdvertising(UNPLGD_PROXIMITY_UUID, token);
-      setTimeout(() => {
-        void blePresence.getState().then((s) => {
-          if (!s.isAdvertising) {
-            const msg = `state=${s.state} lastError=${s.lastError ?? '?'}`;
-            // eslint-disable-next-line no-console
-            console.warn(`[presence] advertise NOT running. ${msg}`);
-            this.advertiseFailed = true;
-            this.advertiseLastError = msg;
-            this.emit();
-          }
-        });
-      }, 800);
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('[presence] advertise failed, continuing scan-only:', e?.message ?? e);
-      this.advertiseFailed = true;
-      this.advertiseLastError = e?.message ?? String(e);
+    if (!this.scanOnlyMode) {
+      try {
+        await blePresence.startAdvertising(UNPLGD_PROXIMITY_UUID, token);
+        setTimeout(() => {
+          void blePresence.getState().then((s) => {
+            if (!s.isAdvertising) {
+              const msg = `state=${s.state} lastError=${s.lastError ?? '?'}`;
+              // eslint-disable-next-line no-console
+              console.warn(`[presence] advertise NOT running. ${msg}`);
+              this.advertiseFailed = true;
+              this.advertiseLastError = msg;
+              this.emit();
+            }
+          });
+        }, 800);
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[presence] advertise failed, continuing scan-only:', e?.message ?? e);
+        this.advertiseFailed = true;
+        this.advertiseLastError = e?.message ?? String(e);
+      }
     }
 
     try {
@@ -298,22 +313,25 @@ class PresenceEngine {
       throw new Error(`Scanare BLE: ${e?.message ?? e}`);
     }
 
-    // Conectam socket-ul + subscriem la event-urile co-walk. Reconnect-urile
-    // sunt automate (vezi lib/socket.ts); la fiecare connect re-fetch-uim
-    // /presence/cowalk/current ca sa preluam state-ul curent.
-    try {
-      await this.connectSocketAndSubscribe();
-    } catch (e: any) {
-      // eslint-disable-next-line no-console
-      console.warn('[presence] socket connect failed:', e?.message ?? e);
+    // Conectam socket-ul + subscriem la event-urile co-walk DOAR in mod full.
+    // Scan-only nu participa la co-walk; nu vrem sa primim cowalk:* events si
+    // sa apara sesiuni in UI cand user-ul a optat sa fie invizibil.
+    if (!this.scanOnlyMode) {
+      try {
+        await this.connectSocketAndSubscribe();
+      } catch (e: any) {
+        // eslint-disable-next-line no-console
+        console.warn('[presence] socket connect failed:', e?.message ?? e);
+      }
     }
 
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.resolveTimer = setInterval(() => void this.resolveUnknownTokens(), RESOLVE_INTERVAL_MS);
-    this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
-    this.reportTimer = setInterval(() => void this.sendCoWalkReports(), REPORT_INTERVAL_MS);
-
-    void this.sendHeartbeat();
+    if (!this.scanOnlyMode) {
+      this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+      this.reportTimer = setInterval(() => void this.sendCoWalkReports(), REPORT_INTERVAL_MS);
+      void this.sendHeartbeat();
+    }
     this.running = true;
     this.emit();
   }
@@ -348,6 +366,7 @@ class PresenceEngine {
     this.peers.clear();
     this.serverSessions.clear();
     this.myToken = null;
+    this.scanOnlyMode = false;
     this.emit();
   }
 
