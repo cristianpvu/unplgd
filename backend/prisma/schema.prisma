@@ -96,6 +96,7 @@ model Item {
   equippedAsEyebrows  Avatar[] @relation("AvatarEyebrows")
   equippedAsGlasses   Avatar[] @relation("AvatarGlasses")
   equippedAsEarrings  Avatar[] @relation("AvatarEarrings")
+  equippedAsFeatures  Avatar[] @relation("AvatarFeatures")
   equippedAsBodyShape Avatar[] @relation("AvatarBodyShape")
   equippedAsTop       Avatar[] @relation("AvatarTop")
   equippedAsOuterwear Avatar[] @relation("AvatarOuterwear")
@@ -129,6 +130,7 @@ model Avatar {
   eyebrowsItemId  String
   glassesItemId   String
   earringsItemId  String
+  featuresItemId  String
   bodyShapeItemId String
   topItemId       String
   outerwearItemId String
@@ -145,6 +147,7 @@ model Avatar {
   eyebrowsItem  Item @relation("AvatarEyebrows",  fields: [eyebrowsItemId],  references: [id])
   glassesItem   Item @relation("AvatarGlasses",   fields: [glassesItemId],   references: [id])
   earringsItem  Item @relation("AvatarEarrings",  fields: [earringsItemId],  references: [id])
+  featuresItem  Item @relation("AvatarFeatures",  fields: [featuresItemId],  references: [id])
   bodyShapeItem Item @relation("AvatarBodyShape", fields: [bodyShapeItemId], references: [id])
   topItem       Item @relation("AvatarTop",       fields: [topItemId],       references: [id])
   outerwearItem Item @relation("AvatarOuterwear", fields: [outerwearItemId], references: [id])

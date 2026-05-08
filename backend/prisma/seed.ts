@@ -133,6 +133,18 @@ const TYPES: SeedType[] = [
     ],
   },
   {
+    slug: 'features',
+    name: 'Detalii fata',
+    group: 'face',
+    items: [
+      { slug: 'f-00', feature: null, name: 'Fara', level: 1 },
+      { slug: 'f-01', feature: 'freckles', name: 'Pistrui', level: 1 },
+      { slug: 'f-02', feature: 'blush', name: 'Roseata', level: 1 },
+      { slug: 'f-03', feature: 'birthmark', name: 'Alunita', level: 5 },
+      { slug: 'f-04', feature: 'mustache', name: 'Mustata', level: 10 },
+    ],
+  },
+  {
     slug: 'earrings',
     name: 'Cercei',
     group: 'face',

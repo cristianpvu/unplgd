@@ -18,6 +18,12 @@ import { ApiError } from '../../src/api/client';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
 
+// Sloturi care nu randeaza nimic pe corp inca (vezi CLAUDE.md known bugs:
+// bodyShape/outerwear/holding sunt no-op in body composer). Le ascundem din
+// editor pana cand vor avea asseturi reale; backend ramane sursa de adevar
+// (catalog API expune tot, FK-urile raman intacte).
+const HIDDEN_SLOTS: Slot[] = ['bodyShape', 'outerwear', 'holding'];
+
 export default function AvatarEdit() {
   const qc = useQueryClient();
   const { firstTime } = useLocalSearchParams<{ firstTime?: string }>();
@@ -54,11 +60,16 @@ export default function AvatarEdit() {
     }
   }, [data, picks, noAvatarYet, catalog]);
 
+  const visibleTypes = useMemo(
+    () => catalog?.types.filter((t) => !HIDDEN_SLOTS.includes(t.slug)) ?? [],
+    [catalog],
+  );
+
   useEffect(() => {
-    if (catalog && !activeSlot && catalog.types.length > 0) {
-      setActiveSlot(catalog.types[0].slug);
+    if (!activeSlot && visibleTypes.length > 0) {
+      setActiveSlot(visibleTypes[0].slug);
     }
-  }, [catalog, activeSlot]);
+  }, [visibleTypes, activeSlot]);
 
   const dirty = useMemo(() => {
     if (!picks) return false;
@@ -129,7 +140,7 @@ export default function AvatarEdit() {
 
       <View style={styles.tabsWrap}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-          {catalog?.types.map((t) => (
+          {visibleTypes.map((t) => (
             <Pressable
               key={t.slug}
               onPress={() => setActiveSlot(t.slug)}

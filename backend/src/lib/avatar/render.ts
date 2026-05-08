@@ -10,14 +10,15 @@ import type { Options as AdventurerOptions } from '@dicebear/adventurer';
 import { composeAvatar, type EquippedItems } from './body.js';
 
 // Adventurer always renders eyes/mouth/eyebrows (no probability gate). The
-// optional features (hair, glasses, earrings) take an *Probability scalar in
-// addition to the array, which we use as an on/off switch.
-type OptionalSlot = 'hair' | 'glasses' | 'earrings';
+// optional layers (hair, glasses, earrings, features) take an *Probability
+// scalar in addition to the array, pe care il folosim ca on/off switch.
+type OptionalSlot = 'hair' | 'glasses' | 'earrings' | 'features';
 
-const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbability' | 'earringsProbability'> = {
+const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbability' | 'earringsProbability' | 'featuresProbability'> = {
   hair: 'hairProbability',
   glasses: 'glassesProbability',
   earrings: 'earringsProbability',
+  features: 'featuresProbability',
 };
 
 type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
@@ -35,7 +36,6 @@ function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant):
   const opts: AdventurerOptions = {
     skinColor: [skin],
     hairColor: [hairColor],
-    featuresProbability: 0,
   };
 
   const eyesFeature = eyesOverride ?? (items.eyes.feature as AdventurerVariant | undefined);

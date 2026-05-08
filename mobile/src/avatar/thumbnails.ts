@@ -63,5 +63,14 @@ export function thumbnailUri(slot: Slot, item: CatalogItem, size = 96): string {
     params.set('earringsProbability', '0');
   }
 
+  // Features (mustache/blush/birthmark/freckles) — DiceBear le grupeaza intr-un
+  // singur layer cu probability. La thumbnail vrem sa vedem doar feature-ul ales.
+  if (slot === 'features' && item.feature) {
+    params.set('features', item.feature);
+    params.set('featuresProbability', '100');
+  } else {
+    params.set('featuresProbability', '0');
+  }
+
   return `${BASE}?${params.toString()}`;
 }

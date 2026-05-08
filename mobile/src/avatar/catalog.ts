@@ -11,6 +11,7 @@ export const SLOTS = [
   'eyebrows',
   'glasses',
   'earrings',
+  'features',
   'bodyShape',
   'top',
   'outerwear',

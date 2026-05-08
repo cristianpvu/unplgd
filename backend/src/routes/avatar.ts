@@ -43,6 +43,7 @@ type AvatarFkData = {
   eyebrowsItemId: string;
   glassesItemId: string;
   earringsItemId: string;
+  featuresItemId: string;
   bodyShapeItemId: string;
   topItemId: string;
   outerwearItemId: string;
@@ -61,6 +62,7 @@ function itemsToFkData(items: Record<Slot, Item>): AvatarFkData {
     eyebrowsItemId: items.eyebrows.id,
     glassesItemId: items.glasses.id,
     earringsItemId: items.earrings.id,
+    featuresItemId: items.features.id,
     bodyShapeItemId: items.bodyShape.id,
     topItemId: items.top.id,
     outerwearItemId: items.outerwear.id,
