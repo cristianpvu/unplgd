@@ -290,6 +290,48 @@ export async function tickHeartbeat(
   return { events, session };
 }
 
+// Scoate explicit `userId` din sesiunea curenta (daca exista). Folosit cand
+// user-ul dezactiveaza manual co-walk-ul din UI — vrem reactie instant, nu
+// asteptam grace-ul de 90s din heartbeat. Returneaza event-urile de emis.
+export async function leaveSession(userId: string): Promise<SyncEvent[]> {
+  const events: SyncEvent[] = [];
+  const session = await getSessionForUser(userId);
+  if (!session) return events;
+
+  const beforeIds = Object.keys(session.participants);
+  if (!session.participants[userId]) {
+    // Index pointeaza catre o sesiune din care user-ul lipseste — curatam
+    // pointer-ul orfan si plecam.
+    await redis.del(uKey(userId));
+    return events;
+  }
+
+  delete session.participants[userId];
+  await redis.del(uKey(userId));
+
+  events.push({
+    type: 'left',
+    sessionId: session.id,
+    userId,
+    remaining: Object.values(session.participants),
+    recipients: beforeIds,
+  });
+
+  if (Object.keys(session.participants).length < 2) {
+    const remainingIds = Object.keys(session.participants);
+    await destroy(session.id, remainingIds);
+    events.push({
+      type: 'ended',
+      sessionId: session.id,
+      recipients: [...new Set([...beforeIds, ...remainingIds])],
+    });
+  } else {
+    await persist(session);
+  }
+
+  return events;
+}
+
 // Acumuleaza pasi + RSSI samples pentru un user din sesiunea curenta. Mobile-ul
 // trimite incremental prin socket.io `cowalk:report`.
 export async function recordReport(

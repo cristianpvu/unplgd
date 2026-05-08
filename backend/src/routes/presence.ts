@@ -4,7 +4,7 @@ import { FriendshipStatus } from '@prisma/client';
 import { requireAuth } from '../middleware/auth.js';
 import { markSeen, viewersWhoSaw } from '../lib/presence.js';
 import { prisma } from '../lib/prisma.js';
-import { tickHeartbeat, getSessionForUser } from '../lib/cowalk/session.js';
+import { tickHeartbeat, getSessionForUser, leaveSession } from '../lib/cowalk/session.js';
 import { emitSyncEvents } from '../lib/socket/cowalkEmit.js';
 import { awardCowalkParticipant } from '../lib/cowalk/award.js';
 export const presenceRouter = Router();
@@ -52,6 +52,23 @@ presenceRouter.post('/heartbeat', async (req, res, next) => {
     await emitSyncEvents(events);
 
     res.json({ ok: true, count: cleaned.length, sessionEvents: events.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Scoate user-ul din sesiunea curenta de co-walk imediat (fara sa astepte
+// grace-ul de 90s). Folosit cand user-ul dezactiveaza manual feature-ul:
+// vrem ca ceilalti membri sa primeasca cowalk:left in <1s, nu dupa 90s.
+// Sterge si markSeen ca nu mai apara in heartbeat-urile altora pana la
+// urmatoarea lor sincronizare.
+presenceRouter.post('/cowalk/leave', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const events = await leaveSession(me);
+    await markSeen(me, []);
+    await emitSyncEvents(events);
+    res.json({ ok: true, leftEvents: events.length });
   } catch (e) {
     next(e);
   }
