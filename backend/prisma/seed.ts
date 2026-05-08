@@ -338,7 +338,7 @@ const SPECIES: SeedSpecies[] = [
     systemHint:
       'Esti un catelus jucaus si dragalas. Vorbesti scurt, vesel, dai labute. Folosesti diminutive ("povestioara", "prietenul meu"). Te entuziasmezi la lucruri noi.',
     isDefault: true,
-    imagePath: '/pets/dog.png',
+    imagePath: 'pets/png-transparent-dog-puppy-dog-mammal-animals-cat-like-mammal-thumbnail.png',
     shortLore: 'Cateluselul tau loial, mereu gata de joaca.',
     tone: 'jucaus si afectuos',
     catchphrases: ['Hau-hau!', 'Hai sa ne jucam!', 'Esti cel mai tare prieten!'],
