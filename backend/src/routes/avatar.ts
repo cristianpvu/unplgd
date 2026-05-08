@@ -12,7 +12,11 @@ import {
   type AvatarWithItems,
   type Slot,
 } from '../lib/avatar/catalog.js';
-import { renderAvatarBlinkSvg, renderAvatarSvg } from '../lib/avatar/render.js';
+import {
+  renderAvatarBlinkSvg,
+  renderAvatarExpressionSvg,
+  renderAvatarSvg,
+} from '../lib/avatar/render.js';
 
 export const avatarRouter = Router();
 
@@ -97,7 +101,21 @@ function validateLevels(items: Record<Slot, Item>, userLevel: number): string | 
   return null;
 }
 
-// Serializeaza un Avatar cu relatii in payload-ul API: { picks: slug-uri, svg, svgBlink, level }
+// Randeaza toate variantele (neutral + blink + 4 expresii) intr-un singur loc.
+// Folosit la PATCH (overwrite complet) si la backfill (campurile lipsa).
+function renderAllSvgs(items: Record<Slot, AvatarWithItems['skinItem']>) {
+  return {
+    svg: renderAvatarSvg(items),
+    svgBlink: renderAvatarBlinkSvg(items),
+    svgHappy: renderAvatarExpressionSvg(items, 'happy'),
+    svgSad: renderAvatarExpressionSvg(items, 'sad'),
+    svgSurprise: renderAvatarExpressionSvg(items, 'surprise'),
+    svgFocused: renderAvatarExpressionSvg(items, 'focused'),
+  };
+}
+
+// Serializeaza un Avatar cu relatii in payload-ul API: { picks, svg, svgBlink,
+// svgHappy/Sad/Surprise/Focused, level }
 function serializeAvatar(avatar: AvatarWithItems, level: number) {
   const equipped = equippedBySlot(avatar);
   const picks: Record<Slot, string> = {} as Record<Slot, string>;
@@ -106,6 +124,10 @@ function serializeAvatar(avatar: AvatarWithItems, level: number) {
     picks,
     svg: avatar.svg,
     svgBlink: avatar.svgBlink,
+    svgHappy: avatar.svgHappy,
+    svgSad: avatar.svgSad,
+    svgSurprise: avatar.svgSurprise,
+    svgFocused: avatar.svgFocused,
     level,
     updatedAt: avatar.updatedAt,
   };
@@ -124,14 +146,22 @@ avatarRouter.get('/me/avatar', requireAuth, async (req, res, next) => {
     let avatar = user.avatar;
     if (!avatar) throw notFound('avatar_not_found', 'Avatar not created yet');
 
-    if (!avatar.svgBlink) {
-      // Backfill lazy pentru avataruri create inainte de coloana svgBlink:
-      // re-randam frame-ul de blink din item-urile echipate curent.
+    // Backfill lazy pentru orice frame de animatie lipsa (avataruri create
+    // inainte ca expresiile sa existe). Re-randam doar campurile null ca sa
+    // nu suprascriem nimic deja salvat.
+    const missing: Partial<Record<'svgBlink' | 'svgHappy' | 'svgSad' | 'svgSurprise' | 'svgFocused', string>> = {};
+    if (!avatar.svgBlink || !avatar.svgHappy || !avatar.svgSad || !avatar.svgSurprise || !avatar.svgFocused) {
       const equipped = equippedBySlot(avatar);
-      const svgBlink = renderAvatarBlinkSvg(equipped);
+      if (!avatar.svgBlink) missing.svgBlink = renderAvatarBlinkSvg(equipped);
+      if (!avatar.svgHappy) missing.svgHappy = renderAvatarExpressionSvg(equipped, 'happy');
+      if (!avatar.svgSad) missing.svgSad = renderAvatarExpressionSvg(equipped, 'sad');
+      if (!avatar.svgSurprise) missing.svgSurprise = renderAvatarExpressionSvg(equipped, 'surprise');
+      if (!avatar.svgFocused) missing.svgFocused = renderAvatarExpressionSvg(equipped, 'focused');
+    }
+    if (Object.keys(missing).length) {
       avatar = await prisma.avatar.update({
         where: { userId: user.id },
-        data: { svgBlink },
+        data: missing,
         include: AVATAR_INCLUDE,
       });
     }
@@ -155,14 +185,13 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
     const lockedReason = validateLevels(items, user.level);
     if (lockedReason) throw badRequest('locked', lockedReason);
 
-    const svg = renderAvatarSvg(items);
-    const svgBlink = renderAvatarBlinkSvg(items);
+    const svgs = renderAllSvgs(items);
     const fkData = itemsToFkData(items);
 
     const avatar = await prisma.avatar.upsert({
       where: { userId: user.id },
-      create: { userId: user.id, svg, svgBlink, ...fkData },
-      update: { svg, svgBlink, ...fkData },
+      create: { userId: user.id, ...svgs, ...fkData },
+      update: { ...svgs, ...fkData },
       include: AVATAR_INCLUDE,
     });
 

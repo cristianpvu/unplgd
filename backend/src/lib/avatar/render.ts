@@ -20,15 +20,38 @@ const OPTIONAL_PROB: Record<OptionalSlot, 'hairProbability' | 'glassesProbabilit
   earrings: 'earringsProbability',
 };
 
-type AdventurerVariant = NonNullable<AdventurerOptions['eyes']>[number];
+type AdventurerEyes = NonNullable<AdventurerOptions['eyes']>[number];
+type AdventurerMouth = NonNullable<AdventurerOptions['mouth']>[number];
+type AdventurerEyebrows = NonNullable<AdventurerOptions['eyebrows']>[number];
 
 // Variant Adventurer cu ambii ochi inchisi (curbe "u" simple, fara pupile) —
 // folosit pentru frame-ul de blink. Crossfade pe mobil intre svg si svgBlink
 // simuleaza clipitul fara a re-randa nimic la runtime. NU folosi variant22
 // (e wink, doar un ochi).
-export const BLINK_EYES_VARIANT: AdventurerVariant = 'variant20';
+export const BLINK_EYES_VARIANT: AdventurerEyes = 'variant20';
 
-function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant): AdventurerOptions {
+// Expresii faciale: overrides pe eyes/mouth/eyebrows aplicate peste outfitul
+// curent al user-ului. Pre-randate la save (vezi routes/avatar.ts) si swap-uite
+// pe mobil ca raspuns la evenimente (tap, level up, NFC scan, friend add).
+// Variantele alese sunt sigure (subset al celor folosite deja in seed) ca sa
+// nu crape DiceBear schema validation.
+export type Expression = 'happy' | 'sad' | 'surprise' | 'focused';
+export const EXPRESSIONS: readonly Expression[] = ['happy', 'sad', 'surprise', 'focused'] as const;
+
+type FaceOverrides = {
+  eyes?: AdventurerEyes;
+  mouth?: AdventurerMouth;
+  eyebrows?: AdventurerEyebrows;
+};
+
+const EXPRESSION_OVERRIDES: Record<Expression, FaceOverrides> = {
+  happy:    { eyes: 'variant03', mouth: 'variant05', eyebrows: 'variant05' },
+  sad:      { eyes: 'variant12', mouth: 'variant10', eyebrows: 'variant12' },
+  surprise: { eyes: 'variant26', mouth: 'variant14', eyebrows: 'variant15' },
+  focused:  { eyes: 'variant19', mouth: 'variant10', eyebrows: 'variant08' },
+};
+
+function itemsToOptions(items: EquippedItems, overrides: FaceOverrides = {}): AdventurerOptions {
   const skin = items.skin.feature ?? 'ecad80';
   const hairColor = items.hairColor.feature ?? '6a4e35';
 
@@ -38,10 +61,12 @@ function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant):
     featuresProbability: 0,
   };
 
-  const eyesFeature = eyesOverride ?? (items.eyes.feature as AdventurerVariant | undefined);
+  const eyesFeature = overrides.eyes ?? (items.eyes.feature as AdventurerEyes | undefined);
   if (eyesFeature) opts.eyes = [eyesFeature];
-  if (items.mouth.feature) opts.mouth = [items.mouth.feature as NonNullable<AdventurerOptions['mouth']>[number]];
-  if (items.eyebrows.feature) opts.eyebrows = [items.eyebrows.feature as NonNullable<AdventurerOptions['eyebrows']>[number]];
+  const mouthFeature = overrides.mouth ?? (items.mouth.feature as AdventurerMouth | undefined);
+  if (mouthFeature) opts.mouth = [mouthFeature];
+  const eyebrowsFeature = overrides.eyebrows ?? (items.eyebrows.feature as AdventurerEyebrows | undefined);
+  if (eyebrowsFeature) opts.eyebrows = [eyebrowsFeature];
 
   for (const slot of Object.keys(OPTIONAL_PROB) as OptionalSlot[]) {
     const feature = items[slot].feature;
@@ -57,8 +82,8 @@ function itemsToOptions(items: EquippedItems, eyesOverride?: AdventurerVariant):
   return opts;
 }
 
-function renderHead(items: EquippedItems, eyesOverride?: AdventurerVariant): string {
-  const options = itemsToOptions(items, eyesOverride);
+function renderHead(items: EquippedItems, overrides: FaceOverrides = {}): string {
+  const options = itemsToOptions(items, overrides);
   const head = createAvatar(adventurer, {
     seed: 'unplgd',
     backgroundColor: ['transparent'],
@@ -72,5 +97,9 @@ export function renderAvatarSvg(items: EquippedItems): string {
 }
 
 export function renderAvatarBlinkSvg(items: EquippedItems): string {
-  return renderHead(items, BLINK_EYES_VARIANT);
+  return renderHead(items, { eyes: BLINK_EYES_VARIANT });
+}
+
+export function renderAvatarExpressionSvg(items: EquippedItems, expression: Expression): string {
+  return renderHead(items, EXPRESSION_OVERRIDES[expression]);
 }

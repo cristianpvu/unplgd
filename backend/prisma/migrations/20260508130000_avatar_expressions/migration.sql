@@ -1,0 +1,4 @@
+ALTER TABLE "Avatar" ADD COLUMN "svgHappy" TEXT;
+ALTER TABLE "Avatar" ADD COLUMN "svgSad" TEXT;
+ALTER TABLE "Avatar" ADD COLUMN "svgSurprise" TEXT;
+ALTER TABLE "Avatar" ADD COLUMN "svgFocused" TEXT;

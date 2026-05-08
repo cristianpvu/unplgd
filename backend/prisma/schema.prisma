@@ -117,7 +117,14 @@ model Avatar {
   // Frame de blink: acelasi avatar cu ochii suprascrisi (variant22). Generat
   // odata cu `svg` la save. Nullable pentru avataruri create inainte de
   // animatii — se completeaza lazy la primul GET dupa deploy.
-  svgBlink  String?
+  svgBlink    String?
+  // Expresii faciale pre-randate (overrides pe eyes/mouth/eyebrows peste
+  // outfitul curent). Trigger-uite din mobil pe evenimente: tap, level up,
+  // NFC scan, friend add etc. Lazy backfill identic cu svgBlink.
+  svgHappy    String?
+  svgSad      String?
+  svgSurprise String?
+  svgFocused  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
