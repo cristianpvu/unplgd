@@ -53,6 +53,7 @@ export type ClientSession = {
     joinedAtClient: number;
     awarded: boolean;
     isMe: boolean;
+    avatarSvg: string | null;
   }>;
 };
 
@@ -105,7 +106,14 @@ type ServerSideSession = {
   serverClockOffset: number;
   members: Map<
     string,
-    { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
+    {
+      userId: string;
+      name: string;
+      level: number;
+      joinedAt: number;
+      awarded: boolean;
+      avatarSvg: string | null;
+    }
   >;
   startStepCount: number;
   rssiBufferUnreported: number[];
@@ -433,10 +441,7 @@ class PresenceEngine {
     const existing = this.serverSessions.get(s.id);
     const startStepCount = existing?.startStepCount ?? this.myStepCount;
     const rssiBufferUnreported = existing?.rssiBufferUnreported ?? [];
-    const members = new Map<
-      string,
-      { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
-    >();
+    const members: ServerSideSession['members'] = new Map();
     for (const p of s.participants) {
       members.set(p.userId, {
         userId: p.userId,
@@ -444,6 +449,7 @@ class PresenceEngine {
         level: p.level,
         joinedAt: p.joinedAt,
         awarded: p.awarded,
+        avatarSvg: p.avatarSvg,
       });
     }
     this.serverSessions.set(s.id, {
@@ -460,13 +466,16 @@ class PresenceEngine {
     sessionId: string;
     startedAt: number;
     serverNow: number;
-    participants: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+    participants: Array<{
+      userId: string;
+      joinedAt: number;
+      name: string;
+      level: number;
+      avatarSvg: string | null;
+    }>;
   }) {
     const offset = Date.now() - p.serverNow;
-    const members = new Map<
-      string,
-      { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
-    >();
+    const members: ServerSideSession['members'] = new Map();
     for (const m of p.participants) {
       members.set(m.userId, {
         userId: m.userId,
@@ -474,6 +483,7 @@ class PresenceEngine {
         level: m.level,
         joinedAt: m.joinedAt,
         awarded: false,
+        avatarSvg: m.avatarSvg,
       });
     }
     this.serverSessions.set(p.sessionId, {
@@ -490,8 +500,20 @@ class PresenceEngine {
   private onJoined(p: {
     sessionId: string;
     serverNow: number;
-    participant: { userId: string; joinedAt: number; name: string; level: number };
-    participants: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+    participant: {
+      userId: string;
+      joinedAt: number;
+      name: string;
+      level: number;
+      avatarSvg: string | null;
+    };
+    participants: Array<{
+      userId: string;
+      joinedAt: number;
+      name: string;
+      level: number;
+      avatarSvg: string | null;
+    }>;
   }) {
     let session = this.serverSessions.get(p.sessionId);
     const offset = Date.now() - p.serverNow;
@@ -514,6 +536,7 @@ class PresenceEngine {
         level: m.level,
         joinedAt: m.joinedAt,
         awarded: existing?.awarded ?? false,
+        avatarSvg: m.avatarSvg,
       });
     }
     this.emit();
@@ -522,7 +545,13 @@ class PresenceEngine {
   private onLeft(p: {
     sessionId: string;
     userId: string;
-    remaining: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+    remaining: Array<{
+      userId: string;
+      joinedAt: number;
+      name: string;
+      level: number;
+      avatarSvg: string | null;
+    }>;
   }) {
     const session = this.serverSessions.get(p.sessionId);
     if (!session) return;
@@ -711,6 +740,7 @@ class PresenceEngine {
         joinedAtClient: m.joinedAt + s.serverClockOffset,
         awarded: m.awarded,
         isMe: !!this.myUserId && m.userId === this.myUserId,
+        avatarSvg: m.avatarSvg,
       }));
       // Sortam: eu primul, apoi dupa joinedAt ascendent ca participantii noi
       // sa apara mai jos in lista.

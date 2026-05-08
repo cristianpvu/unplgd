@@ -17,6 +17,9 @@ export type ServerSession = {
     awarded: boolean;
     name: string;
     level: number;
+    // SVG-ul capului (Avatar.svg din DB) cand userul si-a generat avatar.
+    // null = afisam fallback (initiala numelui).
+    avatarSvg: string | null;
   }>;
 };
 

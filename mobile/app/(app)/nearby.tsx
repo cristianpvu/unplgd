@@ -15,20 +15,13 @@ import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePresence } from '../../src/ble/usePresence';
 import { presence } from '../../src/ble/presence';
-import type { ClientSession, Peer } from '../../src/ble/presence';
-import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
+import type { Peer } from '../../src/ble/presence';
 import { useCowalkEnabled, setCowalkEnabled } from '../../src/ble/cowalkPref';
 import { addFriend } from '../../src/api/friends';
 import { leaveCoWalk } from '../../src/api/ble';
 import { ApiError } from '../../src/api/client';
+import { CoWalkSessionCard } from '../../src/cowalk/CoWalkSessionCard';
 import { colors } from '../../src/theme/colors';
-
-function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
 
 export default function Nearby() {
   const qc = useQueryClient();
@@ -160,7 +153,7 @@ export default function Nearby() {
               <>
                 <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
                 {sessions.map((s) => (
-                  <SessionCard key={s.id} session={s} now={now} />
+                  <CoWalkSessionCard key={s.id} session={s} now={now} />
                 ))}
               </>
             )}
@@ -191,64 +184,6 @@ export default function Nearby() {
         )}
       </ScrollView>
     </SafeAreaView>
-  );
-}
-
-function SessionCard({ session, now }: { session: ClientSession; now: number }) {
-  const me = session.members.find((m) => m.isMe);
-  const others = session.members.filter((m) => !m.isMe);
-  const myJoinedAt = me?.joinedAtClient ?? session.startedAtClient;
-  const myAwarded = me?.awarded ?? false;
-  const elapsed = Math.max(0, now - myJoinedAt);
-  const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
-  const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
-  const fillColor = myAwarded ? colors.success : colors.accent;
-
-  const headline =
-    others.length === 0
-      ? 'Sesiune'
-      : others.length === 1
-        ? others[0]!.name
-        : `${others[0]!.name} + ${others.length - 1}`;
-
-  return (
-    <View style={styles.sessionCard}>
-      <View style={styles.sessionHeader}>
-        <Text style={styles.sessionName} numberOfLines={1}>
-          🚶 {headline}
-        </Text>
-        <Text style={[styles.sessionTimer, { color: fillColor }]}>
-          {myAwarded ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
-        </Text>
-      </View>
-      <View style={styles.sessionTrack}>
-        <View
-          style={[styles.sessionFill, { width: `${ratio * 100}%`, backgroundColor: fillColor }]}
-        />
-      </View>
-      <Text style={styles.sessionHint}>
-        {myAwarded
-          ? 'XP acordat azi · Co-walk reusit'
-          : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
-      </Text>
-      {others.length > 0 && (
-        <View style={styles.membersList}>
-          {others.map((m) => {
-            const memberElapsed = Math.max(0, now - m.joinedAtClient);
-            return (
-              <View key={m.userId} style={styles.memberRow}>
-                <Text style={styles.memberName} numberOfLines={1}>
-                  • {m.name}
-                </Text>
-                <Text style={styles.memberMeta}>
-                  {m.awarded ? '✓ XP' : `${formatDuration(memberElapsed)}`}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </View>
   );
 }
 
@@ -373,45 +308,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     paddingBottom: 6,
   },
-  sessionCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.accentDim,
-    gap: 8,
-  },
-  sessionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sessionName: { color: colors.text, fontSize: 15, fontWeight: '700', flex: 1 },
-  sessionTimer: { fontSize: 13, fontWeight: '800' },
-  sessionTrack: {
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  sessionFill: { height: '100%', borderRadius: 999 },
-  sessionHint: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
-  membersList: {
-    marginTop: 6,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 4,
-  },
-  memberRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 8,
-  },
-  memberName: { color: colors.text, fontSize: 12, fontWeight: '600', flex: 1 },
-  memberMeta: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
   emptyBox: { alignItems: 'center', gap: 12, paddingVertical: 40 },
   empty: { color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 },
 
