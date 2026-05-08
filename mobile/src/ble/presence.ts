@@ -146,6 +146,26 @@ class PresenceEngine {
     return this.bleState;
   }
 
+  // Marcheaza local un peer ca prieten — folosit dupa ce user-ul apasa
+  // "Adauga" in UI. resolveUnknownTokens NU re-rezolva peer-i care au deja
+  // userId, deci fara asta peer-ul ar ramane isFriend=false pana la stop/start
+  // si n-ar intra in heartbeat-ul de presence (deci si in co-walk).
+  markPeerAsFriend(userId: string) {
+    let changed = false;
+    for (const peer of this.peers.values()) {
+      if (peer.userId === userId && !peer.isFriend) {
+        peer.isFriend = true;
+        changed = true;
+      }
+    }
+    if (changed) {
+      // Trimitem un heartbeat imediat ca backend-ul sa-l includa in
+      // mutual visibility ASAP (altfel astepti pana la 25s pana la urmatorul).
+      void this.sendHeartbeat();
+      this.emit();
+    }
+  }
+
   private getManager(): BleManager {
     if (!this.manager) {
       this.manager = new BleManager();

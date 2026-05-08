@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePresence } from '../../src/ble/usePresence';
+import { presence } from '../../src/ble/presence';
 import type { ClientSession, Peer } from '../../src/ble/presence';
 import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
 import { useCowalkEnabled, setCowalkEnabled } from '../../src/ble/cowalkPref';
@@ -48,9 +49,9 @@ export default function Nearby() {
     onSuccess: (_data, userId) => {
       qc.invalidateQueries({ queryKey: ['me'] });
       qc.invalidateQueries({ queryKey: ['friends'] });
-      // Marcam local imediat ca peer-ul e prieten — usePresence il rezolva
-      // tot prieten la urmatorul resolve cycle (~15s), pana atunci UI-ul
-      // se actualizeaza optimist.
+      // Marcam peer-ul local ca prieten — UI-ul (si heartbeat-ul de presence
+      // catre backend) includ peer-ul instant in co-walk detection.
+      presence.markPeerAsFriend(userId);
       Alert.alert('Prieten nou', 'Aveti acum un nou prieten!');
       setAdding(null);
     },
