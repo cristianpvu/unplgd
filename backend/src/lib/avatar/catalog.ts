@@ -35,7 +35,7 @@ export const DEFAULT_SLUGS: Record<Slot, string> = {
   hair: 'h-02',
   eyes: 'e-01',
   mouth: 'm-01',
-  eyebrows: 'b-03',
+  eyebrows: 'eb-03',
   glasses: 'g-00',
   earrings: 'a-00',
   bodyShape: 'bs-medium',

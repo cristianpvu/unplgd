@@ -114,11 +114,11 @@ const TYPES: SeedType[] = [
     name: 'Sprancene',
     group: 'face',
     items: [
-      { slug: 'b-01', feature: 'variant01', name: 'Naturale', level: 1 },
-      { slug: 'b-02', feature: 'variant05', name: 'Arcuite', level: 1 },
-      { slug: 'b-03', feature: 'variant08', name: 'Groase', level: 1 },
-      { slug: 'b-04', feature: 'variant12', name: 'Subtiri', level: 5 },
-      { slug: 'b-05', feature: 'variant15', name: 'Ridicate', level: 10 },
+      { slug: 'eb-01', feature: 'variant01', name: 'Naturale', level: 1 },
+      { slug: 'eb-02', feature: 'variant05', name: 'Arcuite', level: 1 },
+      { slug: 'eb-03', feature: 'variant08', name: 'Groase', level: 1 },
+      { slug: 'eb-04', feature: 'variant12', name: 'Subtiri', level: 5 },
+      { slug: 'eb-05', feature: 'variant15', name: 'Ridicate', level: 10 },
     ],
   },
   {
