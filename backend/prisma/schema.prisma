@@ -368,6 +368,16 @@ enum CoCreationStatus {
   FAILED     // eroare interna pipeline (Imagen / GCS down)
 }
 
+// Cum s-a alaturat userB sesiunii — relevant pt audit + lucrare licenta.
+// NFC_BAND  = host a scanat bratara NFC a partenerului (cazul cand B nu are
+//             telefon, sau e iPhone si nu poate fi scanat peer-to-peer).
+// NFC_PHONE = host a scanat telefonul partenerului (Android HCE, planificat
+//             in Iteratia 2 — adaugat acum ca migrarea sa fie one-shot).
+enum CoCreationJoinMethod {
+  NFC_BAND
+  NFC_PHONE
+}
+
 model CoCreation {
   id               String   @id @default(cuid())
   userAId          String
@@ -382,6 +392,7 @@ model CoCreation {
   aiValid          Boolean?
   aiFeedback       String?
   status           CoCreationStatus @default(ACTIVE)
+  joinMethod       CoCreationJoinMethod @default(NFC_BAND)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
