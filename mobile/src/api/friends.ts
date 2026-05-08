@@ -1,5 +1,14 @@
 import { api } from './client';
 
+// Pet-ul echipat al unui user — atasat oriunde returnam un user public
+// (lista friends, profil, /me, co-walk participants).
+export type PetSummary = {
+  name: string;
+  speciesSlug: string;
+  speciesName: string;
+  imageUrl: string | null;
+};
+
 export type Friend = {
   friendshipId: string;
   since: string;
@@ -10,6 +19,7 @@ export type Friend = {
     xp: number;
     level: number;
     avatarSvg: string | null;
+    pet: PetSummary | null;
   };
 };
 

@@ -20,6 +20,7 @@ import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
+import { PetBadge } from '../../src/ui/PetBadge';
 import { CoWalkButton } from '../../src/ble/CoWalkProgress';
 import { colors } from '../../src/theme/colors';
 
@@ -182,7 +183,7 @@ export default function Home() {
                 }}
                 style={({ pressed }) => [styles.friendRow, pressed && styles.friendRowPressed]}
               >
-                <FriendAvatar svg={f.user.avatarSvg} />
+                <FriendAvatar svg={f.user.avatarSvg} petImageUrl={f.user.pet?.imageUrl ?? null} />
                 <View style={styles.friendInfo}>
                   <Text style={styles.friendName} numberOfLines={1}>
                     {f.user.name}
@@ -324,17 +325,29 @@ function GearIcon() {
 
 // Capul prietenului dintr-un SVG full-body (viewBox 762×1400). Containerul
 // patrat decupeaza partea de sus (capul), restul corpului ramane in afara.
-function FriendAvatar({ svg }: { svg: string | null }) {
+function FriendAvatar({
+  svg,
+  petImageUrl,
+}: {
+  svg: string | null;
+  petImageUrl: string | null;
+}) {
   const SIZE = 48;
-  if (!svg) {
-    return <View style={[styles.friendAvatar, styles.friendAvatarFallback]} />;
-  }
   // SVG-ul e 762:1400. Daca latimea = SIZE, inaltimea totala = SIZE * 1400/762.
   // Containerul ramane SIZE×SIZE → afiseaza doar capul (raportul cap = 762/1400).
   const fullHeight = Math.round(SIZE * (1400 / 762));
   return (
-    <View style={[styles.friendAvatar, { width: SIZE, height: SIZE }]}>
-      <SvgXml xml={svg} width={SIZE} height={fullHeight} />
+    <View>
+      {svg ? (
+        <View style={[styles.friendAvatar, { width: SIZE, height: SIZE }]}>
+          <SvgXml xml={svg} width={SIZE} height={fullHeight} />
+        </View>
+      ) : (
+        <View style={[styles.friendAvatar, styles.friendAvatarFallback]} />
+      )}
+      <View style={styles.friendPetBadge}>
+        <PetBadge imageUrl={petImageUrl} size={22} withShadow />
+      </View>
     </View>
   );
 }
@@ -544,7 +557,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardAlt,
     alignItems: 'center',
   },
-  friendAvatarFallback: { backgroundColor: colors.border },
+  friendAvatarFallback: { backgroundColor: colors.border, width: 48, height: 48, borderRadius: 24 },
+  friendPetBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -6,
+  },
   friendInfo: { flex: 1, gap: 2 },
   friendName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   friendLevel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },

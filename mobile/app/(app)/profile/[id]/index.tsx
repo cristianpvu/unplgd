@@ -71,8 +71,18 @@ export default function ProfileScreen() {
 
       {u && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <View style={styles.avatarWrap}>
+          {/* Stage cu avatar + pet la picioare, exact ca pe homepage. */}
+          <View style={styles.avatarStage}>
             <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
+            {u.pet?.imageUrl && (
+              <View style={styles.profilePetContainer} pointerEvents="none">
+                <Image
+                  source={{ uri: u.pet.imageUrl }}
+                  style={styles.profilePetImage}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
           </View>
 
           <Text style={styles.name}>{u.name}</Text>
@@ -189,7 +199,19 @@ const styles = StyleSheet.create({
 
   scroll: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32, gap: 14 },
 
-  avatarWrap: { alignItems: 'center', justifyContent: 'center' },
+  // Stage cu avatar + pet la picioare, ca pe homepage. position relative ca
+  // pet-ul absolut sa se ancoreze de aici. alignSelf center ca sa nu se
+  // intinda pe toata latimea ScrollView-ului si sa pozitioneze pet-ul corect.
+  avatarStage: { position: 'relative', alignSelf: 'center' },
+  // Pet la dreapta-jos peste picioarele avatarului — overlap usor ca sa para
+  // ca stau impreuna pe podea, scalat dupa avatar 280 (homepage are 420 cu
+  // pet 120 → ratio ~0.28; aici 280×0.28 = 80).
+  profilePetContainer: {
+    position: 'absolute',
+    bottom: 4,
+    right: -20,
+  },
+  profilePetImage: { width: 80, height: 80 },
   name: { color: colors.text, fontSize: 26, fontWeight: '900', textAlign: 'center' },
 
   statusBlock: { gap: 4 },

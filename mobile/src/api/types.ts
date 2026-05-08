@@ -1,3 +1,5 @@
+import type { PetSummary } from './friends';
+
 export type User = {
   id: string;
   email: string;
@@ -6,6 +8,7 @@ export type User = {
   xp: number;
   level: number;
   createdAt: string;
+  pet: PetSummary | null;
 };
 
 export type AuthResponse = {

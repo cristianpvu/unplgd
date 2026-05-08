@@ -54,6 +54,7 @@ export type ClientSession = {
     awarded: boolean;
     isMe: boolean;
     avatarSvg: string | null;
+    petImageUrl: string | null;
   }>;
 };
 
@@ -113,6 +114,7 @@ type ServerSideSession = {
       joinedAt: number;
       awarded: boolean;
       avatarSvg: string | null;
+      petImageUrl: string | null;
     }
   >;
   startStepCount: number;
@@ -450,6 +452,7 @@ class PresenceEngine {
         joinedAt: p.joinedAt,
         awarded: p.awarded,
         avatarSvg: p.avatarSvg,
+        petImageUrl: p.pet?.imageUrl ?? null,
       });
     }
     this.serverSessions.set(s.id, {
@@ -466,13 +469,7 @@ class PresenceEngine {
     sessionId: string;
     startedAt: number;
     serverNow: number;
-    participants: Array<{
-      userId: string;
-      joinedAt: number;
-      name: string;
-      level: number;
-      avatarSvg: string | null;
-    }>;
+    participants: ServerSession['participants'];
   }) {
     const offset = Date.now() - p.serverNow;
     const members: ServerSideSession['members'] = new Map();
@@ -484,6 +481,7 @@ class PresenceEngine {
         joinedAt: m.joinedAt,
         awarded: false,
         avatarSvg: m.avatarSvg,
+        petImageUrl: m.pet?.imageUrl ?? null,
       });
     }
     this.serverSessions.set(p.sessionId, {
@@ -500,20 +498,8 @@ class PresenceEngine {
   private onJoined(p: {
     sessionId: string;
     serverNow: number;
-    participant: {
-      userId: string;
-      joinedAt: number;
-      name: string;
-      level: number;
-      avatarSvg: string | null;
-    };
-    participants: Array<{
-      userId: string;
-      joinedAt: number;
-      name: string;
-      level: number;
-      avatarSvg: string | null;
-    }>;
+    participant: ServerSession['participants'][number];
+    participants: ServerSession['participants'];
   }) {
     let session = this.serverSessions.get(p.sessionId);
     const offset = Date.now() - p.serverNow;
@@ -537,6 +523,7 @@ class PresenceEngine {
         joinedAt: m.joinedAt,
         awarded: existing?.awarded ?? false,
         avatarSvg: m.avatarSvg,
+        petImageUrl: m.pet?.imageUrl ?? null,
       });
     }
     this.emit();
@@ -545,13 +532,7 @@ class PresenceEngine {
   private onLeft(p: {
     sessionId: string;
     userId: string;
-    remaining: Array<{
-      userId: string;
-      joinedAt: number;
-      name: string;
-      level: number;
-      avatarSvg: string | null;
-    }>;
+    remaining: ServerSession['participants'];
   }) {
     const session = this.serverSessions.get(p.sessionId);
     if (!session) return;
@@ -741,6 +722,7 @@ class PresenceEngine {
         awarded: m.awarded,
         isMe: !!this.myUserId && m.userId === this.myUserId,
         avatarSvg: m.avatarSvg,
+        petImageUrl: m.petImageUrl,
       }));
       // Sortam: eu primul, apoi dupa joinedAt ascendent ca participantii noi
       // sa apara mai jos in lista.

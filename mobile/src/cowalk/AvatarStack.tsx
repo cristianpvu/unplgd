@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import { PetBadge } from '../ui/PetBadge';
 import { colors } from '../theme/colors';
 
 // Avatar circular pentru un membru de co-walk. Cand chip-ul e montat (membru
@@ -16,6 +17,7 @@ export type AvatarChipMember = {
   avatarSvg: string | null;
   isMe: boolean;
   awarded: boolean;
+  petImageUrl: string | null;
 };
 
 export function AvatarChip({
@@ -132,9 +134,13 @@ export function AvatarChip({
           </View>
         )}
       </View>
-      {member.awarded && (
+      {member.awarded ? (
         <View style={styles.checkBadge}>
           <Text style={styles.checkText}>✓</Text>
+        </View>
+      ) : (
+        <View style={styles.petBadgeWrap}>
+          <PetBadge imageUrl={member.petImageUrl} size={26} withShadow />
         </View>
       )}
     </Animated.View>
@@ -231,4 +237,9 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   checkText: { color: '#FFFFFF', fontSize: 13, fontWeight: '900' },
+  petBadgeWrap: {
+    position: 'absolute',
+    bottom: -4,
+    right: -6,
+  },
 });

@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { PetSummary } from './friends';
 
 export type BleResolved = {
   token: string;
@@ -20,6 +21,8 @@ export type ServerSession = {
     // SVG-ul capului (Avatar.svg din DB) cand userul si-a generat avatar.
     // null = afisam fallback (initiala numelui).
     avatarSvg: string | null;
+    // Pet-ul echipat — afisat ca chip mic in coltul avatarului.
+    pet: PetSummary | null;
   }>;
 };
 

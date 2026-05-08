@@ -1,4 +1,5 @@
 import { api } from './client';
+import type { PetSummary } from './friends';
 
 export type UserProfile = {
   id: string;
@@ -8,6 +9,7 @@ export type UserProfile = {
   createdAt: string;
   avatarSvg: string | null;
   avatarSvgBlink: string | null;
+  pet: PetSummary | null;
 };
 
 export type CoCreationAlbumItem = {
