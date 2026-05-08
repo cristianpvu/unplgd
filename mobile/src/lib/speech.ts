@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import {
@@ -155,18 +156,23 @@ export async function startListening(opts: {
   const lang = opts.lang ?? 'ro-RO';
   const silenceMs = opts.silenceTimeoutMs ?? 0;
 
-  // Cleanup orice sesiune anterioara
-  try {
-    ExpoSpeechRecognitionModule.stop();
-  } catch {
-    // nimic in progres
-  }
+  // NOTA: NU chemam ExpoSpeechRecognitionModule.stop() defensiv aici. Pe iOS,
+  // stop() peste o sesiune leftover poate emite `end` catre listener-ele NOI
+  // (race intre delivery-ul event-ului si attach-ul listener-elor de mai jos)
+  // → consumer-ul vede listening care se opreste imediat, fara sa apuce sa
+  // proceseze audio. In schimb, sigur cleanup acolo unde stim ca exista
+  // sesiune (in cleanup() de mai jos, pe `stop()` user-initiated).
 
   // iOS: SFSpeechRecognizer cere PlayAndRecord. Fara comutare explicita primim
-  // kAFAssistantErrorDomain 209. Single setting prin expo-audio — cea mai
-  // stabila combinatie pe iOS 18 / iPhone 11.
+  // kAFAssistantErrorDomain 209. setAudioModeAsync e async — pe iOS sesiunea
+  // AVAudioSession are nevoie de un mic delay dupa promise sa se aseze in
+  // hardware. Fara delay, primul start() dupa un TTS playback rateaza audio
+  // input si SFSpeechRecognizer emite `end` instant cu rezultat gol.
   try {
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    if (Platform.OS === 'ios') {
+      await new Promise((r) => setTimeout(r, 180));
+    }
   } catch {
     // best effort
   }

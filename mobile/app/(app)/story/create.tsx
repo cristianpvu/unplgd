@@ -3,6 +3,7 @@ import {
   Alert,
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -270,9 +271,13 @@ export default function StoryCreate() {
     setHasSpoken(true);
     setPhase('idle');
     if (cancelledRef.current) return;
+    // iOS: AVAudioSession revine din playback la default lent — STT-ul ridicat
+    // imediat dupa TTS rateaza primul audio. Damos suficient timp ca audio
+    // session sa se aseze. Android porneste corect mai repede.
+    const handoffMs = Platform.OS === 'ios' ? 600 : 250;
     setTimeout(() => {
       if (!cancelledRef.current) void startListen();
-    }, 250);
+    }, handoffMs);
   }
 
   async function startListen() {
