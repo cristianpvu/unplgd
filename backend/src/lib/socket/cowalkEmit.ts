@@ -6,30 +6,35 @@ import type { Participant, SyncEvent } from '../cowalk/session.js';
 // Toate event-urile co-walk merg pe room-ul `user:<userId>` (auto-join la
 // connection in io.ts). Recipients vin in event-ul insusi din state machine.
 
-type ThinParticipant = {
+export type ThinParticipant = {
   userId: string;
   joinedAt: number;
   name: string;
   level: number;
+  // SVG-ul capului (Avatar.svg din DB) cand exista — null daca user-ul nu si-a
+  // generat inca avatarul. Mobile-ul il randeaza in stack-ul co-walk-ului.
+  avatarSvg: string | null;
 };
 
-// Cache mic in-memory pt nume/level — TTL 5 min ca update-urile de XP/level
-// sa apara in toast-uri fara reload de container. Acces la fiecare emit ar
-// fi prea greu pe DB; cache-ul colapseaza load-ul aproape de 0 cand 2 prieteni
-// merg impreuna.
-const NAME_CACHE_TTL_MS = 5 * 60 * 1000;
-const nameCache = new Map<string, { name: string; level: number; cachedAt: number }>();
+type Resolved = { name: string; level: number; avatarSvg: string | null };
 
-async function resolveNames(
+// Cache mic in-memory pt nume/level/avatar — TTL 5 min ca update-urile (XP,
+// level, avatar nou) sa apara fara reload de container. Acces la fiecare emit
+// ar fi prea greu pe DB; cache-ul colapseaza load-ul aproape de 0 cand 2
+// prieteni merg impreuna pe acelasi tick.
+const NAME_CACHE_TTL_MS = 5 * 60 * 1000;
+const nameCache = new Map<string, Resolved & { cachedAt: number }>();
+
+export async function resolveParticipantInfo(
   userIds: string[],
-): Promise<Map<string, { name: string; level: number }>> {
-  const out = new Map<string, { name: string; level: number }>();
+): Promise<Map<string, Resolved>> {
+  const out = new Map<string, Resolved>();
   const now = Date.now();
   const missing: string[] = [];
   for (const id of userIds) {
     const c = nameCache.get(id);
     if (c && now - c.cachedAt < NAME_CACHE_TTL_MS) {
-      out.set(id, { name: c.name, level: c.level });
+      out.set(id, { name: c.name, level: c.level, avatarSvg: c.avatarSvg });
     } else {
       missing.push(id);
     }
@@ -37,25 +42,36 @@ async function resolveNames(
   if (missing.length > 0) {
     const users = await prisma.user.findMany({
       where: { id: { in: missing } },
-      select: { id: true, name: true, level: true },
+      select: {
+        id: true,
+        name: true,
+        level: true,
+        avatar: { select: { svg: true } },
+      },
     });
     for (const u of users) {
-      nameCache.set(u.id, { name: u.name, level: u.level, cachedAt: now });
-      out.set(u.id, { name: u.name, level: u.level });
+      const entry: Resolved = {
+        name: u.name,
+        level: u.level,
+        avatarSvg: u.avatar?.svg ?? null,
+      };
+      nameCache.set(u.id, { ...entry, cachedAt: now });
+      out.set(u.id, entry);
     }
   }
   return out;
 }
 
 async function thin(ps: Participant[]): Promise<ThinParticipant[]> {
-  const names = await resolveNames(ps.map((p) => p.userId));
+  const info = await resolveParticipantInfo(ps.map((p) => p.userId));
   return ps.map((p) => {
-    const n = names.get(p.userId);
+    const n = info.get(p.userId);
     return {
       userId: p.userId,
       joinedAt: p.joinedAt,
       name: n?.name ?? 'Unknown',
       level: n?.level ?? 1,
+      avatarSvg: n?.avatarSvg ?? null,
     };
   });
 }

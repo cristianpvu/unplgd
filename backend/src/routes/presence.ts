@@ -11,7 +11,7 @@ import {
   isLeftRecently,
   filterRecentlyLeft,
 } from '../lib/cowalk/session.js';
-import { emitSyncEvents } from '../lib/socket/cowalkEmit.js';
+import { emitSyncEvents, resolveParticipantInfo } from '../lib/socket/cowalkEmit.js';
 import { awardCowalkParticipant } from '../lib/cowalk/award.js';
 export const presenceRouter = Router();
 presenceRouter.use(requireAuth);
@@ -106,24 +106,21 @@ presenceRouter.get('/cowalk/current', async (req, res, next) => {
       return;
     }
     const participantIds = Object.keys(session.participants);
-    const users = await prisma.user.findMany({
-      where: { id: { in: participantIds } },
-      select: { id: true, name: true, level: true },
-    });
-    const usersById = new Map(users.map((u) => [u.id, u]));
+    const info = await resolveParticipantInfo(participantIds);
     res.json({
       serverNow: Date.now(),
       session: {
         id: session.id,
         startedAt: session.startedAt,
         participants: Object.values(session.participants).map((p) => {
-          const u = usersById.get(p.userId);
+          const u = info.get(p.userId);
           return {
             userId: p.userId,
             joinedAt: p.joinedAt,
             awarded: p.awarded,
             name: u?.name ?? 'Unknown',
             level: u?.level ?? 1,
+            avatarSvg: u?.avatarSvg ?? null,
           };
         }),
       },
