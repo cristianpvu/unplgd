@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
-  Keyboard,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -23,93 +21,183 @@ import {
 } from '../../../../src/api/stories';
 import { ApiError } from '../../../../src/api/client';
 import {
+  ensureMicPermission,
+  isSttAvailable,
   playPetVoice,
-  speakDevice,
+  playPetVoiceAwait,
+  startListening,
   stopDevice,
   stopRemoteAudio,
+  type SttHandle,
 } from '../../../../src/lib/speech';
-import { MicButton } from '../../../../src/ui/MicButton';
+import { Orb, BackgroundMesh, type OrbPhase } from '../../../../src/ui/voice/Orb';
 import { colors } from '../../../../src/theme/colors';
 
+type Phase = OrbPhase;
 type ExtendDoneState = Extract<ExtendChatResponse, { finalStory: ExtendFinalStory }>;
-
-type Bubble =
-  | { id: string; role: 'pet' | 'me'; text: string }
-  | { id: string; role: 'final'; final: ExtendDoneState };
 
 const INTRO_TEXT =
   'Acum poti continua povestea cu propriul capitol! Ce se mai intampla mai departe?';
+const FINISH_NOW_MESSAGE = 'Vreau sa termin capitolul acum, te rog!';
 
 export default function StoryExtend() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>();
   const qc = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
-  const [bubbles, setBubbles] = useState<Bubble[]>([
-    { id: 'intro', role: 'pet', text: INTRO_TEXT },
-  ]);
-  const [draft, setDraft] = useState('');
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [aiText, setAiText] = useState('');
+  const [aiShown, setAiShown] = useState('');
+  const [userPartial, setUserPartial] = useState('');
+  const [userFinalEcho, setUserFinalEcho] = useState('');
   const [final, setFinal] = useState<ExtendDoneState | null>(null);
-  const [kbHeight, setKbHeight] = useState(0);
-  const sttBaseRef = useRef('');
+  const [hasSpoken, setHasSpoken] = useState(false);
+  const sttRef = useRef<SttHandle | null>(null);
+  const introPlayedRef = useRef(false);
+  const cancelledRef = useRef(false);
 
+  // Typewriter pe replicile AI
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    if (!aiText) {
+      setAiShown('');
+      return;
+    }
+    setAiShown('');
+    const tokens = aiText.split(/(\s+)/);
+    let i = 0;
+    const id = setInterval(() => {
+      i = Math.min(i + 1, tokens.length);
+      setAiShown(tokens.slice(0, i).join(''));
+      if (i >= tokens.length) clearInterval(id);
+    }, 110);
+    return () => clearInterval(id);
+  }, [aiText]);
+
+  // Intro la mount + auto-mic
+  useEffect(() => {
+    if (introPlayedRef.current) return;
+    introPlayedRef.current = true;
+    void (async () => {
       try {
         const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
-        if (cancelled) return;
-        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+        await speakAndListen(INTRO_TEXT, absoluteAudioUrl(audioUrl));
       } catch {
-        if (cancelled) return;
-        speakDevice(INTRO_TEXT);
+        await speakAndListen(INTRO_TEXT, null);
       }
     })();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       stopDevice();
       void stopRemoteAudio();
+      sttRef.current?.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKbHeight(e.endCoordinates.height);
-    });
-    const sHide = Keyboard.addListener('keyboardDidHide', () => {
-      setKbHeight(0);
-    });
-    return () => {
-      sShow.remove();
-      sHide.remove();
-    };
-  }, []);
+  async function speakAndListen(text: string, audioUrl: string | null) {
+    cancelledRef.current = false;
+    setPhase('speaking');
+    setAiText(text);
+    setUserFinalEcho('');
+    try {
+      await playPetVoiceAwait(text, audioUrl);
+    } catch {
+      // ignoram — typewriter ramane
+    }
+    setAiShown(text);
+    setHasSpoken(true);
+    setPhase('idle');
+    if (cancelledRef.current) return;
+    const handoffMs = Platform.OS === 'ios' ? 600 : 250;
+    setTimeout(() => {
+      if (!cancelledRef.current) void startListen();
+    }, handoffMs);
+  }
 
-  const bottomPad = kbHeight > 0 ? 6 : 10 + insets.bottom;
+  async function startListen() {
+    if (!isSttAvailable()) {
+      Alert.alert('Microfon indisponibil', 'Apasa pe input ca sa scrii.');
+      return;
+    }
+    const ok = await ensureMicPermission();
+    if (!ok) {
+      Alert.alert(
+        'Microfon necesar',
+        'Activeaza microfonul din Setari ca sa vorbesti cu Povestitorul.',
+      );
+      return;
+    }
+    if (cancelledRef.current) return;
+    stopDevice();
+    void stopRemoteAudio();
+    setUserPartial('');
+    setUserFinalEcho('');
+    setAiText('');
+    setAiShown('');
+    setPhase('listening');
+    sttRef.current = await startListening({
+      silenceTimeoutMs: 1500,
+      onInterim: (text) => setUserPartial(text),
+      onResult: (text) => {
+        sttRef.current = null;
+        const finalText = text.trim();
+        setUserPartial('');
+        if (!finalText) {
+          setPhase('idle');
+          return;
+        }
+        setUserFinalEcho(finalText);
+        setPhase('thinking');
+        send.mutate(finalText);
+      },
+      onError: (code, message) => {
+        sttRef.current = null;
+        setPhase('idle');
+        setUserPartial('');
+        if (code !== 'nomatch') {
+          Alert.alert('Hopa', message ?? 'N-am inteles. Mai incearca.');
+        }
+      },
+    });
+  }
+
+  function stopListen() {
+    sttRef.current?.stop();
+    sttRef.current = null;
+    setPhase('idle');
+    setUserPartial('');
+  }
+
+  function cancelSpeak() {
+    cancelledRef.current = true;
+    stopDevice();
+    void stopRemoteAudio();
+    setAiShown(aiText);
+    setPhase('idle');
+  }
 
   const send = useMutation({
     mutationFn: (msg: string) => postExtendChat(storyId, msg),
     onSuccess: (resp) => {
       if ('finalStory' in resp && resp.finalStory) {
         setFinal(resp);
-        setBubbles((b) => [...b, { id: `f-${resp.finalStory.id}`, role: 'final', final: resp }]);
+        setPhase('speaking');
+        setAiText(resp.finalStory.body);
         qc.invalidateQueries({ queryKey: ['stories', 'mine'] });
         qc.invalidateQueries({ queryKey: ['stories', 'inbox'] });
         qc.invalidateQueries({ queryKey: ['me'] });
-
-        if (resp.finalStory.ttsError) {
-          Alert.alert('TTS error', resp.finalStory.ttsError);
-        }
-        void playPetVoice(
-          resp.finalStory.body,
-          absoluteAudioUrl(resp.finalStory.bodyAudioUrl),
-        );
+        if (resp.finalStory.ttsError) Alert.alert('TTS error', resp.finalStory.ttsError);
+        void (async () => {
+          try {
+            await playPetVoiceAwait(
+              resp.finalStory.body,
+              absoluteAudioUrl(resp.finalStory.bodyAudioUrl),
+            );
+          } catch {}
+          setAiShown(resp.finalStory.body);
+          setPhase('idle');
+        })();
       } else if ('reply' in resp && resp.reply) {
-        const reply = resp.reply;
-        setBubbles((b) => [...b, { id: `p-${Date.now()}`, role: 'pet', text: reply }]);
-        void playPetVoice(reply, absoluteAudioUrl(resp.replyAudioUrl));
+        void speakAndListen(resp.reply, absoluteAudioUrl(resp.replyAudioUrl));
       }
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (err: any) => {
       let msg = err?.message ?? 'Povestitorul nu raspunde acum';
@@ -127,257 +215,333 @@ export default function StoryExtend() {
         }
       }
       Alert.alert('Hopa', msg);
+      setPhase('idle');
     },
   });
 
   const reset = useMutation({
     mutationFn: () => resetExtendDraft(storyId),
     onSuccess: async () => {
-      setBubbles([{ id: 'intro', role: 'pet', text: INTRO_TEXT }]);
-      setFinal(null);
+      cancelledRef.current = true;
+      sttRef.current?.stop();
+      sttRef.current = null;
       stopDevice();
       await stopRemoteAudio();
-      try {
-        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
-        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
-      } catch {
-        speakDevice(INTRO_TEXT);
-      }
+      setFinal(null);
+      setHasSpoken(false);
+      setAiText('');
+      setAiShown('');
+      setUserFinalEcho('');
+      setUserPartial('');
+      setPhase('idle');
+      introPlayedRef.current = false;
+      void (async () => {
+        try {
+          const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+          await speakAndListen(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+        } catch {
+          await speakAndListen(INTRO_TEXT, null);
+        }
+      })();
     },
   });
 
-  function onSend() {
-    const trimmed = draft.trim();
-    if (!trimmed || send.isPending || final) return;
-    setBubbles((b) => [...b, { id: `m-${Date.now()}`, role: 'me', text: trimmed }]);
-    setDraft('');
-    send.mutate(trimmed);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  function onMicPress() {
+    if (final) return;
+    if (phase === 'listening') stopListen();
+    else if (phase === 'speaking') cancelSpeak();
+    else if (phase === 'idle') void startListen();
   }
 
+  function onFinishNow() {
+    Alert.alert(
+      'Termini capitolul acum?',
+      'Povestitorul va folosi ce ati discutat si va completa creativ restul.',
+      [
+        { text: 'Nu inca' },
+        {
+          text: 'Da',
+          onPress: () => {
+            cancelSpeak();
+            stopListen();
+            setUserFinalEcho(FINISH_NOW_MESSAGE);
+            setPhase('thinking');
+            send.mutate(FINISH_NOW_MESSAGE);
+          },
+        },
+      ],
+    );
+  }
+
+  function onResetPress() {
+    Alert.alert('Reia capitolul?', 'Pierzi conversatia curenta.', [
+      { text: 'Anuleaza' },
+      { text: 'Da, sterge', style: 'destructive', onPress: () => reset.mutate() },
+    ]);
+  }
+
+  function onReplay() {
+    if (!final) return;
+    void playPetVoice(final.finalStory.body, absoluteAudioUrl(final.finalStory.bodyAudioUrl));
+  }
+
+  const canFinish = !final && hasSpoken && phase !== 'thinking';
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <BackgroundMesh />
+
+      <View style={styles.topRow}>
+        <Pressable onPress={() => router.back()} hitSlop={14} style={styles.smallBtn}>
+          <Text style={styles.smallBtnText}>×</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Continua povestea</Text>
-        {bubbles.length > 1 && !final ? (
-          <Pressable
-            onPress={() => {
-              Alert.alert('Sigur?', 'Pierzi capitolul pe care il lucrezi.', [
-                { text: 'Nu' },
-                { text: 'Da, sterge', style: 'destructive', onPress: () => reset.mutate() },
-              ]);
-            }}
-            hitSlop={12}
-            style={styles.resetBtn}
-          >
-            <Text style={styles.resetText}>↺</Text>
+        <Text style={styles.headerName}>Continua povestea</Text>
+        {!final && hasSpoken ? (
+          <Pressable onPress={onResetPress} hitSlop={14} style={styles.smallBtn}>
+            <Text style={styles.smallBtnText}>↺</Text>
           </Pressable>
         ) : (
-          <View style={{ width: 44 }} />
+          <View style={{ width: 38 }} />
         )}
       </View>
 
-      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
+      <View style={styles.body}>
+        <Orb phase={phase} />
+
+        <Text style={styles.statusText}>{statusForPhase(phase, final)}</Text>
+
         <ScrollView
-          ref={scrollRef}
-          style={styles.chat}
-          contentContainerStyle={styles.chatContent}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          style={styles.transcriptScroll}
+          contentContainerStyle={styles.transcriptContent}
+          showsVerticalScrollIndicator={false}
         >
-          {bubbles.map((b) => (
-            <BubbleView key={b.id} bubble={b} />
-          ))}
-          {send.isPending && (
-            <View style={styles.typing}>
-              <ActivityIndicator color={colors.accent} size="small" />
-              <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
+          {final ? (
+            <View style={styles.finalCard}>
+              <Text style={styles.finalLabel}>CAPITOLUL TAU</Text>
+              <Text style={styles.finalTitle}>{final.finalStory.title}</Text>
+              <Text style={styles.finalBody}>{aiShown}</Text>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaText}>
+                  Capitol {final.finalStory.chainLength} din lant
+                </Text>
+                {final.xp.extender.amount > 0 && (
+                  <Text style={styles.xpText}>+{final.xp.extender.amount} XP</Text>
+                )}
+              </View>
+              {final.xp.chainBonusAwarded && (
+                <Text style={styles.bonusText}>
+                  🌟  Bonus lant lung — toti autorii primesc XP!
+                </Text>
+              )}
             </View>
+          ) : userPartial ? (
+            <Text style={styles.userTranscript}>{userPartial}</Text>
+          ) : phase === 'thinking' && userFinalEcho ? (
+            <Text style={styles.userTranscript}>{userFinalEcho}</Text>
+          ) : aiShown ? (
+            <Text style={styles.aiTranscript}>
+              {aiShown}
+              {phase === 'speaking' && <Text style={styles.cursor}>▍</Text>}
+            </Text>
+          ) : (
+            <Text style={styles.placeholder}>
+              Apasa pe microfon si spune ce continuare imaginezi.
+            </Text>
           )}
         </ScrollView>
-
-        {final ? (
-          <View style={[styles.finalActions, { paddingBottom: kbHeight > 0 ? 14 : 14 + insets.bottom }]}>
-            <Pressable
-              onPress={() => {
-                void playPetVoice(
-                  final.finalStory.body,
-                  absoluteAudioUrl(final.finalStory.bodyAudioUrl),
-                );
-              }}
-              style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
-            >
-              <Text style={styles.replayText}>🔊  Asculta capitolul tau</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.replace(`/(app)/story/chain/${final.finalStory.chainRootId}`)}
-              style={({ pressed }) => [styles.chainBtn, pressed && styles.btnPressed]}
-            >
-              <Text style={styles.chainText}>📖  Vezi tot lantul</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.replace('/(app)/story')}
-              style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
-            >
-              <Text style={styles.doneText}>Gata!</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
-            <MicButton
-              disabled={send.isPending}
-              onStart={() => {
-                sttBaseRef.current = draft;
-              }}
-              onTranscript={(text) => {
-                const base = sttBaseRef.current;
-                const sep = base && !base.endsWith(' ') ? ' ' : '';
-                setDraft(base + sep + text);
-              }}
-            />
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Scrie sau apasa pe microfon..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              maxLength={500}
-              editable={!send.isPending}
-            />
-            <Pressable
-              onPress={onSend}
-              disabled={!draft.trim() || send.isPending}
-              style={({ pressed }) => [
-                styles.sendBtn,
-                (!draft.trim() || send.isPending) && styles.sendBtnDisabled,
-                pressed && styles.btnPressed,
-              ]}
-            >
-              <Text style={styles.sendText}>↑</Text>
-            </Pressable>
-          </View>
-        )}
       </View>
+
+      {final ? (
+        <View style={styles.finalActions}>
+          <Pressable
+            onPress={onReplay}
+            style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.replayText}>🔊  Asculta capitolul tau</Text>
+          </Pressable>
+          <Pressable
+            onPress={() =>
+              router.replace(`/(app)/story/chain/${final.finalStory.chainRootId}`)
+            }
+            style={({ pressed }) => [styles.chainBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.chainText}>📖  Vezi tot lantul</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.replace('/(app)/story')}
+            style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.doneText}>Gata!</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.controls}>
+          {canFinish && (
+            <Pressable
+              onPress={onFinishNow}
+              style={({ pressed }) => [styles.finishChip, pressed && styles.btnPressed]}
+            >
+              <Text style={styles.finishChipText}>Termin capitolul ✓</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={onMicPress}
+            disabled={phase === 'thinking'}
+            style={({ pressed }) => [
+              styles.micBtn,
+              phase === 'listening' && styles.micBtnListening,
+              phase === 'speaking' && styles.micBtnSpeaking,
+              phase === 'thinking' && styles.micBtnDisabled,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <Text style={styles.micIcon}>{micIconForPhase(phase)}</Text>
+          </Pressable>
+          <Text style={styles.micLabel}>{micLabelForPhase(phase)}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
-function BubbleView({ bubble }: { bubble: Bubble }) {
-  if (bubble.role === 'final') {
-    const { finalStory, xp } = bubble.final;
-    return (
-      <View style={styles.finalCard}>
-        <Text style={styles.finalLabel}>CAPITOLUL TAU</Text>
-        <Text style={styles.finalTitle}>{finalStory.title}</Text>
-        <Text style={styles.finalBody}>{finalStory.body}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.metaText}>Capitol {finalStory.chainLength} din lant</Text>
-          {xp.extender.amount > 0 && (
-            <Text style={styles.xpText}>+{xp.extender.amount} XP</Text>
-          )}
-        </View>
-        {xp.chainBonusAwarded && (
-          <Text style={styles.bonusText}>🌟  Bonus lant lung — toti autorii primesc XP!</Text>
-        )}
-      </View>
-    );
+function statusForPhase(phase: Phase, final: ExtendDoneState | null): string {
+  if (final) return 'Capitolul tau · gata!';
+  switch (phase) {
+    case 'listening':
+      return 'Te ascult...';
+    case 'thinking':
+      return 'Povestitorul se gandeste...';
+    case 'speaking':
+      return 'Povestitorul vorbeste';
+    default:
+      return 'Apasa pe microfon';
   }
+}
 
-  const isMe = bubble.role === 'me';
-  return (
-    <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
-      <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubblePet]}>
-        <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{bubble.text}</Text>
-      </View>
-    </View>
-  );
+function micIconForPhase(phase: Phase): string {
+  switch (phase) {
+    case 'listening':
+      return '⏹';
+    case 'speaking':
+      return '⏸';
+    case 'thinking':
+      return '...';
+    default:
+      return '🎤';
+  }
+}
+
+function micLabelForPhase(phase: Phase): string {
+  switch (phase) {
+    case 'listening':
+      return 'Opreste';
+    case 'speaking':
+      return 'Sari';
+    case 'thinking':
+      return ' ';
+    default:
+      return 'Vorbeste';
+  }
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  headerRow: {
+
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  resetBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resetText: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
-
-  chat: { flex: 1 },
-  chatContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-
-  bubbleRow: { alignItems: 'flex-start' },
-  bubbleRowMe: { alignItems: 'flex-end' },
-  bubble: {
-    maxWidth: '82%',
-    borderRadius: 18,
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingVertical: 10,
   },
-  bubblePet: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-  bubbleMe: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
-  bubbleText: { color: colors.text, fontSize: 16, lineHeight: 22 },
-  bubbleTextMe: { color: '#FFFFFF' },
-
-  typing: {
-    flexDirection: 'row',
+  smallBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
-    gap: 8,
-    paddingLeft: 8,
-    paddingTop: 4,
+    justifyContent: 'center',
   },
-  typingText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
+  smallBtnText: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  headerName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+
+  body: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  statusText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 8,
+  },
+
+  transcriptScroll: { flex: 1, width: '100%' },
+  transcriptContent: { paddingTop: 12, paddingBottom: 24, minHeight: 100 },
+  aiTranscript: {
+    color: colors.text,
+    fontSize: 22,
+    lineHeight: 30,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  userTranscript: {
+    color: colors.accent,
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  placeholder: {
+    color: colors.textMuted,
+    fontSize: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingTop: 20,
+  },
+  cursor: { color: colors.accent, fontWeight: '900' },
 
   finalCard: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 22,
     padding: 18,
     gap: 8,
     borderWidth: 2,
     borderColor: colors.success,
-    marginTop: 8,
   },
   finalLabel: {
     color: colors.success,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
+    textAlign: 'center',
   },
-  finalTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
+  finalTitle: { color: colors.text, fontSize: 22, fontWeight: '800', textAlign: 'center' },
   finalBody: { color: colors.text, fontSize: 16, lineHeight: 24 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+  },
   metaText: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
   xpText: {
     color: colors.success,
     fontSize: 13,
     fontWeight: '800',
-    backgroundColor: 'rgba(46,204,113,0.12)',
+    backgroundColor: 'rgba(46,204,113,0.16)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
@@ -390,56 +554,65 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+  controls: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 24,
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
   },
-  input: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 22,
-    paddingHorizontal: 16,
+  finishChip: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    fontSize: 16,
-    color: colors.text,
-    maxHeight: 120,
-    minHeight: 44,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    marginBottom: 8,
   },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  finishChipText: { color: colors.accent, fontSize: 14, fontWeight: '800' },
+  micBtn: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  sendBtnDisabled: { opacity: 0.4 },
-  sendText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  micBtnListening: { backgroundColor: '#E55353' },
+  micBtnSpeaking: { backgroundColor: colors.textMuted },
+  micBtnDisabled: { opacity: 0.6 },
+  micIcon: { fontSize: 36 },
+  micLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   btnPressed: { transform: [{ scale: 0.95 }], opacity: 0.85 },
 
   finalActions: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: 6,
     gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
   },
   replayBtn: {
-    backgroundColor: colors.card,
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
   },
   replayText: { color: colors.text, fontSize: 16, fontWeight: '700' },
   chainBtn: {
-    backgroundColor: colors.cardAlt,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',

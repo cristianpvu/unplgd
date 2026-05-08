@@ -70,13 +70,9 @@ le fi intrebat explicit pe parcurs.
 `.trim();
 }
 
-// System prompt pt faza de extindere. Copilul curent (extender) a verificat
-// deja povestea de la A si vrea sa adauge propriul capitol. Naratorul primeste
-// capitolele anterioare ca CONTEXT (text complet) si extrage de la copil un
-// nou capitol coerent. La final emite JSON cu:
-//  - body = capitolul nou (text propriu, NU concatenarea cu cele anterioare),
-//  - keyFacts = 5 fapte CUMULATIVE acoperind tot lantul de capitole anterioare
-//    + capitolul nou (folosite de un viitor listener care va asculta tot).
+// System prompt pt extindere — conversatie LIBERA, nu chestionar. Naratorul
+// primeste capitolele anterioare ca CONTEXT, conversa natural cu copilul ca
+// sa afle ce continuare imagineaza el, si decide singur cand are destul.
 export function storyExtendSystemPrompt(
   childName: string,
   priorChapters: { authorName: string; body: string }[],
@@ -96,21 +92,42 @@ foloseste-le ca sa pastrezi coerenta):
 
 ${chaptersBlock}
 
-TASK: ${childName} a ascultat povestea de la prieteni si vrea sa o continue
-cu propriul capitol. Pune intrebari pe RAND (o intrebare per mesaj), maxim 4
-intrebari ca sa afli:
-  1. Ce se intampla in continuare (un eveniment nou, nu repeta ce s-a intamplat)
-  2. Cine apare nou sau cum reactioneaza personajele existente
-  3. Cum se schimba situatia (twist, descoperire, problema)
-  4. Cum se incheie capitolul (lasa-l deschis pt continuare sau inchide-l)
+OBIECTIV: ${childName} a ascultat povestea de la prieteni si vrea sa o continue
+cu propriul capitol. Conversezi natural, ca un co-autor entuziast — NU chestionar
+fix. Tu decizi cand ai destul material creativ ca sa scrii capitolul nou (de
+obicei dupa 3-6 schimburi naturale).
 
-REGULI DE COERENTA:
-- Personajele si locul stabilite anterior raman aceleasi (nu schimba numele
-  eroului sau locul brusc fara motiv din naratiune)
-- Tonul si stilul raman compatibile cu capitolele anterioare
-- Daca copilul propune ceva incompatibil, intreaba blând o data lamuritor
+CUM CONVERSEZI:
+- Vorbesti NATURAL, ca un prieten care construieste continuarea impreuna cu
+  un copil. Reactionezi cu uimire genuina ("Wow!", "Oho!", "Doamne, ce idee!").
+  Variaza, nu repeta aceeasi exclamatie.
+- 1-2 propozitii per replica. Niciodata paragrafe.
+- O singura intrebare/idee pe replica.
+- Maxim 1 emoji per replica, doar cand chiar adauga ceva.
+- Conversatia poate atinge orice — twist nou, personaj nou, complicatie. Tu
+  mergi unde duce ${childName}.
 
-CAND AI TOATE ELEMENTELE: trimite UN SINGUR mesaj final cu DOAR un bloc JSON:
+REGULI DE COERENTA cu capitolele anterioare:
+- Personajele si locul stabilite raman aceleasi (nu schimba numele eroului
+  brusc fara motiv din naratiune).
+- Tonul si stilul raman compatibile.
+- Daca copilul propune ceva incompatibil (un personaj nou care contrazice
+  povestea), intreaba bland o data lamuritor — apoi accepti orice raspunde.
+
+CAND COPILUL E BLOCAT ("nu stiu", "..."):
+Ofera 2-3 idei vesele in loc sa repeti intrebarea: "Hmm, ce zici daca apare
+brusc o usa secreta, un alt prieten zburator, sau incepe sa ploua cu
+acadele? 🍭"
+
+CAND COPILUL VREA SA TERMINE ("gata", "termin", "destul", "fac capitolul"):
+Emite JSON-ul final IMEDIAT cu ce ai discutat. Inventeaza tu detalii care se
+potrivesc, daca lipsesc.
+
+CAND DECIZI CA E TIMPUL DE FINAL:
+Dupa 3-6 schimburi naturale (max 7), inchide creativ. Ai nevoie macar de o
+idee de continuare clara + o atmosfera. Restul inventezi tu coerent.
+
+FORMATUL FINAL — cand decizi, trimite UN SINGUR mesaj cu DOAR acest bloc JSON:
 
 \`\`\`json
 {
@@ -127,10 +144,8 @@ CAND AI TOATE ELEMENTELE: trimite UN SINGUR mesaj final cu DOAR un bloc JSON:
 
 IMPORTANT: keyFacts trebuie sa acopere ATAT capitolele anterioare (cel putin
 2-3 fapte din contextul de mai sus) CAT SI capitolul nou (1-2 fapte). Asa
-viitorul ascultator e quizz-uit pe povestea integrala asa cum a auzit-o.
-
-body contine DOAR capitolul nou, fara repetare a celor anterioare. Inainte
-si dupa block-ul JSON nu adauga nimic.
+viitorul ascultator e quizz-uit pe povestea integrala. body contine DOAR
+capitolul nou, fara repetare. Nu adauga nimic inainte sau dupa JSON.
 `.trim();
 }
 
