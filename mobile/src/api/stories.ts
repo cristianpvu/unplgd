@@ -13,9 +13,21 @@ export type FinalStory = Story & {
   ttsError?: string | null;
 };
 
+export type StoryProgress = { gathered: number; total: number };
+
 export type CreateChatResponse =
-  | { reply: string; replyAudioUrl: string | null; finalStory?: undefined }
-  | { reply?: undefined; replyAudioUrl?: undefined; finalStory: FinalStory };
+  | {
+      reply: string;
+      replyAudioUrl: string | null;
+      progress: StoryProgress;
+      finalStory?: undefined;
+    }
+  | {
+      reply?: undefined;
+      replyAudioUrl?: undefined;
+      progress?: undefined;
+      finalStory: FinalStory;
+    };
 
 export type InboxItem = {
   storyId: string;

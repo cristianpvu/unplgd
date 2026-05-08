@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Keyboard,
   Pressable,
   ScrollView,
@@ -12,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import Svg, { Path } from 'react-native-svg';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   postCreateChat,
@@ -19,6 +22,7 @@ import {
   absoluteAudioUrl,
   ttsSynthesize,
   type FinalStory,
+  type StoryProgress,
 } from '../../../src/api/stories';
 import { ApiError } from '../../../src/api/client';
 import {
@@ -37,6 +41,12 @@ type ChatBubble =
 const INTRO_TEXT =
   'Salut! Sunt Povestitorul. Hai sa cream o poveste impreuna. Imi spui despre ce vrei sa fie?';
 const INTRO_BUBBLE: ChatBubble = { id: 'intro', role: 'pet', text: INTRO_TEXT };
+const FINISH_NOW_MESSAGE = 'Vreau sa termin povestea acum, te rog!';
+
+const QUICK_REPLIES = [
+  { label: 'Nu stiu, ajuta-ma 🤔', message: 'Nu stiu, da-mi tu cateva idei!' },
+  { label: 'Surprinde-ma! 🎲', message: 'Surprinde-ma cu ceva amuzant!' },
+];
 
 export default function StoryCreate() {
   const qc = useQueryClient();
@@ -45,14 +55,10 @@ export default function StoryCreate() {
   const [bubbles, setBubbles] = useState<ChatBubble[]>([INTRO_BUBBLE]);
   const [draft, setDraft] = useState('');
   const [final, setFinal] = useState<FinalStory | null>(null);
+  const [progress, setProgress] = useState<StoryProgress>({ gathered: 0, total: 5 });
   const [kbHeight, setKbHeight] = useState(0);
-  // Pastram draft-ul pre-existent cand pornim STT, ca live transcript-ul sa
-  // se concateneze in spate fara sa stearga ce a tastat user-ul deja.
   const sttBaseRef = useRef('');
 
-  // Citim cu voce introul la mount — TTS server-side (ElevenLabs) cu fallback
-  // pe device daca pica. Cache-ul backend serveste mereu acelasi MP3 pt acelasi
-  // text + voce, deci e gratis dupa primul play.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -93,26 +99,15 @@ export default function StoryCreate() {
       if ('finalStory' in resp && resp.finalStory) {
         const story = resp.finalStory;
         setFinal(story);
-        setBubbles((b) => [
-          ...b,
-          { id: `f-${story.id}`, role: 'final', story },
-        ]);
+        setProgress({ gathered: 5, total: 5 });
+        setBubbles((b) => [...b, { id: `f-${story.id}`, role: 'final', story }]);
         qc.invalidateQueries({ queryKey: ['stories', 'mine'] });
-
-        if (story.ttsError) {
-          Alert.alert('TTS error', story.ttsError);
-        } else if (story.ttsProvider) {
-          // Diagnostic vizibil cat lucram la TTS — sa vedem cu ce vorbeste.
-          Alert.alert('TTS provider', story.ttsProvider);
-        }
-
+        if (story.ttsError) Alert.alert('TTS error', story.ttsError);
         void playPetVoice(story.body, absoluteAudioUrl(story.bodyAudioUrl));
       } else if ('reply' in resp && resp.reply) {
         const reply = resp.reply;
-        setBubbles((b) => [
-          ...b,
-          { id: `p-${Date.now()}`, role: 'pet', text: reply },
-        ]);
+        setBubbles((b) => [...b, { id: `p-${Date.now()}`, role: 'pet', text: reply }]);
+        if (resp.progress) setProgress(resp.progress);
         void playPetVoice(reply, absoluteAudioUrl(resp.replyAudioUrl));
       }
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
@@ -131,6 +126,7 @@ export default function StoryCreate() {
     onSuccess: async () => {
       setBubbles([INTRO_BUBBLE]);
       setFinal(null);
+      setProgress({ gathered: 0, total: 5 });
       stopDevice();
       await stopRemoteAudio();
       try {
@@ -142,15 +138,30 @@ export default function StoryCreate() {
     },
   });
 
-  function onSend() {
-    const trimmed = draft.trim();
+  function sendMessage(text: string) {
+    const trimmed = text.trim();
     if (!trimmed || send.isPending || final) return;
-
     setBubbles((b) => [...b, { id: `m-${Date.now()}`, role: 'me', text: trimmed }]);
     setDraft('');
     send.mutate(trimmed);
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
   }
+
+  const onSend = () => sendMessage(draft);
+  const onQuickReply = (msg: string) => sendMessage(msg);
+  const onFinishNow = () => {
+    Alert.alert(
+      'Termini povestea acum?',
+      'Povestitorul va folosi ce ai inventat pana acum si va completa restul cu ceva amuzant.',
+      [
+        { text: 'Nu inca' },
+        { text: 'Da, termin', onPress: () => sendMessage(FINISH_NOW_MESSAGE) },
+      ],
+    );
+  };
+
+  // Buton "termin acum" disponibil cand copilul a dat macar 2 raspunsuri.
+  const canFinishEarly = !final && progress.gathered >= 2 && progress.gathered < 5;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -158,7 +169,17 @@ export default function StoryCreate() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Creeaza poveste</Text>
+        <View style={styles.headerCenter}>
+          <View style={styles.narratorBadge}>
+            <BookIcon />
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>Povestitorul</Text>
+            <Text style={styles.headerSubtitle}>
+              {send.isPending ? 'scrie...' : final ? 'gata, salvata!' : 'creeaza poveste cu tine'}
+            </Text>
+          </View>
+        </View>
         {bubbles.length > 1 && !final ? (
           <Pressable
             onPress={() => {
@@ -177,6 +198,8 @@ export default function StoryCreate() {
         )}
       </View>
 
+      <ProgressDots gathered={progress.gathered} total={progress.total} done={!!final} />
+
       <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
         <ScrollView
           ref={scrollRef}
@@ -189,7 +212,11 @@ export default function StoryCreate() {
           ))}
           {send.isPending && (
             <View style={styles.typing}>
-              <ActivityIndicator color={colors.accent} size="small" />
+              <View style={styles.typingDots}>
+                <TypingDot delay={0} />
+                <TypingDot delay={150} />
+                <TypingDot delay={300} />
+              </View>
               <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
             </View>
           )}
@@ -213,64 +240,194 @@ export default function StoryCreate() {
             </Pressable>
           </View>
         ) : (
-          <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
-            <MicButton
-              disabled={send.isPending}
-              onStart={() => {
-                sttBaseRef.current = draft;
-              }}
-              onTranscript={(text) => {
-                const base = sttBaseRef.current;
-                const sep = base && !base.endsWith(' ') ? ' ' : '';
-                setDraft(base + sep + text);
-              }}
-            />
-            <TextInput
-              style={styles.input}
-              value={draft}
-              onChangeText={setDraft}
-              placeholder="Scrie sau apasa pe microfon..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              maxLength={500}
-              editable={!send.isPending}
-            />
-            <Pressable
-              onPress={onSend}
-              disabled={!draft.trim() || send.isPending}
-              style={({ pressed }) => [
-                styles.sendBtn,
-                (!draft.trim() || send.isPending) && styles.sendBtnDisabled,
-                pressed && styles.btnPressed,
-              ]}
-            >
-              <Text style={styles.sendText}>↑</Text>
-            </Pressable>
-          </View>
+          <>
+            {!send.isPending && bubbles.length > 1 && bubbles[bubbles.length - 1]?.role === 'pet' && (
+              <View style={styles.quickRow}>
+                {QUICK_REPLIES.map((q) => (
+                  <Pressable
+                    key={q.label}
+                    onPress={() => onQuickReply(q.message)}
+                    disabled={send.isPending}
+                    style={({ pressed }) => [styles.chip, pressed && styles.btnPressed]}
+                  >
+                    <Text style={styles.chipText}>{q.label}</Text>
+                  </Pressable>
+                ))}
+                {canFinishEarly && (
+                  <Pressable
+                    onPress={onFinishNow}
+                    disabled={send.isPending}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      styles.chipFinish,
+                      pressed && styles.btnPressed,
+                    ]}
+                  >
+                    <Text style={[styles.chipText, styles.chipFinishText]}>Termin acum ✓</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+            <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
+              <MicButton
+                disabled={send.isPending}
+                onStart={() => {
+                  sttBaseRef.current = draft;
+                }}
+                onTranscript={(text) => {
+                  const base = sttBaseRef.current;
+                  const sep = base && !base.endsWith(' ') ? ' ' : '';
+                  setDraft(base + sep + text);
+                }}
+              />
+              <TextInput
+                style={styles.input}
+                value={draft}
+                onChangeText={setDraft}
+                placeholder="Scrie sau apasa pe microfon..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={500}
+                editable={!send.isPending}
+              />
+              <Pressable
+                onPress={onSend}
+                disabled={!draft.trim() || send.isPending}
+                style={({ pressed }) => [
+                  styles.sendBtn,
+                  (!draft.trim() || send.isPending) && styles.sendBtnDisabled,
+                  pressed && styles.btnPressed,
+                ]}
+              >
+                <Text style={styles.sendText}>↑</Text>
+              </Pressable>
+            </View>
+          </>
         )}
       </View>
     </SafeAreaView>
   );
 }
 
+function ProgressDots({
+  gathered,
+  total,
+  done,
+}: {
+  gathered: number;
+  total: number;
+  done: boolean;
+}) {
+  return (
+    <View style={styles.progressRow}>
+      {Array.from({ length: total }).map((_, i) => {
+        const filled = i < gathered;
+        return (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              filled && styles.dotFilled,
+              done && styles.dotDone,
+            ]}
+          />
+        );
+      })}
+      <Text style={styles.progressLabel}>
+        {done ? 'Gata!' : `${gathered}/${total} elemente`}
+      </Text>
+    </View>
+  );
+}
+
 function Bubble({ bubble }: { bubble: ChatBubble }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(8)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [opacity, translateY]);
+
   if (bubble.role === 'final') {
     return (
-      <View style={styles.finalCard}>
+      <Animated.View style={[styles.finalCard, { opacity, transform: [{ translateY }] }]}>
         <Text style={styles.finalLabel}>POVESTEA TA</Text>
         <Text style={styles.finalTitle}>{bubble.story.title}</Text>
         <Text style={styles.finalBody}>{bubble.story.body}</Text>
-      </View>
+      </Animated.View>
     );
   }
 
   const isMe = bubble.role === 'me';
   return (
-    <View style={[styles.bubbleRow, isMe && styles.bubbleRowMe]}>
+    <Animated.View
+      style={[
+        styles.bubbleRow,
+        isMe && styles.bubbleRowMe,
+        { opacity, transform: [{ translateY }] },
+      ]}
+    >
       <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubblePet]}>
         <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{bubble.text}</Text>
       </View>
-    </View>
+    </Animated.View>
+  );
+}
+
+function TypingDot({ delay }: { delay: number }) {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 350,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0.3,
+          duration: 350,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [delay, opacity]);
+  return <Animated.View style={[styles.typingDot, { opacity }]} />;
+}
+
+function BookIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4Z"
+        stroke="#FFFFFF"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z"
+        stroke="#FFFFFF"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -280,8 +437,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
+    gap: 8,
   },
   backBtn: {
     width: 44,
@@ -290,14 +448,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
   },
   back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  narratorBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  headerSubtitle: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
   resetBtn: {
     width: 44,
     height: 44,
@@ -306,6 +469,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   resetText: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
+
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.border,
+  },
+  dotFilled: { backgroundColor: colors.accent },
+  dotDone: { backgroundColor: colors.success },
+  progressLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginLeft: 'auto',
+  },
 
   chat: { flex: 1 },
   chatContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
@@ -327,8 +514,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingLeft: 8,
+    paddingLeft: 12,
     paddingTop: 4,
+  },
+  typingDots: { flexDirection: 'row', gap: 4 },
+  typingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
   },
   typingText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
 
@@ -350,11 +544,31 @@ const styles = StyleSheet.create({
   finalTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
   finalBody: { color: colors.text, fontSize: 16, lineHeight: 24 },
 
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  chip: {
+    backgroundColor: colors.card,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chipText: { color: colors.text, fontSize: 13, fontWeight: '700' },
+  chipFinish: { backgroundColor: colors.accent, borderColor: colors.accent },
+  chipFinishText: { color: '#FFFFFF' },
+
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
     paddingHorizontal: 16,
+    paddingTop: 8,
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.border,
