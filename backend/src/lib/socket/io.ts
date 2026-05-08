@@ -3,6 +3,7 @@ import { Server as IOServer, type Socket } from 'socket.io';
 import { verifyToken } from '../jwt.js';
 import { logger } from '../logger.js';
 import { prisma } from '../prisma.js';
+import { recordReport } from '../cowalk/session.js';
 
 // Singleton — initializat o data la boot in server.ts.
 let io: IOServer | null = null;
@@ -39,6 +40,39 @@ export function initIO(server: HttpServer): IOServer {
   io.on('connection', (rawSocket) => {
     const socket = rawSocket as AuthSocket;
     logger.debug({ userId: socket.data.userId, sid: socket.id }, 'socket connected');
+
+    // Auto-join user-room. Toate event-urile co-walk emise de backend sunt
+    // adresate user-ului (room `user:<userId>`) — fiecare participant vede
+    // propria sa progresie / participantii din sesiunea lui. Reconnect-urile
+    // sunt automate, fara ca mobile-ul sa "cheme" un join.
+    void socket.join(userRoomName(socket.data.userId));
+
+    // cowalk:report { sessionId, steps, rssiSamples } — mobile trimite la
+    // ~30s. Backend acumuleaza pasii (max) si RSSI samples (append cu cap)
+    // pe sesiunea curenta a userului. Verifica indirect autorizarea: daca
+    // userId nu e in sesiunea cu acel sessionId, recordReport returneaza
+    // null si ignoram update-ul.
+    socket.on(
+      'cowalk:report',
+      async (payload: unknown, ack?: (resp: unknown) => void) => {
+        try {
+          const parsed = parseCowalkReport(payload);
+          if (!parsed) throw new Error('invalid_payload');
+          const session = await recordReport(
+            socket.data.userId,
+            parsed.steps,
+            parsed.rssiSamples,
+          );
+          if (!session || session.id !== parsed.sessionId) {
+            ack?.({ ok: false, error: 'session_mismatch' });
+            return;
+          }
+          ack?.({ ok: true });
+        } catch (e: any) {
+          ack?.({ ok: false, error: e?.message ?? 'report_failed' });
+        }
+      },
+    );
 
     // hunt:join { sessionId } — server valideaza ca user e membru/host/lobby
     // si baga socket-ul in room. Tot ce vine pe room ramane scoped per-session.
@@ -88,6 +122,31 @@ export function getIO(): IOServer {
 
 export function huntRoomName(sessionId: string): string {
   return `hunt:s:${sessionId}`;
+}
+
+export function userRoomName(userId: string): string {
+  return `user:${userId}`;
+}
+
+function parseCowalkReport(
+  payload: unknown,
+): { sessionId: string; steps: number; rssiSamples: number[] } | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const p = payload as Record<string, unknown>;
+  if (typeof p.sessionId !== 'string') return null;
+  if (typeof p.steps !== 'number' || !Number.isFinite(p.steps) || p.steps < 0) return null;
+  if (!Array.isArray(p.rssiSamples)) return null;
+  // Cap defensive pe payload incoming (anti-abuz: mobile spam-uieste cu lista
+  // imensa). 600 samples = ~10 min la 1Hz, e tot ce am putea primi rezonabil.
+  const samples: number[] = [];
+  for (const v of p.rssiSamples.slice(0, 600)) {
+    if (typeof v === 'number' && Number.isFinite(v) && v >= -120 && v <= 0) samples.push(v);
+  }
+  return {
+    sessionId: p.sessionId,
+    steps: Math.floor(p.steps),
+    rssiSamples: samples,
+  };
 }
 
 // Membru daca: e host, e in lobby, sau e in vreo echipa a sesiunii.
