@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -15,6 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePresence } from '../../src/ble/usePresence';
 import type { ClientSession, Peer } from '../../src/ble/presence';
 import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
+import { useCowalkEnabled, setCowalkEnabled } from '../../src/ble/cowalkPref';
 import { addFriend } from '../../src/api/friends';
 import { ApiError } from '../../src/api/client';
 import { colors } from '../../src/theme/colors';
@@ -31,6 +33,7 @@ export default function Nearby() {
   // Presence engine ruleaza global (auto-start din (app)/_layout.tsx). Acest
   // ecran doar consuma snapshot-ul; nu mai pornim/oprim la mount.
   const { active, peers, sessions, error, advertiseFailed } = usePresence();
+  const cowalkEnabled = useCowalkEnabled();
   const [adding, setAdding] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
@@ -89,12 +92,26 @@ export default function Nearby() {
       </View>
 
       <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>Bluetooth</Text>
-        <Text style={[styles.statusValue, { color: active ? colors.accent : colors.textMuted }]}>
-          {active ? 'CAUT...' : 'OPRIT'}
-        </Text>
-        {error && <Text style={styles.errorText}>{error}</Text>}
-        {active && advertiseFailed && (
+        <View style={styles.toggleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.statusLabel}>Cauta prieteni in apropiere</Text>
+            <Text style={styles.toggleHint}>
+              {cowalkEnabled
+                ? active
+                  ? 'Bluetooth pornit · vizibil pentru prieteni'
+                  : 'Se porneste...'
+                : 'Dezactivat · esti invizibil si nu cauti'}
+            </Text>
+          </View>
+          <Switch
+            value={cowalkEnabled}
+            onValueChange={(v) => void setCowalkEnabled(v)}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+        {cowalkEnabled && error && <Text style={styles.errorText}>{error}</Text>}
+        {cowalkEnabled && active && advertiseFailed && (
           <>
             <Text style={styles.warnText}>
               Esti invizibil pentru ceilalti. Verifica daca Bluetooth-ul e pornit si daca aplicatia
@@ -111,36 +128,47 @@ export default function Nearby() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
-        {sessions.length > 0 && (
-          <>
-            <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
-            {sessions.map((s) => (
-              <SessionCard key={s.id} session={s} now={now} />
-            ))}
-          </>
-        )}
-
-        <Text style={[styles.sectionTitle, sessions.length > 0 && { marginTop: 18 }]}>
-          Prieteni in raza
-        </Text>
-        {sorted.length === 0 ? (
+        {!cowalkEnabled ? (
           <View style={styles.emptyBox}>
-            {active && <ActivityIndicator color={colors.accent} />}
             <Text style={styles.empty}>
-              {active
-                ? 'Caut prieteni in apropiere... Tine telefonul aproape de altcineva care are aplicatia deschisa.'
-                : 'Bluetooth oprit.'}
+              Activeaza optiunea de mai sus ca sa-ti detectezi prietenii din apropiere si sa
+              acumulezi XP din co-walk.
             </Text>
           </View>
         ) : (
-          sorted.map((peer) => (
-            <PeerRow
-              key={peer.token}
-              peer={peer}
-              isAdding={adding === peer.userId}
-              onAdd={() => onAdd(peer)}
-            />
-          ))
+          <>
+            {sessions.length > 0 && (
+              <>
+                <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
+                {sessions.map((s) => (
+                  <SessionCard key={s.id} session={s} now={now} />
+                ))}
+              </>
+            )}
+
+            <Text style={[styles.sectionTitle, sessions.length > 0 && { marginTop: 18 }]}>
+              Prieteni in raza
+            </Text>
+            {sorted.length === 0 ? (
+              <View style={styles.emptyBox}>
+                {active && <ActivityIndicator color={colors.accent} />}
+                <Text style={styles.empty}>
+                  {active
+                    ? 'Caut prieteni in apropiere... Tine telefonul aproape de altcineva care are aplicatia deschisa.'
+                    : 'Bluetooth oprit.'}
+                </Text>
+              </View>
+            ) : (
+              sorted.map((peer) => (
+                <PeerRow
+                  key={peer.token}
+                  peer={peer}
+                  isAdding={adding === peer.userId}
+                  onAdd={() => onAdd(peer)}
+                />
+              ))
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -288,6 +316,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   statusValue: { fontSize: 18, fontWeight: '800' },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toggleHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 4,
+    lineHeight: 16,
+  },
   errorText: { color: colors.danger, fontSize: 14, fontWeight: '700', marginTop: 8 },
   warnText: {
     color: colors.danger,

@@ -47,3 +47,12 @@ export function postPresenceHeartbeat(peers: string[]): Promise<{ ok: boolean; c
 export function getCurrentCoWalk(): Promise<{ serverNow: number; session: ServerSession | null }> {
   return api<{ serverNow: number; session: ServerSession | null }>('/presence/cowalk/current');
 }
+
+// Iesire explicita din sesiunea curenta — emite cowalk:left catre ceilalti
+// membri instant, fara sa astepte grace-ul de 90s. Folosit cand user-ul
+// dezactiveaza manual co-walk-ul din UI.
+export function leaveCoWalk(): Promise<{ ok: boolean; leftEvents: number }> {
+  return api<{ ok: boolean; leftEvents: number }>('/presence/cowalk/leave', {
+    method: 'POST',
+  });
+}

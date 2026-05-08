@@ -20,10 +20,10 @@ import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
-import { CoWalkProgressCard } from '../../src/ble/CoWalkProgress';
+import { CoWalkButton } from '../../src/ble/CoWalkProgress';
 import { colors } from '../../src/theme/colors';
 
-type SheetKind = 'friends' | 'settings' | null;
+type SheetKind = 'friends' | 'settings' | 'notifications' | null;
 
 // Mirror al curbei din backend (lib/level.ts): level = 1 + floor(sqrt(xp/100)).
 // Tinem calculul aici ca sa nu mai facem un round-trip pt afisaj.
@@ -69,8 +69,11 @@ export default function Home() {
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.container}>
         <View style={styles.topRow}>
-          <IconButton onPress={() => setSheet('friends')} accessibilityLabel="Prieteni">
-            <FriendsIcon />
+          <IconButton
+            onPress={() => setSheet('notifications')}
+            accessibilityLabel="Notificari"
+          >
+            <BellIcon />
           </IconButton>
           <View style={styles.statusBlock}>
             <View style={styles.statusLabels}>
@@ -86,6 +89,13 @@ export default function Home() {
           <IconButton onPress={() => setSheet('settings')} accessibilityLabel="Setari">
             <GearIcon />
           </IconButton>
+        </View>
+
+        <View style={styles.sideMenu} pointerEvents="box-none">
+          <IconButton onPress={() => setSheet('friends')} accessibilityLabel="Prieteni">
+            <FriendsIcon />
+          </IconButton>
+          <CoWalkButton />
         </View>
 
         <Text style={styles.hello} numberOfLines={1}>
@@ -135,8 +145,6 @@ export default function Home() {
           </Text>
         )}
 
-        <CoWalkProgressCard />
-
         <Pressable
           onPress={() => router.push('/(app)/play')}
           style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
@@ -147,7 +155,13 @@ export default function Home() {
 
       <BottomSheet
         visible={sheet !== null}
-        title={sheet === 'friends' ? 'Prietenii mei' : 'Setari'}
+        title={
+          sheet === 'friends'
+            ? 'Prietenii mei'
+            : sheet === 'notifications'
+              ? 'Notificari'
+              : 'Setari'
+        }
         onClose={() => setSheet(null)}
       >
         {sheet === 'friends' && (
@@ -192,6 +206,11 @@ export default function Home() {
                 router.push('/(app)/nearby');
               }}
             />
+          </View>
+        )}
+        {sheet === 'notifications' && (
+          <View style={styles.sheetList}>
+            <Text style={styles.sheetEmpty}>Inca nu ai notificari.</Text>
           </View>
         )}
         {sheet === 'settings' && (
@@ -283,6 +302,26 @@ function FriendsIcon() {
   );
 }
 
+function BellIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 9a6 6 0 1 1 12 0c0 3.5 1 5 2 6H4c1-1 2-2.5 2-6Z"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M10 19a2 2 0 0 0 4 0"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
 function GearIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -363,6 +402,20 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 14 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Side rail vertical pe marginea STANGA, centrat pe inaltime. Stanga ca sa
+  // nu se intercaleze cu pet-ul (bottom-right). top: '50%' + translateY -50
+  // (jumatatea inaltimii proprii: 2 butoane × 44 + gap 12 = 100) → centrare
+  // exacta pe orice device. Avatarul e centrat orizontal → la left: 20 nu se
+  // suprapune cu silueta lui pe niciun screen size rezonabil.
+  sideMenu: {
+    position: 'absolute',
+    top: '50%',
+    left: 20,
+    gap: 12,
+    transform: [{ translateY: -50 }],
+    zIndex: 5,
+    elevation: 5,
+  },
   iconButton: {
     width: 44,
     height: 44,

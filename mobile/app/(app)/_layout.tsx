@@ -1,14 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useAuth } from '../../src/lib/auth';
 import { presence } from '../../src/ble/presence';
 import { requestBlePermissions } from '../../src/ble/permissions';
 import { CoWalkToast } from '../../src/ble/CoWalkToast';
+import { useCowalkEnabled, loadCowalkEnabled } from '../../src/ble/cowalkPref';
 import { colors } from '../../src/theme/colors';
 
 export default function AppLayout() {
   const { token, ready } = useAuth();
+  const cowalkEnabled = useCowalkEnabled();
+  const prevEnabledRef = useRef(cowalkEnabled);
 
   useEffect(() => {
     if (ready && !token) {
@@ -16,15 +19,18 @@ export default function AppLayout() {
     }
   }, [ready, token]);
 
-  // Auto-start presence engine cand user-ul e logat. Co-walk-ul detecteaza
-  // prietenii in apropiere fara sa apese nimic — engine-ul ruleaza pe toata
-  // viata sesiunii. La logout / unmount se opreste curat (advertise, scan,
-  // pedometer eliberate).
+  // Auto-start presence engine cand user-ul e logat SI a optat in (default
+  // true). La toggle-off manual cerem backend-ului sa ne scoata instant din
+  // sesiunile active (cowalk:left catre prieteni). La logout / unmount
+  // pastram comportament de "grace 90s" — un disconnect scurt nu omoara
+  // sesiunile altora pe loc.
   useEffect(() => {
     if (!ready || !token) return;
     let cancelled = false;
     (async () => {
       try {
+        const enabled = await loadCowalkEnabled();
+        if (cancelled || !enabled) return;
         const perm = await requestBlePermissions();
         if (cancelled) return;
         if (perm !== 'granted') {
@@ -38,11 +44,14 @@ export default function AppLayout() {
         console.warn('[layout] presence start failed:', e);
       }
     })();
+    const wasEnabled = prevEnabledRef.current;
+    prevEnabledRef.current = cowalkEnabled;
     return () => {
       cancelled = true;
-      void presence.stop();
+      const userTurnedOff = wasEnabled && !cowalkEnabled;
+      void presence.stop({ leaveServerSessions: userTurnedOff });
     };
-  }, [ready, token]);
+  }, [ready, token, cowalkEnabled]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

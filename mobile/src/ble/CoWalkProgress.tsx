@@ -1,115 +1,135 @@
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Pressable, StyleSheet, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { router } from 'expo-router';
 import { usePresence } from './usePresence';
-import { COWALK_MIN_DURATION_MS } from './constants';
-import type { ClientSession } from './presence';
+import { useCowalkEnabled } from './cowalkPref';
 import { colors } from '../theme/colors';
 
-// Card vizibil oriunde in app cand user-ul are co-walk-uri active.
-// Sursa de adevar: server (prin socket). Refresha la 1s pt animatia barii.
+// Buton rotund mic (44×44) cu icoana de pasi. Cand exista co-walk-uri active,
+// arata un dot accent in coltul drept-sus, pulsand subtil. Cand feature-ul
+// e dezactivat din toggle, arata un dot gri (fara pulse) ca user-ul sa
+// observe la prima ochire. Tap → deschide Nearby unde poate (re)activa.
 
-function formatDuration(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-}
-
-// Returneaza joinedAt-ul propriu (sau startedAt ca fallback) si lista celorlalti.
-function readSession(s: ClientSession): {
-  myJoinedAtClient: number;
-  myAwarded: boolean;
-  others: ClientSession['members'];
-} {
-  const me = s.members.find((m) => m.isMe);
-  const others = s.members.filter((m) => !m.isMe);
-  return {
-    myJoinedAtClient: me?.joinedAtClient ?? s.startedAtClient,
-    myAwarded: me?.awarded ?? false,
-    others,
-  };
-}
-
-export function CoWalkProgressCard() {
+export function CoWalkButton() {
   const { sessions } = usePresence();
-  const [now, setNow] = useState(Date.now());
+  const cowalkEnabled = useCowalkEnabled();
+  const hasActive = sessions.length > 0;
 
+  // Pulse pe badge cand sunt sesiuni active. Animatie infinita usoara,
+  // se opreste cand nu mai ai nimic activ (Animated.loop cu condition).
+  const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (sessions.length === 0) return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [sessions.length]);
+    if (!hasActive) {
+      pulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.in(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [hasActive, pulse]);
 
-  if (sessions.length === 0) return null;
+  const badgeScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.25] });
 
-  const primary = sessions[0];
-  if (!primary) return null;
-  const { myJoinedAtClient, myAwarded, others } = readSession(primary);
-  const elapsed = now - myJoinedAtClient;
-  const ratio = Math.max(0, Math.min(1, elapsed / COWALK_MIN_DURATION_MS));
-  const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
-
-  const otherNames = others.map((o) => o.name).filter(Boolean);
-  const headline = otherNames.length === 0
-    ? 'Co-walk in derulare'
-    : otherNames.length === 1
-      ? `Co-walk cu ${otherNames[0]}`
-      : `Co-walk cu ${otherNames[0]} +${otherNames.length - 1}`;
+  const accessibilityLabel = !cowalkEnabled
+    ? 'Co-walk dezactivat — apasa ca sa activezi'
+    : hasActive
+      ? `Co-walk activ (${sessions.length})`
+      : 'Co-walk';
 
   return (
     <Pressable
       onPress={() => router.push('/(app)/nearby')}
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={8}
+      style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
     >
-      <View style={styles.header}>
-        <Text style={styles.title} numberOfLines={1}>
-          🚶 {headline}
-          {sessions.length > 1 ? ` · +${sessions.length - 1} sesiuni` : ''}
-        </Text>
-        <Text style={styles.timer}>
-          {myAwarded ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
-        </Text>
-      </View>
-      <View style={styles.track}>
-        <View
-          style={[
-            styles.fill,
-            {
-              width: `${ratio * 100}%`,
-              backgroundColor: myAwarded ? colors.success : colors.accent,
-            },
-          ]}
-        />
-      </View>
-      <Text style={styles.hint}>
-        {myAwarded
-          ? 'XP acordat azi · Continua sa stati impreuna'
-          : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
-      </Text>
+      <FootstepsIcon />
+      {!cowalkEnabled ? (
+        <View style={[styles.badge, styles.badgeOff]} />
+      ) : hasActive ? (
+        <Animated.View style={[styles.badge, { transform: [{ scale: badgeScale }] }]} />
+      ) : null}
     </Pressable>
   );
 }
 
+// Doua urme de pas (font-style outline) — stilul matcheaza FriendsIcon /
+// GearIcon din Home (stroke 2, viewBox 24).
+function FootstepsIcon() {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      {/* Pas stang (sus) */}
+      <Path
+        d="M8 3.5c1.5 0 2.5 1.4 2.5 3.2 0 2.2-1.7 3.6-1.7 5.1 0 0.7 0.3 1.2 1 1.2 0.6 0 1-0.4 1-1 0-0.4-0.2-0.7-0.5-0.9"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M5.5 6.7c-0.4 0-0.7 0.4-0.7 0.9s0.4 0.9 0.9 0.9 0.8-0.4 0.8-0.9"
+        stroke={colors.text}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+      {/* Pas drept (jos) */}
+      <Path
+        d="M16 11.5c1.5 0 2.5 1.4 2.5 3.2 0 2.2-1.7 3.6-1.7 5.1 0 0.7 0.3 1.2 1 1.2"
+        stroke={colors.text}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M13.5 14.7c-0.4 0-0.7 0.4-0.7 0.9s0.4 0.9 0.9 0.9 0.8-0.4 0.8-0.9"
+        stroke={colors.text}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+    </Svg>
+  );
+}
+
+const BADGE_SIZE = 10;
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 16,
-    padding: 14,
+  btn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.card,
     borderWidth: 1,
-    borderColor: colors.accentDim,
-    gap: 8,
+    borderColor: colors.border,
   },
-  cardPressed: { opacity: 0.85 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  title: { color: colors.text, fontSize: 14, fontWeight: '800', flex: 1 },
-  timer: { color: colors.accent, fontSize: 13, fontWeight: '800' },
-  track: {
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 999,
-    overflow: 'hidden',
+  btnPressed: { opacity: 0.7 },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: BADGE_SIZE,
+    height: BADGE_SIZE,
+    borderRadius: BADGE_SIZE / 2,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.bg,
   },
-  fill: { height: '100%', borderRadius: 999 },
-  hint: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
+  badgeOff: { backgroundColor: colors.textMuted },
 });
