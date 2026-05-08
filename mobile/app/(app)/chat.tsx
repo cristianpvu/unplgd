@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
   Image,
   Keyboard,
   Pressable,
@@ -14,7 +12,9 @@ import {
   View,
 } from 'react-native';
 import { MicControls } from '../../src/ui/voice/MicControls';
-import { TypingDots } from '../../src/ui/voice/TypingDots';
+import { Orb } from '../../src/ui/voice/Orb';
+import { Transcript } from '../../src/ui/voice/Transcript';
+import { VoiceShell } from '../../src/ui/voice/VoiceShell';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -72,8 +72,6 @@ export default function PetChat() {
   // Daca user-ul a anulat redarea (pauza/back/switch), nu pornim auto-mic dupa
   // ce speakingul se rezolva — distingem cancel vs finish natural.
   const speakCancelledRef = useRef(false);
-  // pulse animat pe avatar in live mode
-  const pulse = useRef(new Animated.Value(1)).current;
 
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
   const historyQuery = useQuery({ queryKey: ['pet', 'chat'], queryFn: getPetChatHistory });
@@ -138,37 +136,6 @@ export default function PetChat() {
       sHide.remove();
     };
   }, []);
-
-  // Pulse pe avatar cand asculta sau vorbeste
-  useEffect(() => {
-    if (phase === 'idle' || phase === 'thinking') {
-      pulse.stopAnimation();
-      Animated.timing(pulse, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: phase === 'listening' ? 1.1 : 1.06,
-          duration: phase === 'listening' ? 500 : 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: phase === 'listening' ? 500 : 700,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [phase, pulse]);
 
   // Typewriter — afisam livePetText cuvant cu cuvant in livePetShown
   useEffect(() => {
@@ -381,7 +348,6 @@ export default function PetChat() {
         phase={phase}
         livePetShown={livePetShown}
         livePartialUser={livePartialUser}
-        pulse={pulse}
         onBack={() => router.back()}
         onSwitchToChat={() => switchMode('chat')}
         onReset={onResetPress}
@@ -488,7 +454,6 @@ type LiveProps = {
   phase: Phase;
   livePetShown: string;
   livePartialUser: string;
-  pulse: Animated.Value;
   onBack: () => void;
   onSwitchToChat: () => void;
   onReset: () => void;
@@ -501,13 +466,11 @@ function LiveView({
   phase,
   livePetShown,
   livePartialUser,
-  pulse,
   onBack,
   onSwitchToChat,
   onReset,
   onMicPress,
 }: LiveProps) {
-  const transcriptScrollRef = useRef<ScrollView>(null);
   const status =
     phase === 'listening'
       ? 'Te ascult...'
@@ -518,78 +481,47 @@ function LiveView({
           : `Apasa pe microfon si vorbeste cu ${petName}`;
 
   return (
-    <SafeAreaView style={liveStyles.safe} edges={['top', 'bottom']}>
-      <View style={liveStyles.topRow}>
-        <Pressable onPress={onBack} hitSlop={14} style={liveStyles.smallBtn}>
-          <Text style={liveStyles.smallBtnText}>×</Text>
-        </Pressable>
-        <Text style={liveStyles.headerName}>{petName}</Text>
-        <View style={liveStyles.topActions}>
-          <Pressable onPress={onReset} hitSlop={14} style={liveStyles.smallBtn}>
-            <Text style={liveStyles.smallBtnText}>↺</Text>
-          </Pressable>
-          <Pressable onPress={onSwitchToChat} hitSlop={14} style={liveStyles.smallBtn}>
-            <Text style={liveStyles.smallBtnText}>💬</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={liveStyles.body}>
-        <Animated.View
-          style={[
-            liveStyles.avatarWrap,
-            phase === 'listening' && liveStyles.avatarWrapListening,
-            phase === 'speaking' && liveStyles.avatarWrapSpeaking,
-            { transform: [{ scale: pulse }] },
-          ]}
-        >
+    <VoiceShell
+      title={petName}
+      phase={phase}
+      status={status}
+      onClose={onBack}
+      rightButton={{
+        label: '💬',
+        onPress: onSwitchToChat,
+        accessibilityLabel: 'Mod scris',
+      }}
+      centerpiece={
+        <Orb phase={phase} size={260} subtle>
           {petImage ? (
             <Image
               source={{ uri: petImage }}
-              style={liveStyles.avatarImg}
+              style={liveStyles.petImg}
               resizeMode="contain"
             />
           ) : (
-            <Text style={liveStyles.avatarEmoji}>🐾</Text>
+            <Text style={liveStyles.petEmoji}>🐾</Text>
           )}
-        </Animated.View>
-
-        <Text style={liveStyles.statusText}>{status}</Text>
-
-        <ScrollView
-          ref={transcriptScrollRef}
-          style={liveStyles.transcriptScroll}
-          contentContainerStyle={liveStyles.transcriptContent}
-          showsVerticalScrollIndicator={false}
-          // Pe masura ce typewriter-ul scrie raspunsul pet-ului si depaseste
-          // viewport-ul, urmarim coada — copilul vede ce se citeste in voce.
-          onContentSizeChange={() => {
-            if (phase === 'speaking' || phase === 'thinking') {
-              transcriptScrollRef.current?.scrollToEnd({ animated: true });
-            }
-          }}
-        >
-          {phase === 'thinking' ? (
-            <TypingDots size={11} color={colors.textMuted} />
-          ) : livePartialUser ? (
-            <Text style={liveStyles.userTranscript}>{livePartialUser}</Text>
-          ) : livePetShown ? (
-            <Text style={liveStyles.petTranscript}>
-              {livePetShown}
-              {phase === 'speaking' && <Text style={liveStyles.cursor}>▍</Text>}
-            </Text>
-          ) : (
-            <Text style={liveStyles.placeholder}>
-              Spune-i orice, {petName} e mereu curios.
-            </Text>
-          )}
-        </ScrollView>
+        </Orb>
+      }
+    >
+      <View style={liveStyles.actions}>
+        <Transcript
+          phase={phase}
+          aiShown={livePetShown}
+          userPartial={livePartialUser}
+          userFinalEcho=""
+          placeholder={`Spune-i orice, ${petName} e mereu curios.`}
+        />
+        <MicControls
+          phase={phase}
+          onPress={onMicPress}
+          showFinish={phase === 'idle'}
+          finishLabel="Conversatie noua"
+          onFinish={onReset}
+        />
       </View>
-
-      <View style={liveStyles.controlsWrap}>
-        <MicControls phase={phase} onPress={onMicPress} />
-      </View>
-    </SafeAreaView>
+    </VoiceShell>
   );
 }
 
@@ -708,95 +640,16 @@ const styles = StyleSheet.create({
 });
 
 const liveStyles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  topActions: { flexDirection: 'row', gap: 8 },
-  smallBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  smallBtnText: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  headerName: { color: colors.text, fontSize: 16, fontWeight: '800', flex: 1, textAlign: 'center' },
-
-  body: {
+  // Imaginea pet-ului ocupa cea mai mare parte din interiorul orb-ului
+  // (260px). Lasam ceva margine ca animatia de pulse sa nu duca marginile
+  // imaginii peste halo-ul SVG.
+  petImg: { width: 230, height: 230 },
+  petEmoji: { fontSize: 110 },
+  actions: {
     flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    gap: 14,
-  },
-  avatarWrap: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 22,
-    elevation: 8,
-    borderWidth: 4,
-    borderColor: 'transparent',
-  },
-  avatarWrapListening: { borderColor: colors.danger },
-  avatarWrapSpeaking: { borderColor: colors.accent },
-  avatarImg: { width: 168, height: 168 },
-  avatarEmoji: { fontSize: 80 },
-
-  statusText: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: 0.3,
-  },
-  transcriptScroll: {
-    flex: 1,
-    width: '100%',
-  },
-  transcriptContent: {
-    flexGrow: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  petTranscript: {
-    color: colors.text,
-    fontSize: 22,
-    lineHeight: 30,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  userTranscript: {
-    color: colors.accent,
-    fontSize: 20,
-    lineHeight: 28,
-    fontWeight: '700',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  cursor: { color: colors.accent, fontWeight: '800' },
-  placeholder: {
-    color: colors.textMuted,
-    fontSize: 16,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-
-  controlsWrap: {
-    paddingBottom: 16,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 18,
+    justifyContent: 'flex-end',
   },
 });

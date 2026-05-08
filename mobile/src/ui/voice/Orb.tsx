@@ -10,17 +10,31 @@ import Svg, {
 } from 'react-native-svg';
 import { colors } from '../../theme/colors';
 
-// Vizual: orb 220×220 cu gradient lucios + halo + ripples cand asculta. Folosit
-// pe ecranele voice-first (creare poveste, verificare poveste). Driver pe faza
-// e pasat de parinte; aici e doar redarea + animatiile interne.
+// Vizual: orb cu gradient lucios + halo + ripples cand asculta. Folosit pe
+// ecranele voice-first (creare poveste, verificare poveste). Driver pe faza e
+// pasat de parinte; aici e doar redarea + animatiile interne.
+//
+// `children` opt: cand prezent, inlocuieste glob-ul central cu continut custom
+// (ex. imaginea pet-ului in chatul live). Halo + ripples + pulse-ul raman
+// aceleasi pentru un limbaj vizual coerent intre story si pet chat.
 
 export type OrbPhase = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedG = Animated.createAnimatedComponent(G);
 
-export function Orb({ phase }: { phase: OrbPhase }) {
-  const SIZE = 220;
+export type OrbProps = {
+  phase: OrbPhase;
+  size?: number;
+  children?: React.ReactNode;
+  // Reduce amplitudinea pulse-ului — folosit cand inauntru e o imagine de
+  // caracter (pet) si bounce-ul mare arata agresiv. Pe glob-ul abstract default
+  // bounce-ul ramane cel original.
+  subtle?: boolean;
+};
+
+export function Orb({ phase, size = 220, children, subtle = false }: OrbProps) {
+  const SIZE = size;
   const orbPulse = useRef(new Animated.Value(1)).current;
   const orbGlow = useRef(new Animated.Value(0.6)).current;
   const ring1 = useRef(new Animated.Value(0)).current;
@@ -35,6 +49,9 @@ export function Orb({ phase }: { phase: OrbPhase }) {
     ring3.stopAnimation();
 
     if (phase === 'idle') {
+      // Pe subtle: imaginea pet-ului ramane fix, fara breathing — orice miscare
+      // pe un caracter cu fata pare un tic.
+      if (subtle) return;
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(orbPulse, {
@@ -59,14 +76,14 @@ export function Orb({ phase }: { phase: OrbPhase }) {
       const pulseLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(orbPulse, {
-            toValue: 1.12,
-            duration: 450,
+            toValue: subtle ? 1.035 : 1.12,
+            duration: subtle ? 700 : 450,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(orbPulse, {
             toValue: 1,
-            duration: 450,
+            duration: subtle ? 700 : 450,
             easing: Easing.inOut(Easing.ease),
             useNativeDriver: true,
           }),
@@ -122,6 +139,28 @@ export function Orb({ phase }: { phase: OrbPhase }) {
     }
 
     if (phase === 'speaking') {
+      // Pe subtle: o singura unda blanda in loc de pattern-ul cu 4 oscilatii
+      // (orig avea si un sub-1.0 care comprima imaginea — pe pet arata urat).
+      if (subtle) {
+        const gentle = Animated.loop(
+          Animated.sequence([
+            Animated.timing(orbPulse, {
+              toValue: 1.025,
+              duration: 600,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(orbPulse, {
+              toValue: 1,
+              duration: 600,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        );
+        gentle.start();
+        return () => gentle.stop();
+      }
       const pulseLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(orbPulse, {
@@ -153,7 +192,7 @@ export function Orb({ phase }: { phase: OrbPhase }) {
       pulseLoop.start();
       return () => pulseLoop.stop();
     }
-  }, [phase, orbPulse, orbGlow, ring1, ring2, ring3]);
+  }, [phase, subtle, orbPulse, orbGlow, ring1, ring2, ring3]);
 
   return (
     <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
@@ -190,19 +229,21 @@ export function Orb({ phase }: { phase: OrbPhase }) {
           transform: [{ scale: orbPulse }],
         }}
       >
-        <Svg width={SIZE} height={SIZE} viewBox="0 0 240 240">
-          <Defs>
-            <RadialGradient id="orbGradient" cx="0.5" cy="0.45" r="0.65">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
-              <Stop offset="35%" stopColor="#FFD9B0" stopOpacity="0.95" />
-              <Stop offset="70%" stopColor={colors.accent} stopOpacity="0.85" />
-              <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0.6" />
-            </RadialGradient>
-          </Defs>
-          <Circle cx="120" cy="120" r="78" fill="url(#orbGradient)" />
-          <Circle cx="98" cy="92" r="22" fill="#FFFFFF" opacity={0.55} />
-          <Circle cx="92" cy="86" r="8" fill="#FFFFFF" opacity={0.95} />
-        </Svg>
+        {children ?? (
+          <Svg width={SIZE} height={SIZE} viewBox="0 0 240 240">
+            <Defs>
+              <RadialGradient id="orbGradient" cx="0.5" cy="0.45" r="0.65">
+                <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
+                <Stop offset="35%" stopColor="#FFD9B0" stopOpacity="0.95" />
+                <Stop offset="70%" stopColor={colors.accent} stopOpacity="0.85" />
+                <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0.6" />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="120" cy="120" r="78" fill="url(#orbGradient)" />
+            <Circle cx="98" cy="92" r="22" fill="#FFFFFF" opacity={0.55} />
+            <Circle cx="92" cy="86" r="8" fill="#FFFFFF" opacity={0.95} />
+          </Svg>
+        )}
       </Animated.View>
     </View>
   );

@@ -6,6 +6,10 @@ import { colors } from '../../theme/colors';
 // Layout comun pentru toate ecranele voice-first: mesh gradient animat in
 // fundal, top bar minimal (back + titlu + actiune dreapta optionala), orb
 // in centru cu status text, apoi children pentru transcript + actiuni.
+//
+// `centerpiece` opt: cand setat, inlocuieste Orb-ul default — folosit pe pet
+// chat ca sa afisam imaginea pet-ului inauntru, cu aceleasi animatii (Orb
+// accepta `children` ca centru custom).
 
 export type VoiceShellProps = {
   title: string;
@@ -13,6 +17,7 @@ export type VoiceShellProps = {
   status: string;
   onClose: () => void;
   rightButton?: { label: string; onPress: () => void; accessibilityLabel?: string };
+  centerpiece?: React.ReactNode;
   children: React.ReactNode;
 };
 
@@ -22,6 +27,7 @@ export function VoiceShell({
   status,
   onClose,
   rightButton,
+  centerpiece,
   children,
 }: VoiceShellProps) {
   return (
@@ -50,7 +56,7 @@ export function VoiceShell({
       </View>
 
       <View style={styles.body}>
-        <Orb phase={phase} />
+        {centerpiece ?? <Orb phase={phase} />}
         <Text style={styles.statusText}>{status}</Text>
       </View>
 
