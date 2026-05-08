@@ -13,6 +13,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MicControls } from '../../src/ui/voice/MicControls';
+import { TypingDots } from '../../src/ui/voice/TypingDots';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -505,25 +507,15 @@ function LiveView({
   onReset,
   onMicPress,
 }: LiveProps) {
+  const transcriptScrollRef = useRef<ScrollView>(null);
   const status =
     phase === 'listening'
       ? 'Te ascult...'
       : phase === 'thinking'
-        ? `${petName} se gandeste...`
+        ? `${petName} se gandeste`
         : phase === 'speaking'
           ? `${petName} vorbeste`
           : `Apasa pe microfon si vorbeste cu ${petName}`;
-
-  const micIcon =
-    phase === 'listening' ? '⏹' : phase === 'speaking' ? '⏸' : '🎤';
-  const micLabel =
-    phase === 'listening'
-      ? 'Opreste'
-      : phase === 'speaking'
-        ? 'Pauza'
-        : phase === 'thinking'
-          ? '...'
-          : 'Vorbeste';
 
   return (
     <SafeAreaView style={liveStyles.safe} edges={['top', 'bottom']}>
@@ -565,12 +557,20 @@ function LiveView({
         <Text style={liveStyles.statusText}>{status}</Text>
 
         <ScrollView
+          ref={transcriptScrollRef}
           style={liveStyles.transcriptScroll}
           contentContainerStyle={liveStyles.transcriptContent}
           showsVerticalScrollIndicator={false}
+          // Pe masura ce typewriter-ul scrie raspunsul pet-ului si depaseste
+          // viewport-ul, urmarim coada — copilul vede ce se citeste in voce.
+          onContentSizeChange={() => {
+            if (phase === 'speaking' || phase === 'thinking') {
+              transcriptScrollRef.current?.scrollToEnd({ animated: true });
+            }
+          }}
         >
           {phase === 'thinking' ? (
-            <ActivityIndicator color={colors.accent} />
+            <TypingDots size={11} color={colors.textMuted} />
           ) : livePartialUser ? (
             <Text style={liveStyles.userTranscript}>{livePartialUser}</Text>
           ) : livePetShown ? (
@@ -580,27 +580,14 @@ function LiveView({
             </Text>
           ) : (
             <Text style={liveStyles.placeholder}>
-              Spune-i orice — il vad pe {petName} ca e curios.
+              Spune-i orice, {petName} e mereu curios.
             </Text>
           )}
         </ScrollView>
       </View>
 
-      <View style={liveStyles.controls}>
-        <Pressable
-          onPress={onMicPress}
-          disabled={phase === 'thinking'}
-          style={({ pressed }) => [
-            liveStyles.micBtn,
-            phase === 'listening' && liveStyles.micBtnListening,
-            phase === 'speaking' && liveStyles.micBtnSpeaking,
-            phase === 'thinking' && liveStyles.micBtnDisabled,
-            pressed && liveStyles.micBtnPressed,
-          ]}
-        >
-          <Text style={liveStyles.micIcon}>{micIcon}</Text>
-        </Pressable>
-        <Text style={liveStyles.micLabel}>{micLabel}</Text>
+      <View style={liveStyles.controlsWrap}>
+        <MicControls phase={phase} onPress={onMicPress} />
       </View>
     </SafeAreaView>
   );
@@ -809,34 +796,7 @@ const liveStyles = StyleSheet.create({
     fontStyle: 'italic',
   },
 
-  controls: {
-    alignItems: 'center',
-    paddingBottom: 24,
-    gap: 10,
-  },
-  micBtn: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  micBtnListening: { backgroundColor: colors.danger, shadowColor: colors.danger },
-  micBtnSpeaking: { backgroundColor: colors.cardAlt, shadowOpacity: 0.2 },
-  micBtnDisabled: { opacity: 0.5 },
-  micBtnPressed: { transform: [{ scale: 0.94 }], opacity: 0.9 },
-  micIcon: { fontSize: 38, color: '#FFFFFF' },
-  micLabel: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+  controlsWrap: {
+    paddingBottom: 16,
   },
 });

@@ -1,5 +1,7 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRef } from 'react';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import { colors } from '../../theme/colors';
+import { TypingDots } from './TypingDots';
 import type { OrbPhase } from './Orb';
 
 // Zona centrala unde apare textul — fie ce zice naratorul (typewriter), fie
@@ -31,18 +33,32 @@ export function Transcript({
   children,
   compact,
 }: TranscriptProps) {
+  const scrollRef = useRef<ScrollView>(null);
   return (
     <ScrollView
+      ref={scrollRef}
       style={[styles.scroll, compact && styles.scrollCompact]}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      // Cand AI-ul "scrie" cu typewriter si textul depaseste viewport-ul,
+      // continutul creste in inaltime si trebuie sa urmarim coada — altfel
+      // copilul vede inceputul si rateaza ce se citeste in voce.
+      onContentSizeChange={() => {
+        if (phase === 'speaking' || phase === 'thinking') {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }
+      }}
     >
       {children ? (
         children
       ) : userPartial ? (
         <Text style={styles.userTranscript}>{userPartial}</Text>
-      ) : phase === 'thinking' && userFinalEcho ? (
-        <Text style={styles.userTranscript}>{userFinalEcho}</Text>
+      ) : phase === 'thinking' ? (
+        userFinalEcho ? (
+          <Text style={styles.userTranscript}>{userFinalEcho}</Text>
+        ) : (
+          <TypingDots size={10} color={colors.textMuted} />
+        )
       ) : aiShown ? (
         <Text style={styles.aiTranscript}>
           {aiShown}
