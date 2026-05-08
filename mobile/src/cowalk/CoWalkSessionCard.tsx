@@ -1,16 +1,24 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
 import { colors } from '../theme/colors';
 import { AvatarStack } from './AvatarStack';
 
-// Card pentru o sesiune co-walk activa: hero cu avatare animate, counter mare,
-// bara de progres cu shimmer. Se monteaza la inceperea sesiunii (cand UI
-// switch-uieste la "Co-walk in derulare") si se demonteaza cand sesiunea pleaca
-// din lista. Animatiile interne (mount + shimmer + pulse LIVE) ruleaza tot
-// timpul ca sesiunea sa "respire".
+// Scena de co-walk activa: un strip imersiv care da senzatia ca grupul merge
+// continuu spre obiectivul XP. Trei layere de animatie:
+//  1. Background — linii oblice care se deruleaza orizontal in bucla (treadmill).
+//     Doua copii ale aceluiasi pattern translateX → cand prima ajunge la
+//     -PATTERN_W, salt instant la 0 (seamless loop, fara taietura vizibila).
+//  2. Avatarele — bobbing translateY decalat pe index, ca pasi alternativi.
+//     Mount-ul lor ramane spring 0→1 (cand intra cineva nou in sesiune).
+//  3. Drumul — bara orizontala cu marker care urmareste ratio-ul real, capat
+//     decorat cu o pictograma de obiectiv (zap). Marker-ul anim spring catre
+//     pozitia noua la fiecare update de timp.
+
+const PATTERN_W = 220;
+const SCENE_HEIGHT = 168;
 
 function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -34,38 +42,133 @@ export function CoWalkSessionCard({
   const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
   const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
 
-  // Shimmer trece peste bara de progres in bucla — sugereaza ca sesiunea e
-  // "vie", chiar si cand timpul aproape ca sta pe loc vizual la inceput.
-  const shimmer = useRef(new Animated.Value(0)).current;
+  const headline =
+    others.length === 0
+      ? 'Singur in raza'
+      : others.length === 1
+        ? `Cu ${others[0]!.name}`
+        : `Cu ${others[0]!.name} +${others.length - 1}`;
+
+  return (
+    <View style={styles.scene}>
+      {/* Banda fundal cu linii in miscare — efectul de "merg continuu". */}
+      <View style={styles.scrollWrap} pointerEvents="none">
+        <Treadmill paused={myAwarded} />
+        <View style={styles.skylineFade} />
+      </View>
+
+      {/* Header: LIVE pulse + count + textul "spre XP". */}
+      <View style={styles.headerRow}>
+        <LiveBadge awarded={myAwarded} />
+        <Text style={styles.squadCount}>
+          {session.members.length} {session.members.length === 1 ? 'in pas' : 'in pas'}
+        </Text>
+      </View>
+
+      {/* Grupul care merge — bobbing pe avatare, mount spring cand intra unul nou. */}
+      <View style={styles.groupRow}>
+        <AvatarStack members={session.members} walking={!myAwarded} />
+      </View>
+
+      <Text style={styles.headline} numberOfLines={1}>
+        {headline}
+      </Text>
+
+      {/* Drumul spre XP. */}
+      <ProgressTrail ratio={ratio} awarded={myAwarded} />
+
+      <View style={styles.footerRow}>
+        <Text style={[styles.timer, myAwarded && { color: colors.success }]}>
+          {myAwarded ? '✓ Acordat' : formatDuration(elapsed)}
+        </Text>
+        <Text style={styles.hint}>
+          {myAwarded
+            ? 'XP primit pentru aceasta sesiune'
+            : `inca ${formatDuration(remainingMs)} pana la XP`}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// =====================================================================
+// Treadmill — fundal cu linii oblice care curg orizontal continuu
+// =====================================================================
+
+function Treadmill({ paused }: { paused: boolean }) {
+  const x = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (myAwarded) return;
+    if (paused) {
+      x.stopAnimation();
+      return;
+    }
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ]),
+      Animated.timing(x, {
+        toValue: 1,
+        duration: 5200,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
     );
     loop.start();
     return () => loop.stop();
-  }, [myAwarded, shimmer]);
+  }, [paused, x]);
 
-  // Pulse pe dot-ul "LIVE" — semnal subtil ca evenimentele real-time curg.
-  const livePulse = useRef(new Animated.Value(0)).current;
+  const translate = x.interpolate({ inputRange: [0, 1], outputRange: [0, -PATTERN_W] });
+
+  return (
+    <Animated.View style={[styles.treadmill, { transform: [{ translateX: translate }] }]}>
+      <Pattern />
+      <Pattern />
+      <Pattern />
+    </Animated.View>
+  );
+}
+
+function Pattern() {
+  // Linii diagonale la fiecare 36px. PATTERN_W = 220 → ~6 linii vizibile per
+  // copie. Capatul stang al unei copii e identic cu capatul drept al copiei
+  // anterioare → scroll-ul e seamless cand reset la translateX 0.
+  const lines = useMemo(() => {
+    const out: number[] = [];
+    for (let i = 0; i < 8; i++) out.push(i * 36);
+    return out;
+  }, []);
+  return (
+    <Svg width={PATTERN_W} height={SCENE_HEIGHT} viewBox={`0 0 ${PATTERN_W} ${SCENE_HEIGHT}`}>
+      {lines.map((x, i) => (
+        <Path
+          key={i}
+          d={`M${x - 40} ${SCENE_HEIGHT + 20} L${x + 80} -20`}
+          stroke={colors.accent}
+          strokeWidth={2}
+          opacity={0.32}
+        />
+      ))}
+    </Svg>
+  );
+}
+
+// =====================================================================
+// LIVE badge cu dot pulsant
+// =====================================================================
+
+function LiveBadge({ awarded }: { awarded: boolean }) {
+  const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    if (awarded) {
+      pulse.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(livePulse, {
+        Animated.timing(pulse, {
           toValue: 1,
           duration: 700,
           easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
-        Animated.timing(livePulse, {
+        Animated.timing(pulse, {
           toValue: 0,
           duration: 700,
           easing: Easing.in(Easing.ease),
@@ -75,117 +178,138 @@ export function CoWalkSessionCard({
     );
     loop.start();
     return () => loop.stop();
-  }, [livePulse]);
-  const liveDotOpacity = livePulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  }, [awarded, pulse]);
 
-  const headline =
-    others.length === 0
-      ? 'Singur in raza'
-      : others.length === 1
-        ? `Cu ${others[0]!.name}`
-        : `Cu ${others[0]!.name} +${others.length - 1}`;
-
-  const fillColor = myAwarded ? colors.success : colors.accent;
+  const opacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const bg = awarded ? 'rgba(46, 204, 113, 0.15)' : 'rgba(255, 79, 107, 0.16)';
+  const dotColor = awarded ? colors.success : colors.danger;
+  const textColor = awarded ? colors.success : colors.danger;
 
   return (
-    <View style={styles.card}>
-      <Svg
-        width="100%"
-        height="100%"
-        viewBox="0 0 400 200"
-        preserveAspectRatio="xMidYMid slice"
-        style={StyleSheet.absoluteFillObject}
-        pointerEvents="none"
-      >
-        <Defs>
-          <RadialGradient id="cowalkGlow" cx="0.2" cy="0.2" r="0.9">
-            <Stop offset="0%" stopColor={colors.accent} stopOpacity={myAwarded ? '0' : '0.25'} />
-            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
-          </RadialGradient>
-          <RadialGradient id="cowalkGlow2" cx="0.9" cy="0.95" r="0.7">
-            <Stop offset="0%" stopColor={myAwarded ? colors.success : colors.secondary} stopOpacity="0.25" />
-            <Stop offset="100%" stopColor={colors.secondary} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-        <Circle cx="80" cy="60" r="160" fill="url(#cowalkGlow)" />
-        <Circle cx="360" cy="190" r="160" fill="url(#cowalkGlow2)" />
-      </Svg>
-
-      <View style={styles.topRow}>
-        <View style={styles.liveBadge}>
-          <Animated.View style={[styles.liveDot, { opacity: liveDotOpacity }]} />
-          <Text style={styles.liveText}>{myAwarded ? 'COMPLET' : 'LIVE'}</Text>
-        </View>
-        <Text style={styles.squadCount}>
-          {session.members.length} {session.members.length === 1 ? 'membru' : 'membri'}
-        </Text>
-      </View>
-
-      <View style={styles.avatarsRow}>
-        <AvatarStack members={session.members} />
-      </View>
-
-      <Text style={styles.headline} numberOfLines={1}>
-        {headline}
-      </Text>
-
-      <View style={styles.timerRow}>
-        <Text style={[styles.timerBig, { color: fillColor }]}>
-          {myAwarded ? '✓ Acordat' : formatDuration(elapsed)}
-        </Text>
-        {!myAwarded && <Text style={styles.timerCap}>/ 10:00</Text>}
-      </View>
-
-      <View style={styles.track}>
-        <View style={[styles.fill, { width: `${ratio * 100}%`, backgroundColor: fillColor }]}>
-          {!myAwarded && (
-            <Animated.View
-              style={[
-                styles.shimmer,
-                {
-                  transform: [
-                    {
-                      translateX: shimmer.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [-60, 360],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            />
-          )}
-        </View>
-      </View>
-
-      <Text style={styles.hint}>
-        {myAwarded
-          ? 'XP acordat azi pentru aceasta sesiune'
-          : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
+    <View style={[styles.liveBadge, { backgroundColor: bg }]}>
+      <Animated.View
+        style={[
+          styles.liveDot,
+          { backgroundColor: dotColor, opacity: awarded ? 1 : opacity },
+        ]}
+      />
+      <Text style={[styles.liveText, { color: textColor }]}>
+        {awarded ? 'COMPLET' : 'LIVE'}
       </Text>
     </View>
   );
 }
 
+// =====================================================================
+// ProgressTrail — drumul spre XP cu marker animat
+// =====================================================================
+
+function ProgressTrail({ ratio, awarded }: { ratio: number; awarded: boolean }) {
+  const TRACK_H = 14;
+  const target = useRef(new Animated.Value(ratio)).current;
+  useEffect(() => {
+    Animated.spring(target, {
+      toValue: ratio,
+      friction: 8,
+      tension: 50,
+      useNativeDriver: false,
+    }).start();
+  }, [ratio, target]);
+
+  const fillWidth = target.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+  });
+
+  const fillColor = awarded ? colors.success : colors.accent;
+
+  // Stea de obiectiv la capatul drumului — pulsa cand nu e cucerit, fixa cand
+  // ratio === 1. SVG simplu pe layer separat ca sa fie peste track.
+  const goalPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (awarded) {
+      goalPulse.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(goalPulse, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(goalPulse, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [awarded, goalPulse]);
+
+  const goalScale = goalPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
+
+  return (
+    <View style={styles.trail}>
+      <View style={[styles.track, { height: TRACK_H }]}>
+        <Animated.View
+          style={[
+            styles.fill,
+            { width: fillWidth, backgroundColor: fillColor, height: TRACK_H },
+          ]}
+        />
+      </View>
+
+      <Animated.View style={[styles.goal, { transform: [{ scale: goalScale }] }]}>
+        <Svg width={26} height={26} viewBox="0 0 24 24">
+          <Path
+            d="M12 2 L14.5 9 L22 9.5 L16 14 L18 22 L12 17.5 L6 22 L8 14 L2 9.5 L9.5 9 Z"
+            fill={awarded ? colors.success : colors.accent}
+            stroke="#FFFFFF"
+            strokeWidth={1.2}
+            strokeLinejoin="round"
+          />
+        </Svg>
+      </Animated.View>
+
+      {/* Linii la capete pentru "start / finish". */}
+      <View style={[styles.endCap, { left: 0 }]} />
+    </View>
+  );
+}
+
+// =====================================================================
+// Styles
+// =====================================================================
+
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: colors.border,
+  scene: {
+    paddingVertical: 16,
+    paddingHorizontal: 4,
     overflow: 'hidden',
     gap: 10,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 14,
-    elevation: 4,
   },
-  topRow: {
+  scrollWrap: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  treadmill: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    height: SCENE_HEIGHT,
+  },
+  skylineFade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 226, 122, 0.55)',
+  },
+  headerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 2,
   },
   liveBadge: {
     flexDirection: 'row',
@@ -194,76 +318,88 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: 'rgba(255, 79, 107, 0.12)',
   },
   liveDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.danger,
   },
   liveText: {
-    color: colors.danger,
     fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 0.6,
+    letterSpacing: 0.7,
   },
   squadCount: {
-    color: colors.textMuted,
+    color: colors.text,
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.4,
+    fontWeight: '800',
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  avatarsRow: {
-    paddingTop: 4,
-    paddingBottom: 2,
+  groupRow: {
+    paddingTop: 6,
+    paddingBottom: 4,
+    alignItems: 'center',
+    zIndex: 2,
   },
   headline: {
     color: colors.text,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
+    textAlign: 'center',
+    zIndex: 2,
   },
-  timerRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
-    marginTop: 2,
-  },
-  timerBig: {
-    fontSize: 36,
-    fontWeight: '900',
-    letterSpacing: -1,
-    fontVariant: ['tabular-nums'],
-  },
-  timerCap: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '700',
+  trail: {
+    height: 28,
+    justifyContent: 'center',
+    marginTop: 4,
+    zIndex: 2,
+    paddingRight: 28,
   },
   track: {
-    height: 10,
+    backgroundColor: 'rgba(45, 42, 74, 0.12)',
     borderRadius: 999,
-    backgroundColor: colors.border,
     overflow: 'hidden',
-    marginTop: 2,
   },
   fill: {
-    height: '100%',
     borderRadius: 999,
-    overflow: 'hidden',
   },
-  shimmer: {
+  goal: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 60,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-    transform: [{ skewX: '-20deg' }],
+    right: 0,
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endCap: {
+    position: 'absolute',
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: colors.text,
+    opacity: 0.18,
+  },
+  footerRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+    zIndex: 2,
+  },
+  timer: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
   },
   hint: {
     color: colors.textMuted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'right',
   },
 });
+

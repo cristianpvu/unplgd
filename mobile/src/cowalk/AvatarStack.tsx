@@ -21,11 +21,16 @@ export type AvatarChipMember = {
 export function AvatarChip({
   member,
   zIndex,
+  bobIndex,
 }: {
   member: AvatarChipMember;
   zIndex: number;
+  // Cand setat, porneste un bobbing pe translateY cu offset per index pentru
+  // efectul de "grup care merge" (pasi alternativi). Anim infinita.
+  bobIndex?: number;
 }) {
   const scale = useRef(new Animated.Value(0)).current;
+  const bob = useRef(new Animated.Value(0)).current;
   // Pulse pe halo cand memberul e "live" (nu inca awarded). Anim infinita
   // usoara, nu agresiva. Cand a primit XP, halo-ul ramane verde fix.
   const pulse = useRef(new Animated.Value(0)).current;
@@ -38,6 +43,30 @@ export function AvatarChip({
       useNativeDriver: true,
     }).start();
   }, [scale]);
+
+  useEffect(() => {
+    if (bobIndex === undefined) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay((bobIndex % 4) * 130),
+        Animated.timing(bob, {
+          toValue: -7,
+          duration: 320,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(bob, {
+          toValue: 0,
+          duration: 320,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.delay(220),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [bobIndex, bob]);
 
   useEffect(() => {
     if (member.awarded) {
@@ -72,7 +101,9 @@ export function AvatarChip({
     .join('');
 
   return (
-    <Animated.View style={[styles.chip, { zIndex, transform: [{ scale }] }]}>
+    <Animated.View
+      style={[styles.chip, { zIndex, transform: [{ scale }, { translateY: bob }] }]}
+    >
       <Animated.View
         pointerEvents="none"
         style={[
@@ -111,8 +142,16 @@ export function AvatarChip({
 }
 
 // Stack-ul orizontal de avatare cu overlap. Eu (isMe) apare primul. Cand un
-// membru nou intra in lista, doar el animeaza pop-in (key=userId).
-export function AvatarStack({ members }: { members: AvatarChipMember[] }) {
+// membru nou intra in lista, doar el animeaza pop-in (key=userId). Daca
+// `walking` e true, fiecare chip face si bobbing — folosit pe scena de co-walk
+// activa pentru senzatia ca grupul "merge".
+export function AvatarStack({
+  members,
+  walking,
+}: {
+  members: AvatarChipMember[];
+  walking?: boolean;
+}) {
   return (
     <View style={styles.stack}>
       {members.map((m, i) => (
@@ -120,7 +159,11 @@ export function AvatarStack({ members }: { members: AvatarChipMember[] }) {
           key={m.userId}
           style={{ marginLeft: i === 0 ? 0 : -OVERLAP }}
         >
-          <AvatarChip member={m} zIndex={members.length - i} />
+          <AvatarChip
+            member={m}
+            zIndex={members.length - i}
+            bobIndex={walking ? i : undefined}
+          />
         </View>
       ))}
     </View>
