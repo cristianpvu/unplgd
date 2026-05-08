@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
   Easing,
-  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import Svg, { Path } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  RadialGradient,
+  Stop,
+  G,
+  Path,
+} from 'react-native-svg';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   postCreateChat,
@@ -22,76 +26,316 @@ import {
   absoluteAudioUrl,
   ttsSynthesize,
   type FinalStory,
-  type StoryProgress,
 } from '../../../src/api/stories';
 import { ApiError } from '../../../src/api/client';
 import {
+  ensureMicPermission,
+  isSttAvailable,
   playPetVoice,
-  speakDevice,
+  playPetVoiceAwait,
+  startListening,
   stopDevice,
   stopRemoteAudio,
+  type SttHandle,
 } from '../../../src/lib/speech';
-import { MicButton } from '../../../src/ui/MicButton';
 import { colors } from '../../../src/theme/colors';
 
-type ChatBubble =
-  | { id: string; role: 'pet' | 'me'; text: string }
-  | { id: string; role: 'final'; story: FinalStory };
+type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 const INTRO_TEXT =
-  'Salut! Sunt Povestitorul. Hai sa cream o poveste impreuna. Imi spui despre ce vrei sa fie?';
-const INTRO_BUBBLE: ChatBubble = { id: 'intro', role: 'pet', text: INTRO_TEXT };
+  'Salut! Sunt Povestitorul. Hai sa cream o poveste impreuna. Despre ce vrei sa fie?';
 const FINISH_NOW_MESSAGE = 'Vreau sa termin povestea acum, te rog!';
 
-const QUICK_REPLIES = [
-  { label: 'Nu stiu, ajuta-ma 🤔', message: 'Nu stiu, da-mi tu cateva idei!' },
-  { label: 'Surprinde-ma! 🎲', message: 'Surprinde-ma cu ceva amuzant!' },
-];
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedG = Animated.createAnimatedComponent(G);
 
 export default function StoryCreate() {
   const qc = useQueryClient();
-  const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
-  const [bubbles, setBubbles] = useState<ChatBubble[]>([INTRO_BUBBLE]);
-  const [draft, setDraft] = useState('');
+  const [phase, setPhase] = useState<Phase>('idle');
+  const [aiText, setAiText] = useState('');
+  const [aiShown, setAiShown] = useState('');
+  const [userPartial, setUserPartial] = useState('');
+  const [userFinalEcho, setUserFinalEcho] = useState('');
   const [final, setFinal] = useState<FinalStory | null>(null);
-  const [progress, setProgress] = useState<StoryProgress>({ gathered: 0, total: 5 });
-  const [kbHeight, setKbHeight] = useState(0);
-  const sttBaseRef = useRef('');
+  const [hasSpoken, setHasSpoken] = useState(false);
+  const sttRef = useRef<SttHandle | null>(null);
+  const introPlayedRef = useRef(false);
+  const cancelledRef = useRef(false);
 
+  // Animated values pt orb si fundal
+  const orbPulse = useRef(new Animated.Value(1)).current;
+  const orbGlow = useRef(new Animated.Value(0.6)).current;
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+  const ring3 = useRef(new Animated.Value(0)).current;
+  const bgRotation = useRef(new Animated.Value(0)).current;
+
+  // Background mesh — rotatie infinita lenta indiferent de faza, da impresia
+  // ca "magia" e mereu in miscare.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
+    const loop = Animated.loop(
+      Animated.timing(bgRotation, {
+        toValue: 1,
+        duration: 60_000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [bgRotation]);
+
+  // Orb animation per faza
+  useEffect(() => {
+    orbPulse.stopAnimation();
+    orbGlow.stopAnimation();
+    ring1.stopAnimation();
+    ring2.stopAnimation();
+    ring3.stopAnimation();
+
+    if (phase === 'idle') {
+      // Breathe lent
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbPulse, {
+            toValue: 1.04,
+            duration: 1800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbPulse, {
+            toValue: 1,
+            duration: 1800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+
+    if (phase === 'listening') {
+      // Ripples expanding outward, pulse rapid pe orb
+      const pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbPulse, {
+            toValue: 1.12,
+            duration: 450,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbPulse, {
+            toValue: 1,
+            duration: 450,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      const rippleSeq = (anim: Animated.Value, delay: number) =>
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(delay),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 1600,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(anim, { toValue: 0, duration: 0, useNativeDriver: true }),
+          ]),
+        );
+      pulseLoop.start();
+      const r1 = rippleSeq(ring1, 0);
+      const r2 = rippleSeq(ring2, 533);
+      const r3 = rippleSeq(ring3, 1066);
+      r1.start();
+      r2.start();
+      r3.start();
+      return () => {
+        pulseLoop.stop();
+        r1.stop();
+        r2.stop();
+        r3.stop();
+      };
+    }
+
+    if (phase === 'thinking') {
+      // Glow oscileaza puternic — "se gandeste"
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbGlow, {
+            toValue: 1,
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbGlow, {
+            toValue: 0.4,
+            duration: 600,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+
+    if (phase === 'speaking') {
+      // Pulse rapid varied — ca o "voce" care varieaza
+      const pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbPulse, {
+            toValue: 1.08,
+            duration: 280,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbPulse, {
+            toValue: 0.96,
+            duration: 220,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbPulse, {
+            toValue: 1.04,
+            duration: 320,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orbPulse, {
+            toValue: 1,
+            duration: 200,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      pulseLoop.start();
+      return () => pulseLoop.stop();
+    }
+  }, [phase, orbPulse, orbGlow, ring1, ring2, ring3]);
+
+  // Typewriter AI: scriu aiText cuvant cu cuvant in aiShown
+  useEffect(() => {
+    if (!aiText) {
+      setAiShown('');
+      return;
+    }
+    setAiShown('');
+    const tokens = aiText.split(/(\s+)/);
+    let i = 0;
+    const id = setInterval(() => {
+      i = Math.min(i + 1, tokens.length);
+      setAiShown(tokens.slice(0, i).join(''));
+      if (i >= tokens.length) clearInterval(id);
+    }, 110);
+    return () => clearInterval(id);
+  }, [aiText]);
+
+  // Intro la mount — reda introul si auto-mic dupa ce termina
+  useEffect(() => {
+    if (introPlayedRef.current) return;
+    introPlayedRef.current = true;
+    void (async () => {
       try {
         const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
-        if (cancelled) return;
-        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+        await speakAndListen(INTRO_TEXT, absoluteAudioUrl(audioUrl));
       } catch {
-        if (cancelled) return;
-        speakDevice(INTRO_TEXT);
+        await speakAndListen(INTRO_TEXT, null);
       }
     })();
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
       stopDevice();
       void stopRemoteAudio();
+      sttRef.current?.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const sShow = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKbHeight(e.endCoordinates.height);
-    });
-    const sHide = Keyboard.addListener('keyboardDidHide', () => {
-      setKbHeight(0);
-    });
-    return () => {
-      sShow.remove();
-      sHide.remove();
-    };
-  }, []);
+  async function speakAndListen(text: string, audioUrl: string | null) {
+    cancelledRef.current = false;
+    setPhase('speaking');
+    setAiText(text);
+    setUserFinalEcho('');
+    try {
+      await playPetVoiceAwait(text, audioUrl);
+    } catch {
+      // ignoram — ramane typewriter-ul
+    }
+    setAiShown(text);
+    setHasSpoken(true);
+    setPhase('idle');
+    if (cancelledRef.current) return;
+    setTimeout(() => {
+      if (!cancelledRef.current) void startListen();
+    }, 250);
+  }
 
-  const bottomPad = kbHeight > 0 ? 6 : 10 + insets.bottom;
+  async function startListen() {
+    if (!isSttAvailable()) {
+      Alert.alert('Microfon indisponibil', 'Apasa pe input ca sa scrii.');
+      return;
+    }
+    const ok = await ensureMicPermission();
+    if (!ok) {
+      Alert.alert(
+        'Microfon necesar',
+        'Activeaza microfonul din Setari ca sa vorbesti cu Povestitorul.',
+      );
+      return;
+    }
+    if (cancelledRef.current) return;
+    stopDevice();
+    void stopRemoteAudio();
+    setUserPartial('');
+    setUserFinalEcho('');
+    setAiText('');
+    setAiShown('');
+    setPhase('listening');
+    sttRef.current = await startListening({
+      silenceTimeoutMs: 1500,
+      onInterim: (text) => setUserPartial(text),
+      onResult: (text) => {
+        sttRef.current = null;
+        const finalText = text.trim();
+        setUserPartial('');
+        if (!finalText) {
+          setPhase('idle');
+          return;
+        }
+        setUserFinalEcho(finalText);
+        setPhase('thinking');
+        send.mutate(finalText);
+      },
+      onError: (code, message) => {
+        sttRef.current = null;
+        setPhase('idle');
+        setUserPartial('');
+        if (code !== 'nomatch') {
+          Alert.alert('Hopa', message ?? 'N-am inteles. Mai incearca.');
+        }
+      },
+    });
+  }
+
+  function stopListen() {
+    sttRef.current?.stop();
+    sttRef.current = null;
+    setPhase('idle');
+    setUserPartial('');
+  }
+
+  function cancelSpeak() {
+    cancelledRef.current = true;
+    stopDevice();
+    void stopRemoteAudio();
+    setAiShown(aiText);
+    setPhase('idle');
+  }
 
   const send = useMutation({
     mutationFn: (msg: string) => postCreateChat(msg),
@@ -99,18 +343,20 @@ export default function StoryCreate() {
       if ('finalStory' in resp && resp.finalStory) {
         const story = resp.finalStory;
         setFinal(story);
-        setProgress({ gathered: 5, total: 5 });
-        setBubbles((b) => [...b, { id: `f-${story.id}`, role: 'final', story }]);
+        setPhase('speaking');
+        setAiText(story.body);
         qc.invalidateQueries({ queryKey: ['stories', 'mine'] });
         if (story.ttsError) Alert.alert('TTS error', story.ttsError);
-        void playPetVoice(story.body, absoluteAudioUrl(story.bodyAudioUrl));
+        void (async () => {
+          try {
+            await playPetVoiceAwait(story.body, absoluteAudioUrl(story.bodyAudioUrl));
+          } catch {}
+          setAiShown(story.body);
+          setPhase('idle');
+        })();
       } else if ('reply' in resp && resp.reply) {
-        const reply = resp.reply;
-        setBubbles((b) => [...b, { id: `p-${Date.now()}`, role: 'pet', text: reply }]);
-        if (resp.progress) setProgress(resp.progress);
-        void playPetVoice(reply, absoluteAudioUrl(resp.replyAudioUrl));
+        void speakAndListen(resp.reply, absoluteAudioUrl(resp.replyAudioUrl));
       }
-      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
     },
     onError: (err: any) => {
       const msg =
@@ -118,495 +364,533 @@ export default function StoryCreate() {
           ? 'Ai creat deja o poveste azi! Vino maine.'
           : err?.message ?? 'Povestitorul nu raspunde acum';
       Alert.alert('Hopa', msg);
+      setPhase('idle');
     },
   });
 
   const reset = useMutation({
     mutationFn: () => resetCreateDraft(),
     onSuccess: async () => {
-      setBubbles([INTRO_BUBBLE]);
-      setFinal(null);
-      setProgress({ gathered: 0, total: 5 });
+      cancelledRef.current = true;
+      sttRef.current?.stop();
+      sttRef.current = null;
       stopDevice();
       await stopRemoteAudio();
-      try {
-        const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
-        await playPetVoice(INTRO_TEXT, absoluteAudioUrl(audioUrl));
-      } catch {
-        speakDevice(INTRO_TEXT);
-      }
+      setFinal(null);
+      setHasSpoken(false);
+      setAiText('');
+      setAiShown('');
+      setUserFinalEcho('');
+      setUserPartial('');
+      setPhase('idle');
+      introPlayedRef.current = false;
+      // Re-trigger intro
+      void (async () => {
+        try {
+          const { audioUrl } = await ttsSynthesize(INTRO_TEXT);
+          await speakAndListen(INTRO_TEXT, absoluteAudioUrl(audioUrl));
+        } catch {
+          await speakAndListen(INTRO_TEXT, null);
+        }
+      })();
     },
   });
 
-  function sendMessage(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || send.isPending || final) return;
-    setBubbles((b) => [...b, { id: `m-${Date.now()}`, role: 'me', text: trimmed }]);
-    setDraft('');
-    send.mutate(trimmed);
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 50);
+  function onMicPress() {
+    if (final) return;
+    if (phase === 'listening') stopListen();
+    else if (phase === 'speaking') cancelSpeak();
+    else if (phase === 'idle') void startListen();
   }
 
-  const onSend = () => sendMessage(draft);
-  const onQuickReply = (msg: string) => sendMessage(msg);
-  const onFinishNow = () => {
+  function onFinishNow() {
     Alert.alert(
       'Termini povestea acum?',
-      'Povestitorul va folosi ce ai inventat pana acum si va completa restul cu ceva amuzant.',
+      'Povestitorul va folosi ce ati discutat si va completa restul.',
       [
         { text: 'Nu inca' },
-        { text: 'Da, termin', onPress: () => sendMessage(FINISH_NOW_MESSAGE) },
+        {
+          text: 'Da',
+          onPress: () => {
+            cancelSpeak();
+            stopListen();
+            setUserFinalEcho(FINISH_NOW_MESSAGE);
+            setPhase('thinking');
+            send.mutate(FINISH_NOW_MESSAGE);
+          },
+        },
       ],
     );
-  };
+  }
 
-  // Buton "termin acum" disponibil cand copilul a dat macar 2 raspunsuri.
-  const canFinishEarly = !final && progress.gathered >= 2 && progress.gathered < 5;
+  function onResetPress() {
+    Alert.alert('Poveste noua?', 'Pierzi conversatia curenta.', [
+      { text: 'Anuleaza' },
+      { text: 'Da, sterge', style: 'destructive', onPress: () => reset.mutate() },
+    ]);
+  }
+
+  function onReplay() {
+    if (!final) return;
+    void playPetVoice(final.body, absoluteAudioUrl(final.bodyAudioUrl));
+  }
+
+  const canFinish = !final && hasSpoken && phase !== 'thinking';
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <BackgroundMesh rotation={bgRotation} />
+
+      <View style={styles.topRow}>
+        <Pressable onPress={() => router.back()} hitSlop={14} style={styles.smallBtn}>
+          <Text style={styles.smallBtnText}>×</Text>
         </Pressable>
-        <View style={styles.headerCenter}>
-          <View style={styles.narratorBadge}>
-            <BookIcon />
-          </View>
-          <View>
-            <Text style={styles.headerTitle}>Povestitorul</Text>
-            <Text style={styles.headerSubtitle}>
-              {send.isPending ? 'scrie...' : final ? 'gata, salvata!' : 'creeaza poveste cu tine'}
-            </Text>
-          </View>
-        </View>
-        {bubbles.length > 1 && !final ? (
-          <Pressable
-            onPress={() => {
-              Alert.alert('Sigur?', 'Pierzi povestea pe care o lucrezi.', [
-                { text: 'Nu' },
-                { text: 'Da, sterge', style: 'destructive', onPress: () => reset.mutate() },
-              ]);
-            }}
-            hitSlop={12}
-            style={styles.resetBtn}
-          >
-            <Text style={styles.resetText}>↺</Text>
-          </Pressable>
-        ) : (
-          <View style={{ width: 44 }} />
-        )}
+        <Text style={styles.headerName}>Povestitorul</Text>
+        <Pressable onPress={onResetPress} hitSlop={14} style={styles.smallBtn}>
+          <Text style={styles.smallBtnText}>↺</Text>
+        </Pressable>
       </View>
 
-      <ProgressDots gathered={progress.gathered} total={progress.total} done={!!final} />
+      <View style={styles.body}>
+        <Orb
+          phase={phase}
+          orbPulse={orbPulse}
+          orbGlow={orbGlow}
+          ring1={ring1}
+          ring2={ring2}
+          ring3={ring3}
+        />
 
-      <View style={{ flex: 1, paddingBottom: kbHeight > 0 ? kbHeight + insets.bottom : 0 }}>
+        <Text style={styles.statusText}>{statusForPhase(phase, final)}</Text>
+
         <ScrollView
-          ref={scrollRef}
-          style={styles.chat}
-          contentContainerStyle={styles.chatContent}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          style={styles.transcriptScroll}
+          contentContainerStyle={styles.transcriptContent}
+          showsVerticalScrollIndicator={false}
         >
-          {bubbles.map((b) => (
-            <Bubble key={b.id} bubble={b} />
-          ))}
-          {send.isPending && (
-            <View style={styles.typing}>
-              <View style={styles.typingDots}>
-                <TypingDot delay={0} />
-                <TypingDot delay={150} />
-                <TypingDot delay={300} />
-              </View>
-              <Text style={styles.typingText}>Povestitorul se gandeste...</Text>
+          {final ? (
+            <View style={styles.finalCard}>
+              <Text style={styles.finalLabel}>POVESTEA TA</Text>
+              <Text style={styles.finalTitle}>{final.title}</Text>
+              <Text style={styles.finalBody}>{aiShown}</Text>
             </View>
+          ) : userPartial ? (
+            <Text style={styles.userTranscript}>{userPartial}</Text>
+          ) : phase === 'thinking' && userFinalEcho ? (
+            <Text style={styles.userTranscript}>{userFinalEcho}</Text>
+          ) : aiShown ? (
+            <Text style={styles.aiTranscript}>
+              {aiShown}
+              {phase === 'speaking' && <Text style={styles.cursor}>▍</Text>}
+            </Text>
+          ) : (
+            <Text style={styles.placeholder}>
+              Apasa pe microfon si spune-mi ce vrei sa inventam.
+            </Text>
           )}
         </ScrollView>
-
-        {final ? (
-          <View style={[styles.finalActions, { paddingBottom: kbHeight > 0 ? 14 : 14 + insets.bottom }]}>
-            <Pressable
-              onPress={() => {
-                void playPetVoice(final.body, absoluteAudioUrl(final.bodyAudioUrl));
-              }}
-              style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
-            >
-              <Text style={styles.replayText}>🔊  Asculta din nou</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.replace('/(app)/story')}
-              style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
-            >
-              <Text style={styles.doneText}>Gata, salvat in carnetel!</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <>
-            {!send.isPending && bubbles.length > 1 && bubbles[bubbles.length - 1]?.role === 'pet' && (
-              <View style={styles.quickRow}>
-                {QUICK_REPLIES.map((q) => (
-                  <Pressable
-                    key={q.label}
-                    onPress={() => onQuickReply(q.message)}
-                    disabled={send.isPending}
-                    style={({ pressed }) => [styles.chip, pressed && styles.btnPressed]}
-                  >
-                    <Text style={styles.chipText}>{q.label}</Text>
-                  </Pressable>
-                ))}
-                {canFinishEarly && (
-                  <Pressable
-                    onPress={onFinishNow}
-                    disabled={send.isPending}
-                    style={({ pressed }) => [
-                      styles.chip,
-                      styles.chipFinish,
-                      pressed && styles.btnPressed,
-                    ]}
-                  >
-                    <Text style={[styles.chipText, styles.chipFinishText]}>Termin acum ✓</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-            <View style={[styles.inputRow, { paddingBottom: bottomPad }]}>
-              <MicButton
-                disabled={send.isPending}
-                onStart={() => {
-                  sttBaseRef.current = draft;
-                }}
-                onTranscript={(text) => {
-                  const base = sttBaseRef.current;
-                  const sep = base && !base.endsWith(' ') ? ' ' : '';
-                  setDraft(base + sep + text);
-                }}
-              />
-              <TextInput
-                style={styles.input}
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="Scrie sau apasa pe microfon..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                maxLength={500}
-                editable={!send.isPending}
-              />
-              <Pressable
-                onPress={onSend}
-                disabled={!draft.trim() || send.isPending}
-                style={({ pressed }) => [
-                  styles.sendBtn,
-                  (!draft.trim() || send.isPending) && styles.sendBtnDisabled,
-                  pressed && styles.btnPressed,
-                ]}
-              >
-                <Text style={styles.sendText}>↑</Text>
-              </Pressable>
-            </View>
-          </>
-        )}
       </View>
+
+      {final ? (
+        <View style={styles.finalActions}>
+          <Pressable
+            onPress={onReplay}
+            style={({ pressed }) => [styles.replayBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.replayText}>🔊  Asculta din nou</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.replace('/(app)/story')}
+            style={({ pressed }) => [styles.doneBtn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.doneText}>Gata, salvat in carnetel!</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.controls}>
+          {canFinish && (
+            <Pressable
+              onPress={onFinishNow}
+              style={({ pressed }) => [styles.finishChip, pressed && styles.btnPressed]}
+            >
+              <Text style={styles.finishChipText}>Termin povestea ✓</Text>
+            </Pressable>
+          )}
+          <Pressable
+            onPress={onMicPress}
+            disabled={phase === 'thinking'}
+            style={({ pressed }) => [
+              styles.micBtn,
+              phase === 'listening' && styles.micBtnListening,
+              phase === 'speaking' && styles.micBtnSpeaking,
+              phase === 'thinking' && styles.micBtnDisabled,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <Text style={styles.micIcon}>{micIconForPhase(phase)}</Text>
+          </Pressable>
+          <Text style={styles.micLabel}>{micLabelForPhase(phase)}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
-function ProgressDots({
-  gathered,
-  total,
-  done,
+function statusForPhase(phase: Phase, final: FinalStory | null): string {
+  if (final) return 'Povestea ta · gata!';
+  switch (phase) {
+    case 'listening':
+      return 'Te ascult...';
+    case 'thinking':
+      return 'Povestitorul se gandeste...';
+    case 'speaking':
+      return 'Povestitorul vorbeste';
+    default:
+      return 'Apasa pe microfon';
+  }
+}
+
+function micIconForPhase(phase: Phase): string {
+  switch (phase) {
+    case 'listening':
+      return '⏹';
+    case 'speaking':
+      return '⏸';
+    case 'thinking':
+      return '...';
+    default:
+      return '🎤';
+  }
+}
+
+function micLabelForPhase(phase: Phase): string {
+  switch (phase) {
+    case 'listening':
+      return 'Opreste';
+    case 'speaking':
+      return 'Sari';
+    case 'thinking':
+      return ' ';
+    default:
+      return 'Vorbeste';
+  }
+}
+
+// ───────────── ORB ─────────────
+function Orb({
+  phase,
+  orbPulse,
+  orbGlow,
+  ring1,
+  ring2,
+  ring3,
 }: {
-  gathered: number;
-  total: number;
-  done: boolean;
+  phase: Phase;
+  orbPulse: Animated.Value;
+  orbGlow: Animated.Value;
+  ring1: Animated.Value;
+  ring2: Animated.Value;
+  ring3: Animated.Value;
 }) {
+  const SIZE = 220;
+  // Ripples cresc de la r=60 la r=110 cu fade
+  const ringScaleFrom = 60;
+  const ringScaleTo = 110;
+
   return (
-    <View style={styles.progressRow}>
-      {Array.from({ length: total }).map((_, i) => {
-        const filled = i < gathered;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              filled && styles.dotFilled,
-              done && styles.dotDone,
-            ]}
-          />
-        );
-      })}
-      <Text style={styles.progressLabel}>
-        {done ? 'Gata!' : `${gathered}/${total} elemente`}
-      </Text>
+    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
+      {/* Halo + ripples in SVG bottom layer */}
+      <Svg
+        width={SIZE}
+        height={SIZE}
+        viewBox="0 0 240 240"
+        style={StyleSheet.absoluteFillObject}
+      >
+        <Defs>
+          <RadialGradient id="orbGlow" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.5" />
+            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <AnimatedG opacity={orbGlow}>
+          <Circle cx="120" cy="120" r="115" fill="url(#orbGlow)" />
+        </AnimatedG>
+        {phase === 'listening' && (
+          <>
+            <Ripple anim={ring1} from={ringScaleFrom} to={ringScaleTo} />
+            <Ripple anim={ring2} from={ringScaleFrom} to={ringScaleTo} />
+            <Ripple anim={ring3} from={ringScaleFrom} to={ringScaleTo} />
+          </>
+        )}
+      </Svg>
+
+      {/* Orb core — Animated.View pt scale, SVG inauntru pt gradient lucios */}
+      <Animated.View
+        style={{
+          width: SIZE,
+          height: SIZE,
+          alignItems: 'center',
+          justifyContent: 'center',
+          transform: [{ scale: orbPulse }],
+        }}
+      >
+        <Svg width={SIZE} height={SIZE} viewBox="0 0 240 240">
+          <Defs>
+            <RadialGradient id="orbGradient" cx="0.5" cy="0.45" r="0.65">
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
+              <Stop offset="35%" stopColor="#FFD9B0" stopOpacity="0.95" />
+              <Stop offset="70%" stopColor={colors.accent} stopOpacity="0.85" />
+              <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0.6" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx="120" cy="120" r="78" fill="url(#orbGradient)" />
+          <Circle cx="98" cy="92" r="22" fill="#FFFFFF" opacity={0.55} />
+          <Circle cx="92" cy="86" r="8" fill="#FFFFFF" opacity={0.95} />
+        </Svg>
+      </Animated.View>
     </View>
   );
 }
 
-function Bubble({ bubble }: { bubble: ChatBubble }) {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(8)).current;
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 220,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [opacity, translateY]);
-
-  if (bubble.role === 'final') {
-    return (
-      <Animated.View style={[styles.finalCard, { opacity, transform: [{ translateY }] }]}>
-        <Text style={styles.finalLabel}>POVESTEA TA</Text>
-        <Text style={styles.finalTitle}>{bubble.story.title}</Text>
-        <Text style={styles.finalBody}>{bubble.story.body}</Text>
-      </Animated.View>
-    );
-  }
-
-  const isMe = bubble.role === 'me';
+function Ripple({
+  anim,
+  from,
+  to,
+}: {
+  anim: Animated.Value;
+  from: number;
+  to: number;
+}) {
+  const radius = anim.interpolate({ inputRange: [0, 1], outputRange: [from, to] });
+  const opacity = anim.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, 0.5, 0],
+  });
   return (
-    <Animated.View
-      style={[
-        styles.bubbleRow,
-        isMe && styles.bubbleRowMe,
-        { opacity, transform: [{ translateY }] },
-      ]}
-    >
-      <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubblePet]}>
-        <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{bubble.text}</Text>
-      </View>
-    </Animated.View>
+    <AnimatedCircle
+      cx="120"
+      cy="120"
+      r={radius}
+      stroke={colors.accent}
+      strokeWidth={2}
+      fill="none"
+      opacity={opacity}
+    />
   );
 }
 
-function TypingDot({ delay }: { delay: number }) {
-  const opacity = useRef(new Animated.Value(0.3)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacity, {
-          toValue: 0.3,
-          duration: 350,
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [delay, opacity]);
-  return <Animated.View style={[styles.typingDot, { opacity }]} />;
-}
-
-function BookIcon() {
+// ───────────── BACKGROUND MESH ─────────────
+function BackgroundMesh({ rotation }: { rotation: Animated.Value }) {
+  const rotateZ = rotation.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
   return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path
-        d="M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4Z"
-        stroke="#FFFFFF"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <Path
-        d="M20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z"
-        stroke="#FFFFFF"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </Svg>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
+        <Defs>
+          <RadialGradient id="bg1" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.35" />
+            <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="bg2" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0%" stopColor="#7B3FBF" stopOpacity="0.32" />
+            <Stop offset="100%" stopColor="#7B3FBF" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="bg3" cx="0.5" cy="0.5" r="0.5">
+            <Stop offset="0%" stopColor="#3FA3BF" stopOpacity="0.28" />
+            <Stop offset="100%" stopColor="#3FA3BF" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Path d="M0 0 H400 V800 H0 Z" fill={colors.bg} />
+      </Svg>
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { transform: [{ rotate: rotateZ }] },
+        ]}
+      >
+        <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
+          <Defs>
+            <RadialGradient id="g1" cx="0.5" cy="0.5" r="0.5">
+              <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.45" />
+              <Stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
+            </RadialGradient>
+            <RadialGradient id="g2" cx="0.5" cy="0.5" r="0.5">
+              <Stop offset="0%" stopColor="#9B3FBF" stopOpacity="0.4" />
+              <Stop offset="100%" stopColor="#9B3FBF" stopOpacity="0" />
+            </RadialGradient>
+            <RadialGradient id="g3" cx="0.5" cy="0.5" r="0.5">
+              <Stop offset="0%" stopColor="#3F8FBF" stopOpacity="0.35" />
+              <Stop offset="100%" stopColor="#3F8FBF" stopOpacity="0" />
+            </RadialGradient>
+          </Defs>
+          <Circle cx="120" cy="180" r="280" fill="url(#g1)" />
+          <Circle cx="320" cy="320" r="320" fill="url(#g2)" />
+          <Circle cx="180" cy="600" r="300" fill="url(#g3)" />
+        </Svg>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  headerRow: {
+
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  narratorBadge: {
+  smallBtn: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: colors.accent,
+    backgroundColor: 'rgba(255,255,255,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  headerSubtitle: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
-  resetBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resetText: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
-
-  progressRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.border,
-  },
-  dotFilled: { backgroundColor: colors.accent },
-  dotDone: { backgroundColor: colors.success },
-  progressLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
+  smallBtnText: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  headerName: {
+    color: colors.text,
+    fontSize: 14,
     fontWeight: '700',
-    marginLeft: 'auto',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
 
-  chat: { flex: 1 },
-  chatContent: { paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
-
-  bubbleRow: { alignItems: 'flex-start' },
-  bubbleRowMe: { alignItems: 'flex-end' },
-  bubble: {
-    maxWidth: '82%',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubblePet: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
-  bubbleMe: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
-  bubbleText: { color: colors.text, fontSize: 16, lineHeight: 22 },
-  bubbleTextMe: { color: '#FFFFFF' },
-
-  typing: {
-    flexDirection: 'row',
+  body: {
+    flex: 1,
     alignItems: 'center',
-    gap: 8,
-    paddingLeft: 12,
-    paddingTop: 4,
+    paddingTop: 24,
+    paddingHorizontal: 24,
+    gap: 16,
   },
-  typingDots: { flexDirection: 'row', gap: 4 },
-  typingDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
+  statusText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginTop: 8,
   },
-  typingText: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
+
+  transcriptScroll: {
+    flex: 1,
+    width: '100%',
+  },
+  transcriptContent: {
+    paddingTop: 12,
+    paddingBottom: 24,
+    minHeight: 100,
+  },
+  aiTranscript: {
+    color: colors.text,
+    fontSize: 22,
+    lineHeight: 30,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  userTranscript: {
+    color: colors.accent,
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  placeholder: {
+    color: colors.textMuted,
+    fontSize: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
+    paddingTop: 20,
+  },
+  cursor: { color: colors.accent, fontWeight: '900' },
 
   finalCard: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderRadius: 22,
     padding: 18,
-    gap: 8,
+    gap: 6,
     borderWidth: 2,
     borderColor: colors.accent,
-    marginTop: 8,
   },
   finalLabel: {
     color: colors.accent,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
+    textAlign: 'center',
   },
-  finalTitle: { color: colors.text, fontSize: 22, fontWeight: '800' },
-  finalBody: { color: colors.text, fontSize: 16, lineHeight: 24 },
+  finalTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  finalBody: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: 'left',
+    marginTop: 6,
+  },
 
-  quickRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+  controls: {
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 8,
+    paddingBottom: 24,
+    gap: 8,
   },
-  chip: {
-    backgroundColor: colors.card,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+  finishChip: {
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.accent,
+    marginBottom: 8,
   },
-  chipText: { color: colors.text, fontSize: 13, fontWeight: '700' },
-  chipFinish: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipFinishText: { color: '#FFFFFF' },
-
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: colors.card,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: colors.text,
-    maxHeight: 120,
-    minHeight: 44,
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  finishChipText: { color: colors.accent, fontSize: 14, fontWeight: '800' },
+  micBtn: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 8,
   },
-  sendBtnDisabled: { opacity: 0.4 },
-  sendText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  micBtnListening: { backgroundColor: '#E55353' },
+  micBtnSpeaking: { backgroundColor: colors.textMuted },
+  micBtnDisabled: { opacity: 0.6 },
+  micIcon: { fontSize: 36 },
+  micLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 4,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
   btnPressed: { transform: [{ scale: 0.95 }], opacity: 0.85 },
 
   finalActions: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    paddingTop: 6,
     gap: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
   },
   replayBtn: {
-    backgroundColor: colors.card,
+    backgroundColor: 'rgba(255,255,255,0.85)',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
