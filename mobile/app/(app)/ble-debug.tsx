@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Location from 'expo-location';
-import { presence, type CoWalkSession, type Peer, type PresenceSnapshot } from '../../src/ble/presence';
+import { presence, type ClientSession, type Peer, type PresenceSnapshot } from '../../src/ble/presence';
 import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
 import { colors } from '../../src/theme/colors';
 
@@ -40,10 +40,12 @@ export default function BleDebug() {
   const [snapshot, setSnapshot] = useState<PresenceSnapshot>({
     peers: [],
     sessions: [],
+    myUserId: null,
     myToken: null,
     advertiseFailed: false,
     advertiseLastError: null,
     bleState: 'Unknown',
+    socketConnected: false,
     scanCounters: {
       devicesSeen: 0,
       withServiceUuid: 0,
@@ -189,6 +191,7 @@ export default function BleDebug() {
     advertiseFailed,
     advertiseLastError,
     scanCounters,
+    socketConnected,
   } = snapshot;
 
   return (
@@ -227,6 +230,17 @@ export default function BleDebug() {
               )}
             </View>
           )}
+          <View style={styles.kv}>
+            <Text style={styles.kvK}>Socket</Text>
+            <Text
+              style={[
+                styles.kvV,
+                { color: socketConnected ? colors.success : colors.textMuted },
+              ]}
+            >
+              {socketConnected ? 'CONECTAT' : 'OFFLINE'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.statusCard}>
@@ -343,7 +357,7 @@ export default function BleDebug() {
             {active ? 'Niciun prieten in fereastra de co-walk.' : 'Porneste scanarea ca sa detectezi.'}
           </Text>
         ) : (
-          sessions.map((s) => <SessionRow key={s.userId} session={s} now={now} />)
+          sessions.map((s) => <SessionRow key={s.id} session={s} now={now} />)
         )}
 
         <Text style={[styles.sectionTitle, { marginTop: 16, paddingHorizontal: 20 }]}>
@@ -374,35 +388,56 @@ function logColor(level: LogLevel) {
   }
 }
 
-function SessionRow({ session, now }: { session: CoWalkSession; now: number }) {
-  const elapsed = session.lastSeenAt - session.startedAt;
+function SessionRow({ session, now }: { session: ClientSession; now: number }) {
+  const me = session.members.find((m) => m.isMe);
+  const others = session.members.filter((m) => !m.isMe);
+  const myJoinedAt = me?.joinedAtClient ?? session.startedAtClient;
+  const myAwarded = me?.awarded ?? false;
+  const elapsed = Math.max(0, now - myJoinedAt);
   const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
   const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
-  const staleSec = Math.floor((now - session.lastSeenAt) / 1000);
+  const headline =
+    others.length === 0
+      ? 'Sesiune'
+      : others.length === 1
+        ? others[0]!.name
+        : `${others[0]!.name} +${others.length - 1}`;
   return (
     <View style={styles.sessionRow}>
       <View style={styles.rowHeader}>
-        <Text style={styles.rowName}>{session.name}</Text>
-        <Text style={[styles.rowLevel, session.committed && { color: colors.success }]}>
-          {session.committed ? 'Acordat ✓' : `${formatDuration(elapsed)} / 10:00`}
+        <Text style={styles.rowName}>{headline}</Text>
+        <Text style={[styles.rowLevel, myAwarded && { color: colors.success }]}>
+          {myAwarded ? 'Acordat ✓' : `${formatDuration(elapsed)} / 10:00`}
         </Text>
       </View>
       <View style={styles.progressTrack}>
         <View
           style={[
             styles.progressFill,
-            { width: `${ratio * 100}%`, backgroundColor: session.committed ? colors.success : colors.accent },
+            {
+              width: `${ratio * 100}%`,
+              backgroundColor: myAwarded ? colors.success : colors.accent,
+            },
           ]}
         />
       </View>
       <View style={styles.rowMeta}>
         <Text style={styles.metaItem}>
-          {session.committed
-            ? 'XP acordat azi'
-            : `mai sunt ${formatDuration(remainingMs)}`}
+          {myAwarded ? 'XP acordat' : `mai sunt ${formatDuration(remainingMs)}`}
         </Text>
-        <Text style={styles.metaItem}>vazut acum {staleSec}s</Text>
+        <Text style={styles.metaItem}>{session.members.length} membri</Text>
       </View>
+      {others.map((m) => {
+        const memberElapsed = Math.max(0, now - m.joinedAtClient);
+        return (
+          <View key={m.userId} style={styles.rowMeta}>
+            <Text style={styles.metaItem}>• {m.name}</Text>
+            <Text style={styles.metaItem}>
+              {m.awarded ? 'XP ✓' : formatDuration(memberElapsed)}
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }

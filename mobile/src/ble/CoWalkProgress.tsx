@@ -3,17 +3,32 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { router } from 'expo-router';
 import { usePresence } from './usePresence';
 import { COWALK_MIN_DURATION_MS } from './constants';
+import type { ClientSession } from './presence';
 import { colors } from '../theme/colors';
 
 // Card vizibil oriunde in app cand user-ul are co-walk-uri active.
-// Tap → deschide ecranul Nearby unde poate vedea detalii. Refresha la 1s
-// pt animatia barii de progres si timer.
+// Sursa de adevar: server (prin socket). Refresha la 1s pt animatia barii.
 
 function formatDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// Returneaza joinedAt-ul propriu (sau startedAt ca fallback) si lista celorlalti.
+function readSession(s: ClientSession): {
+  myJoinedAtClient: number;
+  myAwarded: boolean;
+  others: ClientSession['members'];
+} {
+  const me = s.members.find((m) => m.isMe);
+  const others = s.members.filter((m) => !m.isMe);
+  return {
+    myJoinedAtClient: me?.joinedAtClient ?? s.startedAtClient,
+    myAwarded: me?.awarded ?? false,
+    others,
+  };
 }
 
 export function CoWalkProgressCard() {
@@ -28,14 +43,19 @@ export function CoWalkProgressCard() {
 
   if (sessions.length === 0) return null;
 
-  // Pe Home aratam doar prima sesiune (cea mai veche / cea mai aproape de
-  // commit), restul sunt vizibile pe Nearby. Daca user-ul are 2+, il rugam
-  // sa intre pe Nearby pt detalii.
   const primary = sessions[0];
-  const elapsed = primary.lastSeenAt - primary.startedAt;
-  const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
+  if (!primary) return null;
+  const { myJoinedAtClient, myAwarded, others } = readSession(primary);
+  const elapsed = now - myJoinedAtClient;
+  const ratio = Math.max(0, Math.min(1, elapsed / COWALK_MIN_DURATION_MS));
   const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
-  const staleSec = Math.floor((now - primary.lastSeenAt) / 1000);
+
+  const otherNames = others.map((o) => o.name).filter(Boolean);
+  const headline = otherNames.length === 0
+    ? 'Co-walk in derulare'
+    : otherNames.length === 1
+      ? `Co-walk cu ${otherNames[0]}`
+      : `Co-walk cu ${otherNames[0]} +${otherNames.length - 1}`;
 
   return (
     <Pressable
@@ -44,11 +64,11 @@ export function CoWalkProgressCard() {
     >
       <View style={styles.header}>
         <Text style={styles.title} numberOfLines={1}>
-          🚶 Co-walk cu {primary.name}
-          {sessions.length > 1 ? ` +${sessions.length - 1}` : ''}
+          🚶 {headline}
+          {sessions.length > 1 ? ` · +${sessions.length - 1} sesiuni` : ''}
         </Text>
         <Text style={styles.timer}>
-          {primary.committed ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
+          {myAwarded ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
         </Text>
       </View>
       <View style={styles.track}>
@@ -57,17 +77,15 @@ export function CoWalkProgressCard() {
             styles.fill,
             {
               width: `${ratio * 100}%`,
-              backgroundColor: primary.committed ? colors.success : colors.accent,
+              backgroundColor: myAwarded ? colors.success : colors.accent,
             },
           ]}
         />
       </View>
       <Text style={styles.hint}>
-        {primary.committed
+        {myAwarded
           ? 'XP acordat azi · Continua sa stati impreuna'
-          : staleSec > 30
-            ? `Apropie-te! (vazut acum ${staleSec}s)`
-            : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
+          : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
       </Text>
     </Pressable>
   );

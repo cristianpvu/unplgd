@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   BleManager,
   ScanMode,
@@ -8,6 +7,7 @@ import {
   type Subscription,
 } from 'react-native-ble-plx';
 import { Pedometer } from 'expo-sensors';
+import type { Socket } from 'socket.io-client';
 import { blePresence } from 'ble-presence';
 import {
   UNPLGD_PROXIMITY_UUID,
@@ -16,20 +16,18 @@ import {
   RESOLVE_INTERVAL_MS,
   HEARTBEAT_INTERVAL_MS,
   TICK_INTERVAL_MS,
-  COWALK_MIN_DURATION_MS,
-  COWALK_RESUME_GAP_MS,
-  COWALK_MIN_STEPS,
-  COWALK_MIN_RSSI_STDDEV_DBM,
-  COWALK_MIN_RSSI_SAMPLES,
-  RSSI_SAMPLES_CAP,
 } from './constants';
 import {
   getMyBleToken,
   resolveBleTokens,
-  postCoWalk,
   postPresenceHeartbeat,
-  type CoWalkResult,
+  getCurrentCoWalk,
+  type ServerSession,
 } from '../api/ble';
+import { getMe } from '../api/me';
+import { getSocket } from '../lib/socket';
+
+const REPORT_INTERVAL_MS = 30_000;
 
 export type Peer = {
   token: string;
@@ -42,27 +40,40 @@ export type Peer = {
   lastSeenAt: number;
 };
 
-export type CoWalkSession = {
-  userId: string;
-  name: string;
-  startedAt: number;
-  lastSeenAt: number;
-  committed: boolean;
-  startStepCount: number;
-  rssiSamples: number[];
+// Sesiune asa cum o vede UI-ul. Sursa de adevar e backend-ul (prin socket);
+// timestamp-urile sunt deja convertite la ceasul local pentru render direct.
+export type ClientSession = {
+  id: string;
+  startedAtClient: number;
+  // Toti membrii (inclusiv eu). Fiecare cu joinedAt convertit la ceasul local.
+  members: Array<{
+    userId: string;
+    name: string;
+    level: number;
+    joinedAtClient: number;
+    awarded: boolean;
+    isMe: boolean;
+  }>;
 };
 
-export type CoWalkEvent =
-  | { type: 'completed'; userId: string; name: string; durationSec: number; result: CoWalkResult }
-  | { type: 'failed'; userId: string; name: string; durationSec: number; error: string };
+export type CoWalkEvent = {
+  type: 'completed';
+  userId: string;
+  name: string;
+  durationSec: number;
+  squadSize: number;
+  isMe: boolean;
+};
 
 export type PresenceSnapshot = {
   peers: Peer[];
+  myUserId: string | null;
   myToken: string | null;
-  sessions: CoWalkSession[];
+  sessions: ClientSession[];
   advertiseFailed: boolean;
   advertiseLastError: string | null;
   bleState: string;
+  socketConnected: boolean;
   scanCounters: {
     devicesSeen: number;
     withServiceUuid: number;
@@ -73,53 +84,46 @@ export type PresenceSnapshot = {
 type StateListener = (state: PresenceSnapshot) => void;
 type EventListener = (e: CoWalkEvent) => void;
 
-function dayKeyUTC(d: Date = new Date()): string {
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(
-    d.getUTCDate(),
-  ).padStart(2, '0')}`;
-}
-const committedKey = (day: string, userId: string) => `cowalk:committed:${day}:${userId}`;
-
-// Decodeaza ASCII text dintr-un buffer base64. ble-plx returneaza serviceData
-// ca base64. Token-ul nostru e 8 chars hex ASCII.
+// Decodeaza ASCII text dintr-un buffer base64. Token-ul e 8 chars hex ASCII.
 function base64AsciiDecode(b64: string): string | null {
   try {
-    // RN Hermes are atob; aici e cea mai mica dependinta.
-    const bin = globalThis.atob(b64);
-    return bin;
+    return globalThis.atob(b64);
   } catch {
     return null;
   }
 }
 
-// Token-ul e 8 chars hex (ex "a3f2bc91"). Verificare format pt siguranta —
-// un peer corupt sau alt app care emite acelasi service UUID nu trebuie sa ne
-// strice peer map-ul.
 function isValidToken(s: string | null | undefined): s is string {
   return !!s && /^[0-9a-fA-F]{8}$/.test(s);
 }
 
-function stdDev(values: number[]): number {
-  if (values.length < 2) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  const variance = values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length;
-  return Math.sqrt(variance);
-}
+// State server-side per sesiune, cum il tinem local. RSSI samples si
+// startStepCount sunt acumulatori pentru `cowalk:report` periodic.
+type ServerSideSession = {
+  id: string;
+  startedAt: number;
+  serverClockOffset: number;
+  members: Map<
+    string,
+    { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
+  >;
+  startStepCount: number;
+  rssiBufferUnreported: number[];
+};
 
 class PresenceEngine {
   private manager: BleManager | null = null;
   private myToken: string | null = null;
+  private myUserId: string | null = null;
   private peers = new Map<string, Peer>();
-  private sessions = new Map<string, CoWalkSession>();
-  private committedToday = new Set<string>();
-  private currentDay = dayKeyUTC();
+  private serverSessions = new Map<string, ServerSideSession>();
   private stateListeners = new Set<StateListener>();
   private eventListeners = new Set<EventListener>();
-  private inflightCommits = new Set<string>();
   private running = false;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private resolveTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reportTimer: ReturnType<typeof setInterval> | null = null;
   private pedometerSub: { remove: () => void } | null = null;
   private pedometerAvailable = false;
   private myStepCount = 0;
@@ -130,6 +134,8 @@ class PresenceEngine {
   private scanDevicesSeen = 0;
   private scanWithServiceUuid = 0;
   private scanTokenExtracted = 0;
+  private socket: Socket | null = null;
+  private socketHandlersAttached = false;
 
   isRunning() {
     return this.running;
@@ -170,13 +176,6 @@ class PresenceEngine {
 
     const manager = this.getManager();
 
-    try {
-      await this.loadCommittedToday();
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn('[presence] loadCommittedToday failed:', e);
-    }
-
     this.pedometerAvailable = await Pedometer.isAvailableAsync().catch(() => false);
     this.myStepCount = 0;
     if (this.pedometerAvailable) {
@@ -201,8 +200,16 @@ class PresenceEngine {
     }
     this.myToken = token;
 
-    // Asteapta starea PoweredOn — startDeviceScan / startAdvertising arunca
-    // daca radio-ul n-a primit inca didUpdateState.
+    // Aflam propriul userId — folosit ca sa filtram event-urile cowalk:completed
+    // (sa stim daca XP-ul a venit la noi sau la alt membru).
+    try {
+      const me = await getMe();
+      this.myUserId = me.id;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] getMe failed:', e);
+    }
+
     if (this.bleState !== 'PoweredOn') {
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => resolve(), 5000);
@@ -222,8 +229,6 @@ class PresenceEngine {
     this.advertiseLastError = null;
     try {
       await blePresence.startAdvertising(UNPLGD_PROXIMITY_UUID, token);
-      // Verifica nativ daca chiar advertising-ul a pornit. Pe Android promise-ul
-      // se resolve sincron dar onStartFailure poate veni cativa ms mai tarziu.
       setTimeout(() => {
         void blePresence.getState().then((s) => {
           if (!s.isAdvertising) {
@@ -243,8 +248,6 @@ class PresenceEngine {
       this.advertiseLastError = e?.message ?? String(e);
     }
 
-    // Scan: ble-plx pe ambele platforme cu filtru pe Service UUID Unplgd.
-    // Asa primim DOAR device-uri Unplgd, fara a scana zgomotul radio.
     try {
       manager.startDeviceScan(
         [UNPLGD_PROXIMITY_UUID],
@@ -275,15 +278,21 @@ class PresenceEngine {
       throw new Error(`Scanare BLE: ${e?.message ?? e}`);
     }
 
+    // Conectam socket-ul + subscriem la event-urile co-walk. Reconnect-urile
+    // sunt automate (vezi lib/socket.ts); la fiecare connect re-fetch-uim
+    // /presence/cowalk/current ca sa preluam state-ul curent.
+    try {
+      await this.connectSocketAndSubscribe();
+    } catch (e: any) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] socket connect failed:', e?.message ?? e);
+    }
+
     this.tickTimer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     this.resolveTimer = setInterval(() => void this.resolveUnknownTokens(), RESOLVE_INTERVAL_MS);
-    this.heartbeatTimer = setInterval(
-      () => void this.sendHeartbeat(),
-      HEARTBEAT_INTERVAL_MS,
-    );
-    // Trimite primul heartbeat imediat (best-effort): cand auto-start ruleaza,
-    // user-ul poate fi deja langa un peer si nu vrem sa asteptam 25s pana
-    // backend-ul afla.
+    this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
+    this.reportTimer = setInterval(() => void this.sendCoWalkReports(), REPORT_INTERVAL_MS);
+
     void this.sendHeartbeat();
     this.running = true;
     this.emit();
@@ -294,9 +303,11 @@ class PresenceEngine {
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.resolveTimer) clearInterval(this.resolveTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    if (this.reportTimer) clearInterval(this.reportTimer);
     this.tickTimer = null;
     this.resolveTimer = null;
     this.heartbeatTimer = null;
+    this.reportTimer = null;
     try {
       this.manager?.stopDeviceScan();
     } catch {}
@@ -307,6 +318,7 @@ class PresenceEngine {
       this.pedometerSub.remove();
       this.pedometerSub = null;
     }
+    this.detachSocketHandlers();
     this.pedometerAvailable = false;
     this.myStepCount = 0;
     this.advertiseFailed = false;
@@ -314,32 +326,224 @@ class PresenceEngine {
     this.scanWithServiceUuid = 0;
     this.scanTokenExtracted = 0;
     this.peers.clear();
-    this.sessions.clear();
+    this.serverSessions.clear();
     this.myToken = null;
     this.emit();
   }
 
-  private async loadCommittedToday() {
-    const today = dayKeyUTC();
-    this.currentDay = today;
-    this.committedToday.clear();
+  private async connectSocketAndSubscribe() {
+    const s = await getSocket();
+    this.socket = s;
+    if (this.socketHandlersAttached) return;
+    this.socketHandlersAttached = true;
+
+    s.on('cowalk:started', (p: any) => this.onStarted(p));
+    s.on('cowalk:joined', (p: any) => this.onJoined(p));
+    s.on('cowalk:left', (p: any) => this.onLeft(p));
+    s.on('cowalk:ended', (p: any) => this.onEnded(p));
+    s.on('cowalk:completed', (p: any) => this.onCompleted(p));
+
+    // La fiecare connect (initial sau reconnect), re-sincronizam state-ul
+    // server-driven. Daca am pierdut event-uri cat am fost offline, acum le
+    // recuperam din /presence/cowalk/current.
+    s.on('connect', () => {
+      void this.refetchCurrentSession();
+      this.emit();
+    });
+    s.on('disconnect', () => this.emit());
+
+    if (s.connected) {
+      await this.refetchCurrentSession();
+    }
+  }
+
+  private detachSocketHandlers() {
+    if (!this.socket || !this.socketHandlersAttached) return;
+    this.socket.off('cowalk:started');
+    this.socket.off('cowalk:joined');
+    this.socket.off('cowalk:left');
+    this.socket.off('cowalk:ended');
+    this.socket.off('cowalk:completed');
+    this.socket.off('connect');
+    this.socket.off('disconnect');
+    this.socketHandlersAttached = false;
+  }
+
+  private async refetchCurrentSession() {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const todayPrefix = `cowalk:committed:${today}:`;
-      const staleKeys: string[] = [];
-      for (const k of keys) {
-        if (k.startsWith(todayPrefix)) {
-          this.committedToday.add(k.slice(todayPrefix.length));
-        } else if (k.startsWith('cowalk:committed:')) {
-          staleKeys.push(k);
+      const { serverNow, session } = await getCurrentCoWalk();
+      const offset = Date.now() - serverNow;
+      if (!session) {
+        this.serverSessions.clear();
+      } else {
+        this.applyServerSession(session, offset);
+        // Daca nu mai avem alte sesiuni, le ignoram (model curent: max 1 sesiune
+        // per user pe backend).
+        for (const id of [...this.serverSessions.keys()]) {
+          if (id !== session.id) this.serverSessions.delete(id);
         }
       }
-      if (staleKeys.length) await AsyncStorage.multiRemove(staleKeys);
-    } catch {}
+      this.emit();
+    } catch (e) {
+      // best-effort
+    }
+  }
+
+  // Aplica un snapshot complet de sesiune server-side (start/refetch).
+  private applyServerSession(s: ServerSession, offset: number) {
+    const existing = this.serverSessions.get(s.id);
+    const startStepCount = existing?.startStepCount ?? this.myStepCount;
+    const rssiBufferUnreported = existing?.rssiBufferUnreported ?? [];
+    const members = new Map<
+      string,
+      { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
+    >();
+    for (const p of s.participants) {
+      members.set(p.userId, {
+        userId: p.userId,
+        name: p.name,
+        level: p.level,
+        joinedAt: p.joinedAt,
+        awarded: p.awarded,
+      });
+    }
+    this.serverSessions.set(s.id, {
+      id: s.id,
+      startedAt: s.startedAt,
+      serverClockOffset: offset,
+      members,
+      startStepCount,
+      rssiBufferUnreported,
+    });
+  }
+
+  private onStarted(p: {
+    sessionId: string;
+    startedAt: number;
+    serverNow: number;
+    participants: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+  }) {
+    const offset = Date.now() - p.serverNow;
+    const members = new Map<
+      string,
+      { userId: string; name: string; level: number; joinedAt: number; awarded: boolean }
+    >();
+    for (const m of p.participants) {
+      members.set(m.userId, {
+        userId: m.userId,
+        name: m.name,
+        level: m.level,
+        joinedAt: m.joinedAt,
+        awarded: false,
+      });
+    }
+    this.serverSessions.set(p.sessionId, {
+      id: p.sessionId,
+      startedAt: p.startedAt,
+      serverClockOffset: offset,
+      members,
+      startStepCount: this.myStepCount,
+      rssiBufferUnreported: [],
+    });
+    this.emit();
+  }
+
+  private onJoined(p: {
+    sessionId: string;
+    serverNow: number;
+    participant: { userId: string; joinedAt: number; name: string; level: number };
+    participants: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+  }) {
+    let session = this.serverSessions.get(p.sessionId);
+    const offset = Date.now() - p.serverNow;
+    if (!session) {
+      // Eu sunt cel care intra in session-ul altora — initializam ca un started.
+      this.onStarted({
+        sessionId: p.sessionId,
+        startedAt: p.participants[0]?.joinedAt ?? Date.now(),
+        serverNow: p.serverNow,
+        participants: p.participants,
+      });
+      return;
+    }
+    session.serverClockOffset = offset;
+    for (const m of p.participants) {
+      const existing = session.members.get(m.userId);
+      session.members.set(m.userId, {
+        userId: m.userId,
+        name: m.name,
+        level: m.level,
+        joinedAt: m.joinedAt,
+        awarded: existing?.awarded ?? false,
+      });
+    }
+    this.emit();
+  }
+
+  private onLeft(p: {
+    sessionId: string;
+    userId: string;
+    remaining: Array<{ userId: string; joinedAt: number; name: string; level: number }>;
+  }) {
+    const session = this.serverSessions.get(p.sessionId);
+    if (!session) return;
+    if (this.myUserId && p.userId === this.myUserId) {
+      // Eu am iesit din sesiune (timeout BLE / app suspendat) → curat local.
+      this.serverSessions.delete(p.sessionId);
+      this.emit();
+      return;
+    }
+    session.members.delete(p.userId);
+    this.emit();
+  }
+
+  private onEnded(p: { sessionId: string }) {
+    this.serverSessions.delete(p.sessionId);
+    this.emit();
+  }
+
+  private onCompleted(p: {
+    sessionId: string;
+    userId: string;
+    durationSec: number;
+    squadSize: number;
+  }) {
+    const session = this.serverSessions.get(p.sessionId);
+    if (session) {
+      const m = session.members.get(p.userId);
+      if (m) m.awarded = true;
+    }
+    const isMe = !!this.myUserId && p.userId === this.myUserId;
+    const name = session?.members.get(p.userId)?.name ?? 'Prieten';
+    this.fireEvent({
+      type: 'completed',
+      userId: p.userId,
+      name,
+      durationSec: p.durationSec,
+      squadSize: p.squadSize,
+      isMe,
+    });
+    this.emit();
+  }
+
+  private async sendCoWalkReports() {
+    const s = this.socket;
+    if (!s || !s.connected) return;
+    for (const session of this.serverSessions.values()) {
+      const stepsTotal = Math.max(0, this.myStepCount - session.startStepCount);
+      const samples = session.rssiBufferUnreported.slice();
+      session.rssiBufferUnreported = [];
+      // emit fire-and-forget; ack-ul nu blocheaza nimic.
+      s.emit('cowalk:report', {
+        sessionId: session.id,
+        steps: stepsTotal,
+        rssiSamples: samples,
+      });
+    }
   }
 
   // Scan callback: peer Unplgd vazut. Token-ul vine fie in localName (iOS-emis)
-  // fie in serviceData[SERVICE_UUID] (Android-emis). Incercam ambele path-uri.
+  // fie in serviceData[SERVICE_UUID] (Android-emis).
   private handleDevice(device: Device) {
     this.scanDevicesSeen++;
     const rssi = device.rssi;
@@ -349,21 +553,15 @@ class PresenceEngine {
 
     let token: string | null = null;
 
-    // Path 1: iOS-emis. CBAdvertisementDataLocalNameKey → device.localName.
     if (isValidToken(device.localName)) {
       token = device.localName.toLowerCase();
     }
-
-    // Path 2: Android-emis. ServiceData[SERVICE_UUID] e bytes ASCII ai token-ului.
     if (!token && device.serviceData) {
-      // ble-plx normalizeaza UUID-urile la lowercase 36-char form.
       const lowerUuid = UNPLGD_PROXIMITY_UUID.toLowerCase();
       const b64 = device.serviceData[lowerUuid] ?? device.serviceData[UNPLGD_PROXIMITY_UUID];
       if (b64) {
         const ascii = base64AsciiDecode(b64);
-        if (isValidToken(ascii)) {
-          token = ascii.toLowerCase();
-        }
+        if (isValidToken(ascii)) token = ascii.toLowerCase();
       }
     }
 
@@ -377,6 +575,7 @@ class PresenceEngine {
     if (existing) {
       existing.rssi = rssi;
       existing.lastSeenAt = now;
+      this.collectRssiForSessions(existing.userId, rssi);
     } else {
       this.peers.set(token, {
         token,
@@ -387,136 +586,31 @@ class PresenceEngine {
     }
   }
 
+  // Daca peer-ul e in vreuna din sesiunile mele, acumulez RSSI in buffer-ul
+  // de raportat. Backend-ul foloseste stddev-ul ca anti-cheat — semnal ca
+  // exista miscare relativa intre telefoane.
+  private collectRssiForSessions(userId: string | undefined, rssi: number) {
+    if (!userId) return;
+    for (const session of this.serverSessions.values()) {
+      if (session.members.has(userId)) {
+        session.rssiBufferUnreported.push(rssi);
+      }
+    }
+  }
+
   private tick() {
     const now = Date.now();
-
-    const today = dayKeyUTC();
-    if (today !== this.currentDay) {
-      this.sessions.clear();
-      void this.loadCommittedToday();
-    }
-
-    for (const peer of this.peers.values()) {
-      if (!peer.userId || !peer.name || !peer.isFriend) continue;
-      if (this.committedToday.has(peer.userId)) continue;
-      const existing = this.sessions.get(peer.userId);
-      if (existing) {
-        if (peer.lastSeenAt > existing.lastSeenAt) {
-          existing.lastSeenAt = peer.lastSeenAt;
-          existing.rssiSamples.push(peer.rssi);
-          if (existing.rssiSamples.length > RSSI_SAMPLES_CAP) existing.rssiSamples.shift();
-        }
-      } else {
-        this.sessions.set(peer.userId, {
-          userId: peer.userId,
-          name: peer.name,
-          startedAt: peer.firstSeenAt,
-          lastSeenAt: peer.lastSeenAt,
-          committed: false,
-          startStepCount: this.myStepCount,
-          rssiSamples: [peer.rssi],
-        });
-      }
-    }
-
-    for (const [userId, s] of this.sessions) {
-      if (s.committed) continue;
-      const gap = now - s.lastSeenAt;
-      if (gap > COWALK_RESUME_GAP_MS) {
-        this.sessions.delete(userId);
-        continue;
-      }
-      const duration = s.lastSeenAt - s.startedAt;
-      if (duration >= COWALK_MIN_DURATION_MS && !this.inflightCommits.has(userId)) {
-        this.inflightCommits.add(userId);
-        void this.commitCoWalk(s);
-      }
-    }
-
     for (const [token, peer] of this.peers) {
       if (now - peer.lastSeenAt > STALE_AFTER_MS) {
         this.peers.delete(token);
       }
     }
-
     this.emit();
   }
 
-  private async commitCoWalk(s: CoWalkSession) {
-    const now = Date.now();
-    const startedAtIso = new Date(s.startedAt).toISOString();
-    const durationSec = Math.floor((s.lastSeenAt - s.startedAt) / 1000);
-    const steps = Math.max(0, this.myStepCount - s.startStepCount);
-    const rssiStdDev = stdDev(s.rssiSamples);
-
-    const squadFriendIds: string[] = [];
-    for (const [otherId, other] of this.sessions) {
-      if (otherId === s.userId) continue;
-      const otherDuration = other.lastSeenAt - other.startedAt;
-      const recent = now - other.lastSeenAt <= COWALK_RESUME_GAP_MS;
-      if (recent && otherDuration >= COWALK_MIN_DURATION_MS) {
-        squadFriendIds.push(otherId);
-      }
-    }
-
-    const reject = (reason: string) => {
-      this.sessions.delete(s.userId);
-      this.fireEvent({ type: 'failed', userId: s.userId, name: s.name, durationSec, error: reason });
-      this.inflightCommits.delete(s.userId);
-    };
-    if (!this.pedometerAvailable) {
-      return reject('Contorul de pasi indisponibil pe acest device');
-    }
-    if (steps < COWALK_MIN_STEPS) {
-      return reject(`Pasi insuficienti (${steps} < ${COWALK_MIN_STEPS})`);
-    }
-    if (
-      s.rssiSamples.length < COWALK_MIN_RSSI_SAMPLES ||
-      rssiStdDev < COWALK_MIN_RSSI_STDDEV_DBM
-    ) {
-      return reject(`Proximitate prea statica (rssi stddev ${rssiStdDev.toFixed(2)} dBm)`);
-    }
-
-    try {
-      const result = await postCoWalk({
-        friendUserId: s.userId,
-        durationSec,
-        startedAt: startedAtIso,
-        stepsMe: steps,
-        rssiStdDev: Number(rssiStdDev.toFixed(3)),
-        squadFriendIds,
-      });
-      s.committed = true;
-      this.committedToday.add(s.userId);
-      try {
-        await AsyncStorage.setItem(committedKey(this.currentDay, s.userId), '1');
-      } catch {}
-      this.fireEvent({
-        type: 'completed',
-        userId: s.userId,
-        name: s.name,
-        durationSec,
-        result,
-      });
-      this.emit();
-    } catch (e: any) {
-      this.sessions.delete(s.userId);
-      this.fireEvent({
-        type: 'failed',
-        userId: s.userId,
-        name: s.name,
-        durationSec,
-        error: e?.message ?? 'co-walk post failed',
-      });
-    } finally {
-      this.inflightCommits.delete(s.userId);
-    }
-  }
-
   // Trimite la backend lista prietenilor pe care ii vedem ACUM. Backend-ul
-  // foloseste asta pentru mutual visibility check la commit co-walk: respinge
-  // co-walk-ul daca peer-ul nu ne-a vazut recent. Best-effort — esecul nu
-  // blocheaza nimic local, doar urmatorul heartbeat va incerca din nou.
+  // foloseste asta pentru: (1) mutual visibility la commit co-walk; (2)
+  // tick-ul de session co-walk care creeaza/extinde sesiunile prin socket.
   private async sendHeartbeat() {
     const peerIds: string[] = [];
     for (const peer of this.peers.values()) {
@@ -526,6 +620,12 @@ class PresenceEngine {
       await postPresenceHeartbeat(peerIds);
     } catch {
       // network jitter / token expirat / backend down — ignoram
+    }
+    // Daca socket-ul nu e conectat (initial connect a esuat sau reconnect-ul
+    // automat al socket.io n-a reusit inca), incercam aici. La urmatorul
+    // succes ne reatasam ascultatorii si re-fetch-uim sesiunea curenta.
+    if (!this.socket?.connected) {
+      void this.connectSocketAndSubscribe().catch(() => {});
     }
   }
 
@@ -550,14 +650,39 @@ class PresenceEngine {
     } catch {}
   }
 
+  private buildClientSessions(): ClientSession[] {
+    const out: ClientSession[] = [];
+    for (const s of this.serverSessions.values()) {
+      const startedAtClient = s.startedAt + s.serverClockOffset;
+      const members = [...s.members.values()].map((m) => ({
+        userId: m.userId,
+        name: m.name,
+        level: m.level,
+        joinedAtClient: m.joinedAt + s.serverClockOffset,
+        awarded: m.awarded,
+        isMe: !!this.myUserId && m.userId === this.myUserId,
+      }));
+      // Sortam: eu primul, apoi dupa joinedAt ascendent ca participantii noi
+      // sa apara mai jos in lista.
+      members.sort((a, b) => {
+        if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
+        return a.joinedAtClient - b.joinedAtClient;
+      });
+      out.push({ id: s.id, startedAtClient, members });
+    }
+    return out.sort((a, b) => a.startedAtClient - b.startedAtClient);
+  }
+
   private snapshot(): PresenceSnapshot {
     return {
       peers: [...this.peers.values()].sort((a, b) => a.firstSeenAt - b.firstSeenAt),
+      myUserId: this.myUserId,
       myToken: this.myToken,
-      sessions: [...this.sessions.values()].sort((a, b) => a.startedAt - b.startedAt),
+      sessions: this.buildClientSessions(),
       advertiseFailed: this.advertiseFailed,
       advertiseLastError: this.advertiseLastError,
       bleState: this.bleState,
+      socketConnected: !!this.socket?.connected,
       scanCounters: {
         devicesSeen: this.scanDevicesSeen,
         withServiceUuid: this.scanWithServiceUuid,

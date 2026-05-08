@@ -1,30 +1,39 @@
 import { useEffect, useState } from 'react';
-import { presence, type Peer, type CoWalkSession, type CoWalkEvent } from './presence';
+import {
+  presence,
+  type Peer,
+  type ClientSession,
+  type CoWalkEvent,
+} from './presence';
 import { requestBlePermissions, type BlePermissionResult } from './permissions';
 
 export type PresenceState = {
   active: boolean;
   permission: BlePermissionResult | 'unknown';
+  myUserId: string | null;
   myToken: string | null;
   peers: Peer[];
-  sessions: CoWalkSession[];
+  sessions: ClientSession[];
   error: string | null;
   // Advertising-ul (CBPeripheralManager pe iOS, BluetoothLeAdvertiser pe
   // Android) poate sa pice independent de scan: BT off, permisiune refuzata,
   // pachet prea mare. Scan-ul continua, dar user-ul e invizibil pt ceilalti
   // pana se reactiveaza.
   advertiseFailed: boolean;
+  socketConnected: boolean;
 };
 
 export function usePresence() {
   const [state, setState] = useState<PresenceState>({
     active: presence.isRunning(),
     permission: 'unknown',
+    myUserId: null,
     myToken: null,
     peers: [],
     sessions: [],
     error: null,
     advertiseFailed: false,
+    socketConnected: false,
   });
 
   useEffect(() => {
@@ -32,10 +41,12 @@ export function usePresence() {
       setState((s) => ({
         ...s,
         peers: snap.peers,
+        myUserId: snap.myUserId,
         myToken: snap.myToken,
         sessions: snap.sessions,
         active: presence.isRunning(),
         advertiseFailed: snap.advertiseFailed,
+        socketConnected: snap.socketConnected,
       }));
     });
     return unsub;
@@ -71,7 +82,8 @@ export function usePresence() {
 }
 
 // Hook separat pt UI care vrea sa reactioneze la evenimente discrete (toast,
-// confetti) — emite o singura data pe completion/failure, nu la fiecare tick.
+// confetti) — emite o singura data pe completion (event-ul vine direct din
+// socket-ul backend-ului).
 export function useCoWalkEvents(onEvent: (e: CoWalkEvent) => void) {
   useEffect(() => {
     return presence.subscribeEvents(onEvent);

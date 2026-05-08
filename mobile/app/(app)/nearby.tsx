@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePresence } from '../../src/ble/usePresence';
-import type { CoWalkSession, Peer } from '../../src/ble/presence';
+import type { ClientSession, Peer } from '../../src/ble/presence';
 import { COWALK_MIN_DURATION_MS } from '../../src/ble/constants';
 import { addFriend } from '../../src/api/friends';
 import { ApiError } from '../../src/api/client';
@@ -115,7 +115,7 @@ export default function Nearby() {
           <>
             <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
             {sessions.map((s) => (
-              <SessionCard key={s.userId} session={s} now={now} />
+              <SessionCard key={s.id} session={s} now={now} />
             ))}
           </>
         )}
@@ -147,20 +147,31 @@ export default function Nearby() {
   );
 }
 
-function SessionCard({ session, now }: { session: CoWalkSession; now: number }) {
-  const elapsed = session.lastSeenAt - session.startedAt;
+function SessionCard({ session, now }: { session: ClientSession; now: number }) {
+  const me = session.members.find((m) => m.isMe);
+  const others = session.members.filter((m) => !m.isMe);
+  const myJoinedAt = me?.joinedAtClient ?? session.startedAtClient;
+  const myAwarded = me?.awarded ?? false;
+  const elapsed = Math.max(0, now - myJoinedAt);
   const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
   const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
-  const staleSec = Math.floor((now - session.lastSeenAt) / 1000);
-  const fillColor = session.committed ? colors.success : colors.accent;
+  const fillColor = myAwarded ? colors.success : colors.accent;
+
+  const headline =
+    others.length === 0
+      ? 'Sesiune'
+      : others.length === 1
+        ? others[0]!.name
+        : `${others[0]!.name} + ${others.length - 1}`;
+
   return (
     <View style={styles.sessionCard}>
       <View style={styles.sessionHeader}>
         <Text style={styles.sessionName} numberOfLines={1}>
-          🚶 {session.name}
+          🚶 {headline}
         </Text>
         <Text style={[styles.sessionTimer, { color: fillColor }]}>
-          {session.committed ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
+          {myAwarded ? '✓ Acordat' : `${formatDuration(elapsed)} / 10:00`}
         </Text>
       </View>
       <View style={styles.sessionTrack}>
@@ -169,12 +180,27 @@ function SessionCard({ session, now }: { session: CoWalkSession; now: number }) 
         />
       </View>
       <Text style={styles.sessionHint}>
-        {session.committed
+        {myAwarded
           ? 'XP acordat azi · Co-walk reusit'
-          : staleSec > 30
-            ? `Apropie-te! Vazut ultima oara acum ${staleSec}s`
-            : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
+          : `Mai sunt ${formatDuration(remainingMs)} pana la XP`}
       </Text>
+      {others.length > 0 && (
+        <View style={styles.membersList}>
+          {others.map((m) => {
+            const memberElapsed = Math.max(0, now - m.joinedAtClient);
+            return (
+              <View key={m.userId} style={styles.memberRow}>
+                <Text style={styles.memberName} numberOfLines={1}>
+                  • {m.name}
+                </Text>
+                <Text style={styles.memberMeta}>
+                  {m.awarded ? '✓ XP' : `${formatDuration(memberElapsed)}`}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -312,6 +338,21 @@ const styles = StyleSheet.create({
   },
   sessionFill: { height: '100%', borderRadius: 999 },
   sessionHint: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
+  membersList: {
+    marginTop: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    gap: 4,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberName: { color: colors.text, fontSize: 12, fontWeight: '600', flex: 1 },
+  memberMeta: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
   emptyBox: { alignItems: 'center', gap: 12, paddingVertical: 40 },
   empty: { color: colors.textMuted, textAlign: 'center', paddingHorizontal: 20 },
 

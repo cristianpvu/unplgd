@@ -8,14 +8,16 @@ export type BleResolved = {
   isFriend: boolean;
 };
 
-export type CoWalkResult = {
-  dailyAwarded: boolean;
-  me: { alreadyAwarded: boolean; amount: number; newXp: number; newLevel: number; leveledUp: boolean };
-  friend: { alreadyAwarded: boolean; amount: number; newXp: number; newLevel: number; leveledUp: boolean };
-  durationSec: number;
-  startedAt: string;
-  squadSize: number;
-  squadMultiplier: number;
+export type ServerSession = {
+  id: string;
+  startedAt: number;
+  participants: Array<{
+    userId: string;
+    joinedAt: number;
+    awarded: boolean;
+    name: string;
+    level: number;
+  }>;
 };
 
 export function getMyBleToken(): Promise<{ token: string }> {
@@ -29,23 +31,19 @@ export function resolveBleTokens(tokens: string[]): Promise<{ resolved: BleResol
   });
 }
 
-export function postCoWalk(args: {
-  friendUserId: string;
-  durationSec: number;
-  startedAt: string;
-  stepsMe: number;
-  rssiStdDev: number;
-  squadFriendIds: string[];
-}): Promise<CoWalkResult> {
-  return api<CoWalkResult>('/interactions/co-walk', { method: 'POST', body: args });
-}
-
 // Heartbeat de prezenta — trimite lista de prieteni pe care ii vezi ACUM prin
-// BLE. Backend-ul stocheaza in Redis cu TTL 90s si verifica mutual visibility
-// la commit co-walk (refuza XP daca peer-ul nu te-a vazut).
-export function postPresenceHeartbeat(peers: string[]): Promise<{ ok: boolean; count: number }> {
-  return api<{ ok: boolean; count: number }>('/presence/heartbeat', {
+// BLE. Backend-ul stocheaza in Redis cu TTL 90s SI rulează tick-ul de session
+// co-walk: identifica mutual visibility, creeaza/extinde sesiuni si emite
+// evenimente prin socket.
+export function postPresenceHeartbeat(peers: string[]): Promise<{ ok: boolean; count: number; sessionEvents: number }> {
+  return api<{ ok: boolean; count: number; sessionEvents: number }>('/presence/heartbeat', {
     method: 'POST',
     body: { peers },
   });
+}
+
+// Returneaza sesiunea curenta (daca exista) — folosit la reconnect socket
+// sau cold-start ca sa preluam UI-ul de unde a ramas.
+export function getCurrentCoWalk(): Promise<{ serverNow: number; session: ServerSession | null }> {
+  return api<{ serverNow: number; session: ServerSession | null }>('/presence/cowalk/current');
 }
