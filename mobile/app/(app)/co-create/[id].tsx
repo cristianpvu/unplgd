@@ -28,15 +28,18 @@ export default function CoCreationSession() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const qc = useQueryClient();
 
+  // Update-urile vin via socket (`co-creation:status_changed`) — listener-ul
+  // global din `_layout.tsx` invalideaza query-ul. Pastram un polling de
+  // safety-net la 10s in PROCESSING in caz ca socket-ul e disconnectat
+  // (mobile pe metro/3G slab) — altfel utilizatorul ar putea ramane blocat
+  // pe ecranul "AI lucreaza".
   const session = useQuery({
     queryKey: ['co-creations', id],
     queryFn: () => getCoCreation(id!),
     enabled: !!id,
-    // Polling activ doar in PROCESSING. Restul starilor sunt terminale (COMPLETED,
-    // REJECTED, EXPIRED, FAILED) sau nu se schimba singure (ACTIVE).
     refetchInterval: (query) => {
       const s = query.state.data?.status;
-      return s === 'PROCESSING' ? 2000 : false;
+      return s === 'PROCESSING' ? 10000 : false;
     },
   });
 

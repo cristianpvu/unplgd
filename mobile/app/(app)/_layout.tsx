@@ -6,11 +6,17 @@ import { presence } from '../../src/ble/presence';
 import { requestBlePermissions } from '../../src/ble/permissions';
 import { CoWalkToast } from '../../src/ble/CoWalkToast';
 import { useCowalkEnabled, loadCowalkEnabled } from '../../src/ble/cowalkPref';
+import { useCoCreationNotifier } from '../../src/coCreation/useCoCreationNotifier';
 import { colors } from '../../src/theme/colors';
 
 export default function AppLayout() {
   const { token, ready } = useAuth();
   const cowalkEnabled = useCowalkEnabled();
+
+  // Asculta global pt invitatii co-creation — cand prietenul A scaneaza
+  // bratara/telefonul user-ului curent, backend-ul emite `co-creation:joined`
+  // si suntem redirectati direct la sesiune.
+  useCoCreationNotifier(ready && !!token);
 
   useEffect(() => {
     if (ready && !token) {

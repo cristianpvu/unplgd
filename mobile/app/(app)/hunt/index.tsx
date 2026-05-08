@@ -179,11 +179,7 @@ export default function HuntEntry() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         {devMode && (
-          <Section title="Mod test (dev)">
-            <Text style={styles.muted}>
-              Creeaza o sesiune fictiva la coords tale curente cu monstri la 4-13m. AR-ul porneste
-              imediat ce intri in sesiune — fara sa fii in parc adevarat.
-            </Text>
+          <Section title="Mod test">
             {locError ? (
               <Text style={styles.error}>{locError}</Text>
             ) : !coords ? (
@@ -199,7 +195,7 @@ export default function HuntEntry() {
                 ]}
               >
                 <Text style={styles.startText}>
-                  {devQuickMut.isPending ? 'Se creeaza...' : 'Porneste sesiune de test aici'}
+                  {devQuickMut.isPending ? 'Se creeaza...' : 'Start test'}
                 </Text>
               </Pressable>
             )}

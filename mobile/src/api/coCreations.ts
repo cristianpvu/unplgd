@@ -40,6 +40,13 @@ export function startCoCreation(friendId: string, storyId: string) {
   });
 }
 
+export function startCoCreationByTag(tagUid: string, storyId: string) {
+  return api<CoCreation>('/co-creations/start-by-tag', {
+    method: 'POST',
+    body: { tagUid, storyId },
+  });
+}
+
 export function submitCoCreation(
   id: string,
   image: string,
