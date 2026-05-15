@@ -62,26 +62,34 @@ async function speciesDto(s: {
   };
 }
 
-// GET /pets/me — pet activ + colectia de carduri detinute. Lazy-creeaza pet-ul
-// daca lipseste (defensiv pt conturi vechi inainte de feature).
+// GET /pets/me — pet activ + colectia de carduri detinute + specia default
+// ("Buddy") pe care toti userii o au mereu, indiferent de carduri. Lazy-creeaza
+// pet-ul daca lipseste (defensiv pt conturi vechi inainte de feature).
 petsRouter.get('/me', async (req, res, next) => {
   try {
     const userId = req.userId!;
     await ensureDefaultPet(userId);
 
-    const pet = await prisma.pet.findUniqueOrThrow({
-      where: { userId },
-      include: { species: true },
-    });
+    const [pet, cards, defaultSpecies] = await Promise.all([
+      prisma.pet.findUniqueOrThrow({
+        where: { userId },
+        include: { species: true },
+      }),
+      prisma.nfcPetCard.findMany({
+        where: { ownerId: userId },
+        include: { species: true },
+        orderBy: { claimedAt: 'asc' },
+      }),
+      prisma.petSpecies.findFirst({ where: { isDefault: true } }),
+    ]);
 
-    const cards = await prisma.nfcPetCard.findMany({
-      where: { ownerId: userId },
-      include: { species: true },
-      orderBy: { claimedAt: 'asc' },
-    });
+    if (!defaultSpecies) {
+      throw serverError('no_default_species', 'Specia default nu e seedata');
+    }
 
-    const [petSpecies, cardSpecies] = await Promise.all([
+    const [petSpecies, defaultSpeciesDto, cardSpecies] = await Promise.all([
       speciesDto(pet.species),
+      speciesDto(defaultSpecies),
       Promise.all(cards.map((c) => speciesDto(c.species))),
     ]);
 
@@ -92,6 +100,8 @@ petsRouter.get('/me', async (req, res, next) => {
         bondXp: pet.bondXp,
         species: petSpecies,
       },
+      defaultSpecies: defaultSpeciesDto,
+      defaultEquipped: pet.speciesId === defaultSpecies.id,
       cards: cards.map((c, i) => ({
         id: c.id,
         uid: c.uid,
@@ -173,6 +183,40 @@ petsRouter.post('/scan', async (req, res, next) => {
         claimedAt: updatedCard.claimedAt,
         equipped: true,
         species: cardSpeciesDto,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /pets/equip-default — revino la Buddy default. Nu necesita card —
+// specia default e disponibila tuturor userilor mereu. Resetam si numele
+// la "Buddy" (cel default) ca sa nu pastram nickname-ul vechi de card.
+petsRouter.post('/equip-default', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+
+    const defaultSpecies = await prisma.petSpecies.findFirst({
+      where: { isDefault: true },
+    });
+    if (!defaultSpecies) {
+      throw serverError('no_default_species', 'Specia default nu e seedata');
+    }
+
+    await ensureDefaultPet(userId);
+    const pet = await prisma.pet.update({
+      where: { userId },
+      data: { speciesId: defaultSpecies.id, name: 'Buddy' },
+      include: { species: true },
+    });
+
+    res.json({
+      pet: {
+        id: pet.id,
+        name: pet.name,
+        bondXp: pet.bondXp,
+        species: await speciesDto(pet.species),
       },
     });
   } catch (e) {
