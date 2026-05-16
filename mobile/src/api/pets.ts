@@ -29,6 +29,8 @@ export type PetCardDto = {
 export type PetMeResponse = {
   pet: PetDto;
   cards: PetCardDto[];
+  defaultSpecies: PetSpeciesDto;
+  defaultEquipped: boolean;
 };
 
 export type ScanResponse = {
@@ -42,6 +44,10 @@ export type EquipResponse = {
   card: PetCardDto;
 };
 
+export type EquipDefaultResponse = {
+  pet: PetDto;
+};
+
 export function getMyPet() {
   return api<PetMeResponse>('/pets/me');
 }
@@ -52,6 +58,10 @@ export function scanPetCard(uid: string) {
 
 export function equipPetCard(cardId: string) {
   return api<EquipResponse>('/pets/equip', { method: 'POST', body: { cardId } });
+}
+
+export function equipDefaultPet() {
+  return api<EquipDefaultResponse>('/pets/equip-default', { method: 'POST' });
 }
 
 export function renamePetCard(cardId: string, nickname: string) {
