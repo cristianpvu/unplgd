@@ -242,9 +242,13 @@ petsRouter.post('/equip', async (req, res, next) => {
     if (!card) throw notFound('card_not_found', 'Card inexistent');
     if (card.ownerId !== userId) throw forbidden('not_owner', 'Cardul nu e al tau');
 
+    // La switch intre carduri, numele Pet-ului trebuie sa reflecte cardul
+    // nou echipat — fara asta, utilizatorul pastreaza "Groot" cand schimba
+    // la "Luna". Preferinta: nickname-ul cardului → numele speciei.
+    const newName = card.nickname ?? card.species.name;
     const pet = await prisma.pet.update({
       where: { userId },
-      data: { speciesId: card.speciesId },
+      data: { speciesId: card.speciesId, name: newName },
       include: { species: true },
     });
     // Chat-ul pet-ului anterior nu mai are sens cu specia noua. Stergem ca
