@@ -13,7 +13,7 @@ import {
   effectiveJoinedAt,
 } from '../lib/cowalk/session.js';
 import { emitSyncEvents, resolveParticipantInfo } from '../lib/socket/cowalkEmit.js';
-import { awardCowalkParticipant } from '../lib/cowalk/award.js';
+import { awardCowalkParticipant, awardCowalkTick } from '../lib/cowalk/award.js';
 export const presenceRouter = Router();
 presenceRouter.use(requireAuth);
 
@@ -61,16 +61,29 @@ presenceRouter.post('/heartbeat', async (req, res, next) => {
       }
     }
 
-    const { events } = await tickHeartbeat(me, mutualPeers, Date.now(), async (args) => {
-      await awardCowalkParticipant({
-        userId: args.userId,
-        peerIds: args.peerIds,
-        sessionId: args.sessionId,
-        durationSec: args.durationSec,
-        steps: args.steps,
-        rssiStdDev: args.rssiStdDev,
-      });
-    });
+    const { events } = await tickHeartbeat(
+      me,
+      mutualPeers,
+      Date.now(),
+      async (args) => {
+        await awardCowalkParticipant({
+          userId: args.userId,
+          peerIds: args.peerIds,
+          sessionId: args.sessionId,
+          durationSec: args.durationSec,
+          steps: args.steps,
+          rssiStdDev: args.rssiStdDev,
+        });
+      },
+      async (args) => {
+        await awardCowalkTick({
+          userId: args.userId,
+          sessionId: args.sessionId,
+          minute: args.minute,
+          amount: args.amount,
+        });
+      },
+    );
     await emitSyncEvents(events);
 
     res.json({ ok: true, count: cleaned.length, sessionEvents: events.length });
@@ -138,6 +151,7 @@ presenceRouter.get('/cowalk/current', async (req, res, next) => {
             // Effective joinedAt — vezi cowalkEmit.thin() pt rationament.
             joinedAt: effectiveJoinedAt(p),
             awarded: p.awarded,
+            totalTickXp: p.totalTickXp,
             name: u?.name ?? 'Unknown',
             level: u?.level ?? 1,
             avatarSvg: u?.avatarSvg ?? null,

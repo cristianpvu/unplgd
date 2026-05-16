@@ -142,6 +142,16 @@ export type CowalkFailedPayload = {
   rssiStdDev: number;
 };
 
+export type CowalkTickPayload = {
+  sessionId: string;
+  userId: string;
+  minute: number;
+  deltaXp: number;
+  totalTickXp: number;
+  tier: number;
+  rate: number;
+};
+
 export async function emitSyncEvents(events: SyncEvent[]): Promise<void> {
   if (events.length === 0) return;
   let io;
@@ -212,6 +222,17 @@ export async function emitSyncEvents(events: SyncEvent[]): Promise<void> {
           rssiSamples: ev.rssiSamples,
           rssiStdDev: ev.rssiStdDev,
         } satisfies CowalkFailedPayload);
+        break;
+      case 'tick':
+        io.to(rooms).emit('cowalk:tick', {
+          sessionId: ev.sessionId,
+          userId: ev.userId,
+          minute: ev.minute,
+          deltaXp: ev.deltaXp,
+          totalTickXp: ev.totalTickXp,
+          tier: ev.tier,
+          rate: ev.rate,
+        } satisfies CowalkTickPayload);
         break;
     }
   }

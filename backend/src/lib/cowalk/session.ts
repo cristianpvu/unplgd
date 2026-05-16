@@ -34,14 +34,40 @@ export async function filterRecentlyLeft(userIds: string[]): Promise<Set<string>
 
 export const PARTICIPANT_GRACE_MS = 90_000;
 export const COWALK_MIN_DURATION_MS = 10 * 60 * 1000;
-export const COWALK_MIN_STEPS = 200;
+// Prag total de pasi pana la primul award. Tinut conservator dar nu strict —
+// pedometrul Android e burst-y si raporteaza adesea sub iOS pentru aceeasi
+// plimbare. La 10 min de mers normal, 100 pasi se ating fara probleme.
+export const COWALK_MIN_STEPS = 100;
 export const COWALK_MIN_RSSI_STDDEV_DBM = 1.5;
 export const COWALK_MIN_RSSI_SAMPLES = 30;
 export const RSSI_SAMPLES_CAP = 1200;
 // Grace dupa pragul de 10min in care anti-cheat-ul mai poate trece (user e
-// aproape de 200 pasi etc). Dupa expirare, sesiunea esueaza explicit cu motiv,
+// aproape de 100 pasi etc). Dupa expirare, sesiunea esueaza explicit cu motiv,
 // in loc sa curga timerul la infinit fara award.
 export const COWALK_FAIL_GRACE_MS = 60_000;
+
+// Early-fail anti-cheat: daca dupa 5 min de sesiune user-ul are sub pragul
+// proportional de pasi, considerat clar "telefon pe masa" si fail-uim instant.
+// Asa elibram user-ul rapid sa porneasca o sesiune noua daca a fost greseala.
+export const COWALK_EARLY_CHECK_MS = 5 * 60 * 1000;
+export const COWALK_EARLY_MIN_STEPS = 25;
+
+// XP escaladator dupa primul award (la 10 min). User-ul primeste XP/minut
+// pe paliere. Cap la palierul 4 (15 XP/min) — peste 30 min sesiunile sunt
+// gratificate la rata maxima dar fara inflatie suplimentara.
+export const COWALK_XP_TICK_INTERVAL_MS = 60 * 1000;
+export const COWALK_XP_TIERS = [
+  { rate: 0 }, //  0-10 min: baseline award la 10 min via XP_REWARDS.CO_WALK
+  { rate: 5 }, // 10-20 min: +5 XP/min
+  { rate: 10 }, // 20-30 min: +10 XP/min
+  { rate: 15 }, // 30+ min: +15 XP/min (cap)
+] as const;
+
+export function xpTierForElapsed(effectiveElapsed: number): { rate: number; tier: number } {
+  const minutes = Math.floor(effectiveElapsed / 60_000);
+  const tierIdx = Math.min(Math.floor(minutes / 10), COWALK_XP_TIERS.length - 1);
+  return { rate: COWALK_XP_TIERS[tierIdx]!.rate, tier: tierIdx };
+}
 
 export type CowalkFailReason = 'steps' | 'rssi_static' | 'rssi_samples';
 
@@ -63,6 +89,14 @@ export type Participant = {
   // Scade din durata efectiva la award (anti-cheat: nu poti pacali pragul de
   // 10 min stand departe).
   totalPausedMs: number;
+  // Ultimul minut absolut (1-indexed, dupa effectiveJoinedAt) pentru care am
+  // acordat XP-tick. 0 = inca nu am intrat in faza de tick (sub 10 min sau
+  // baseline necastigat). 10 = baseline acordat, nu inca tick-uri. >10 =
+  // tick-uri acumulate.
+  lastTickXpMinute: number;
+  // Suma XP acordat in tick-uri (exclude baseline). Folosit de UI sa afiseze
+  // un contor "XP din co-walk: 42" langa avatar.
+  totalTickXp: number;
 };
 
 // Un participant pausat pastreaza tot state-ul Participant (joinedAt, steps,
@@ -126,6 +160,8 @@ function newParticipant(userId: string, now: number): Participant {
     rssiSamples: [],
     awarded: false,
     totalPausedMs: 0,
+    lastTickXpMinute: 0,
+    totalTickXp: 0,
   };
 }
 
@@ -219,6 +255,21 @@ export type SyncEvent = { recipients: string[] } & (
       rssiSamples: number;
       rssiStdDev: number;
     }
+  | {
+      type: 'tick';
+      sessionId: string;
+      userId: string;
+      // Minutul absolut acoperit de event (15 = minutul 15 din sesiune).
+      minute: number;
+      // XP acordat pentru minutul asta (rata palierului curent).
+      deltaXp: number;
+      // Suma XP tick acumulata de la inceputul sesiunii (exclude baseline).
+      totalTickXp: number;
+      // Index palier 0..N (UI il foloseste sa schimbe culoarea/animatia).
+      tier: number;
+      // Rata curenta (XP/min) — UI o afiseaza ca etichetă.
+      rate: number;
+    }
 );
 
 export type AwardFn = (args: {
@@ -232,6 +283,15 @@ export type AwardFn = (args: {
   startedAt: number;
 }) => Promise<void>;
 
+// XP-tick award: idempotent prin (userId, "co_walk_tick", "<sessionId>_m<minute>").
+// Acordat pe palier dupa baseline (la fiecare minut peste 10).
+export type AwardTickFn = (args: {
+  sessionId: string;
+  userId: string;
+  minute: number;
+  amount: number;
+}) => Promise<void>;
+
 // Sync session state pentru `userId` dupa un heartbeat.
 // `mutualPeerIds` = prietenii pe care `userId` ii vede SI care il vad pe el.
 // Toate evenimentele rezultate trebuie emise prin socket de catre caller.
@@ -240,6 +300,7 @@ export async function tickHeartbeat(
   mutualPeerIds: string[],
   now: number,
   award: AwardFn,
+  awardTick: AwardTickFn,
 ): Promise<{ events: SyncEvent[]; session: Session | null }> {
   const events: SyncEvent[] = [];
   let session = await getSessionForUser(userId);
@@ -406,6 +467,69 @@ export async function tickHeartbeat(
     return { events, session: null };
   }
 
+  // Step 4.5: early-fail. Daca dupa 5 min ai sub 25 pasi, clar n-ai mers —
+  // fail-uim acum, fara sa astepti pana la 10:60. Bun pentru cazul "telefonul
+  // pe masa" — user-ul vede mesaj rapid.
+  {
+    const earlyFails: { userId: string; steps: number; rssiSamples: number; rssiStdDev: number }[] = [];
+    const beforeEarlyIds = Object.keys(session.participants);
+    for (const p of Object.values(session.participants)) {
+      if (p.awarded) continue;
+      const eff = now - effectiveJoinedAt(p);
+      if (eff < COWALK_EARLY_CHECK_MS) continue;
+      if (eff >= COWALK_MIN_DURATION_MS) continue; // step 6 va prinde
+      if (p.steps >= COWALK_EARLY_MIN_STEPS) continue;
+      earlyFails.push({
+        userId: p.userId,
+        steps: p.steps,
+        rssiSamples: p.rssiSamples.length,
+        rssiStdDev: stdDev(p.rssiSamples),
+      });
+    }
+    if (earlyFails.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const f of earlyFails) {
+        delete session.participants[f.userId];
+        pipeline.del(uKey(f.userId));
+      }
+      await pipeline.exec();
+      const remainingNow = Object.values(session.participants);
+      for (const f of earlyFails) {
+        events.push({
+          type: 'failed',
+          sessionId: session.id,
+          userId: f.userId,
+          reason: 'steps',
+          steps: f.steps,
+          stepsRequired: COWALK_MIN_STEPS,
+          rssiSamples: f.rssiSamples,
+          rssiStdDev: f.rssiStdDev,
+          recipients: [f.userId],
+        });
+        events.push({
+          type: 'left',
+          sessionId: session.id,
+          userId: f.userId,
+          remaining: remainingNow,
+          recipients: beforeEarlyIds,
+        });
+      }
+      if (totalSessionPopulation(session) < 2) {
+        const finalIds = [
+          ...Object.keys(session.participants),
+          ...Object.keys(session.pausedParticipants ?? {}),
+        ];
+        await destroy(session.id, finalIds);
+        events.push({
+          type: 'ended',
+          sessionId: session.id,
+          recipients: [...new Set([...beforeEarlyIds, ...finalIds])],
+        });
+        return { events, session: null };
+      }
+    }
+  }
+
   // Step 5: cine a strans 10min EFECTIVI (excluzand paused) + indeplineste
   // anti-cheat → award.
   const activeIds = Object.keys(session.participants);
@@ -433,6 +557,10 @@ export async function tickHeartbeat(
         startedAt: p.joinedAt,
       });
       p.awarded = true;
+      // Baseline acordat la minutul 10 → tick-urile urmatoare incep de la
+      // minutul 11. Daca lastTickXpMinute = 10, urmatorul tick va acoperi
+      // minutele care s-au scurs deja (in caz de heartbeat ratat / reconnect).
+      p.lastTickXpMinute = 10;
       events.push({
         type: 'completed',
         sessionId: session.id,
@@ -445,6 +573,47 @@ export async function tickHeartbeat(
       });
     } catch {
       // best-effort: la urmatorul tick reincercam.
+    }
+  }
+
+  // Step 5b: XP escaladator per minut. Pentru fiecare participant cu baseline
+  // acordat, acordam XP-ul minutelor scurse de la lastTickXpMinute incoace.
+  // Idempotent prin sourceId co_walk_tick `<sessionId>_m<minute>`. Acoperim
+  // gap-uri din heartbeat ratate iterand minute cu minute.
+  for (const p of Object.values(session.participants)) {
+    if (!p.awarded) continue;
+    const eff = now - effectiveJoinedAt(p);
+    const currentMinute = Math.floor(eff / 60_000);
+    if (currentMinute <= p.lastTickXpMinute) continue;
+    for (let m = p.lastTickXpMinute + 1; m <= currentMinute; m++) {
+      // Rate-ul minutului m e dat de palierul in care a INTRAT acel minut.
+      // Eff la inceputul minutului m = (m-1) * 60_000.
+      const { rate, tier } = xpTierForElapsed((m - 1) * 60_000);
+      if (rate === 0) continue;
+      try {
+        await awardTick({
+          sessionId: session.id,
+          userId: p.userId,
+          minute: m,
+          amount: rate,
+        });
+        p.lastTickXpMinute = m;
+        p.totalTickXp += rate;
+        events.push({
+          type: 'tick',
+          sessionId: session.id,
+          userId: p.userId,
+          minute: m,
+          deltaXp: rate,
+          totalTickXp: p.totalTickXp,
+          tier,
+          rate,
+          recipients: [p.userId],
+        });
+      } catch {
+        // best-effort — urmatorul heartbeat reincearca minutele lipsa.
+        break;
+      }
     }
   }
 

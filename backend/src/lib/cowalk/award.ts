@@ -140,3 +140,19 @@ export async function awardCowalkParticipant(args: {
     };
   });
 }
+
+// XP-tick pentru un minut peste baseline (10 min). Idempotent prin
+// (userId, "co_walk_tick", `<sessionId>_m<minute>`). amount-ul vine din palier
+// (5/10/15) — multiplicarea squadului NU se aplica aici, e doar bonus de
+// durata pentru efortul individual.
+export async function awardCowalkTick(args: {
+  userId: string;
+  sessionId: string;
+  minute: number;
+  amount: number;
+}): Promise<void> {
+  const { userId, sessionId, minute, amount } = args;
+  if (amount <= 0) return;
+  const sourceId = `${sessionId}_m${minute}`;
+  await awardXp(userId, amount, 'co_walk_tick', sourceId, `Co-walk minut ${minute}`);
+}
