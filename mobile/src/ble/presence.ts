@@ -22,6 +22,7 @@ import {
   resolveBleTokens,
   postPresenceHeartbeat,
   getCurrentCoWalk,
+  leaveCoWalk,
   type ServerSession,
 } from '../api/ble';
 import { getMe } from '../api/me';
@@ -72,6 +73,7 @@ export type PresenceSnapshot = {
   myUserId: string | null;
   myToken: string | null;
   sessions: ClientSession[];
+  paused: boolean;
   advertiseFailed: boolean;
   advertiseLastError: string | null;
   bleState: string;
@@ -147,9 +149,18 @@ class PresenceEngine {
   private socket: Socket | null = null;
   private socketHandlersAttached = false;
   private scanOnlyMode = false;
+  // Pauza manuala: scan/advertise raman pornite (peer-ii vizibili in UI nearby),
+  // dar nu raportam mutual visibility la backend (heartbeat trimite lista goala)
+  // si curatam local sesiunile. Pe resume backend-ul re-creeaza sesiunea la
+  // urmatorul tick mutual — handshake-ul (10 min) porneste de la zero.
+  private paused = false;
 
   isRunning() {
     return this.running;
+  }
+
+  isPaused() {
+    return this.paused;
   }
 
   getBleState() {
@@ -174,6 +185,33 @@ class PresenceEngine {
       void this.sendHeartbeat();
       this.emit();
     }
+  }
+
+  // Pune toate sesiunile active pe pauza. Inchidem server-side imediat
+  // (leaveCoWalk → cowalk:left la peer-i) si oprim raportarea vizibilitatii
+  // mutuale pana la resume. Scan/advertise continua — vrem ca user-ul sa vada
+  // ca prietenul e in raza si sa poata "Reia" instant.
+  async pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.serverSessions.clear();
+    this.emit();
+    try {
+      await leaveCoWalk();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[presence] pause leaveCoWalk failed:', e);
+    }
+  }
+
+  // Iesim din pauza: urmatorul heartbeat raporteaza peer-ii vazuti si backend-ul
+  // recreeaza sesiunea daca mutual visibility se confirma. Trimitem imediat un
+  // heartbeat ca sa nu mai astepte user-ul pana la 25s.
+  async resume() {
+    if (!this.paused) return;
+    this.paused = false;
+    this.emit();
+    void this.sendHeartbeat();
   }
 
   private getManager(): BleManager {
@@ -377,6 +415,7 @@ class PresenceEngine {
     this.serverSessions.clear();
     this.myToken = null;
     this.scanOnlyMode = false;
+    this.paused = false;
     this.emit();
   }
 
@@ -672,9 +711,14 @@ class PresenceEngine {
   // foloseste asta pentru: (1) mutual visibility la commit co-walk; (2)
   // tick-ul de session co-walk care creeaza/extinde sesiunile prin socket.
   private async sendHeartbeat() {
+    // Cand sesiunea e pe pauza manuala, raportam ca nu vedem pe nimeni.
+    // Asa mutual visibility cade pe backend si nu se recreeaza sesiunea
+    // pana cand user-ul apasa "Reia".
     const peerIds: string[] = [];
-    for (const peer of this.peers.values()) {
-      if (peer.userId && peer.isFriend) peerIds.push(peer.userId);
+    if (!this.paused) {
+      for (const peer of this.peers.values()) {
+        if (peer.userId && peer.isFriend) peerIds.push(peer.userId);
+      }
     }
     try {
       await postPresenceHeartbeat(peerIds);
@@ -741,6 +785,7 @@ class PresenceEngine {
       myUserId: this.myUserId,
       myToken: this.myToken,
       sessions: this.buildClientSessions(),
+      paused: this.paused,
       advertiseFailed: this.advertiseFailed,
       advertiseLastError: this.advertiseLastError,
       bleState: this.bleState,

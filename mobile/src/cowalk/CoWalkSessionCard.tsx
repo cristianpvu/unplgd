@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
@@ -27,9 +27,13 @@ function formatDuration(ms: number): string {
 export function CoWalkSessionCard({
   session,
   now,
+  onPause,
+  onFocus,
 }: {
   session: ClientSession;
   now: number;
+  onPause?: () => void;
+  onFocus?: () => void;
 }) {
   const me = session.members.find((m) => m.isMe);
   const others = session.members.filter((m) => !m.isMe);
@@ -82,6 +86,63 @@ export function CoWalkSessionCard({
             : `inca ${formatDuration(remainingMs)} pana la XP`}
         </Text>
       </View>
+
+      {(onPause || onFocus) && !myAwarded && (
+        <View style={styles.actionsRow}>
+          {onFocus && (
+            <Pressable
+              onPress={onFocus}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionFocus,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Text style={styles.actionFocusText}>Mod concentrat</Text>
+            </Pressable>
+          )}
+          {onPause && (
+            <Pressable
+              onPress={onPause}
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionPause,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <Text style={styles.actionPauseText}>Pauza</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Card afisat cand user-ul a apasat manual "Pauza". Sesiunea server-side e
+// inchisa (cowalk:left a iesit catre peer-i); backend-ul va re-crea sesiunea
+// la urmatorul heartbeat dupa "Reia" daca prietenul e inca in raza.
+export function CoWalkPausedCard({ onResume }: { onResume: () => void }) {
+  return (
+    <View style={[styles.scene, styles.pausedScene]}>
+      <View style={styles.pausedBadgeRow}>
+        <View style={styles.pausedBadge}>
+          <Text style={styles.pausedBadgeText}>PE PAUZA</Text>
+        </View>
+      </View>
+      <Text style={styles.pausedTitle}>Co-walk oprit manual</Text>
+      <Text style={styles.pausedHint}>
+        La reluare, contorul de 10 minute incepe din nou (re-handshake).
+      </Text>
+      <Pressable
+        onPress={onResume}
+        style={({ pressed }) => [
+          styles.resumeBtn,
+          pressed && { opacity: 0.85 },
+        ]}
+      >
+        <Text style={styles.resumeBtnText}>Reia</Text>
+      </Pressable>
     </View>
   );
 }
@@ -327,6 +388,91 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     textAlign: 'right',
+  },
+
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+    zIndex: 2,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionFocus: {
+    backgroundColor: colors.accent,
+  },
+  actionFocusText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  actionPause: {
+    backgroundColor: 'rgba(45, 42, 74, 0.08)',
+  },
+  actionPauseText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+
+  pausedScene: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    minHeight: 0,
+    paddingVertical: 18,
+    gap: 8,
+    alignItems: 'center',
+  },
+  pausedBadgeRow: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  pausedBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(45, 42, 74, 0.08)',
+  },
+  pausedBadgeText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+  },
+  pausedTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  pausedHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 12,
+    lineHeight: 16,
+  },
+  resumeBtn: {
+    marginTop: 6,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 999,
+  },
+  resumeBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });
 

@@ -14,6 +14,7 @@ export type PresenceState = {
   myToken: string | null;
   peers: Peer[];
   sessions: ClientSession[];
+  paused: boolean;
   error: string | null;
   // Advertising-ul (CBPeripheralManager pe iOS, BluetoothLeAdvertiser pe
   // Android) poate sa pice independent de scan: BT off, permisiune refuzata,
@@ -31,6 +32,7 @@ export function usePresence() {
     myToken: null,
     peers: [],
     sessions: [],
+    paused: presence.isPaused(),
     error: null,
     advertiseFailed: false,
     socketConnected: false,
@@ -44,6 +46,7 @@ export function usePresence() {
         myUserId: snap.myUserId,
         myToken: snap.myToken,
         sessions: snap.sessions,
+        paused: snap.paused,
         active: presence.isRunning(),
         advertiseFailed: snap.advertiseFailed,
         socketConnected: snap.socketConnected,
@@ -78,7 +81,15 @@ export function usePresence() {
     setState((s) => ({ ...s, active: false }));
   }
 
-  return { ...state, start, stop };
+  async function pause() {
+    await presence.pause();
+  }
+
+  async function resume() {
+    await presence.resume();
+  }
+
+  return { ...state, start, stop, pause, resume };
 }
 
 // Hook separat pt UI care vrea sa reactioneze la evenimente discrete (toast,

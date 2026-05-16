@@ -20,17 +20,19 @@ import { useCowalkEnabled, setCowalkEnabled } from '../../src/ble/cowalkPref';
 import { addFriend } from '../../src/api/friends';
 import { leaveCoWalk } from '../../src/api/ble';
 import { ApiError } from '../../src/api/client';
-import { CoWalkSessionCard } from '../../src/cowalk/CoWalkSessionCard';
+import { CoWalkSessionCard, CoWalkPausedCard } from '../../src/cowalk/CoWalkSessionCard';
+import { FocusMode } from '../../src/cowalk/FocusMode';
 import { colors } from '../../src/theme/colors';
 
 export default function Nearby() {
   const qc = useQueryClient();
   // Presence engine ruleaza global (auto-start din (app)/_layout.tsx). Acest
   // ecran doar consuma snapshot-ul; nu mai pornim/oprim la mount.
-  const { active, peers, sessions, error, advertiseFailed } = usePresence();
+  const { active, peers, sessions, paused, error, advertiseFailed } = usePresence();
   const cowalkEnabled = useCowalkEnabled();
   const [adding, setAdding] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [focusActive, setFocusActive] = useState(false);
 
   useEffect(() => {
     if (sessions.length === 0) return;
@@ -149,16 +151,34 @@ export default function Nearby() {
           </View>
         ) : (
           <>
-            {sessions.length > 0 && (
+            {paused ? (
               <>
                 <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
-                {sessions.map((s) => (
-                  <CoWalkSessionCard key={s.id} session={s} now={now} />
-                ))}
+                <CoWalkPausedCard onResume={() => void presence.resume()} />
               </>
+            ) : (
+              sessions.length > 0 && (
+                <>
+                  <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
+                  {sessions.map((s) => (
+                    <CoWalkSessionCard
+                      key={s.id}
+                      session={s}
+                      now={now}
+                      onPause={() => void presence.pause()}
+                      onFocus={() => setFocusActive(true)}
+                    />
+                  ))}
+                </>
+              )
             )}
 
-            <Text style={[styles.sectionTitle, sessions.length > 0 && { marginTop: 18 }]}>
+            <Text
+              style={[
+                styles.sectionTitle,
+                (paused || sessions.length > 0) && { marginTop: 18 },
+              ]}
+            >
               Prieteni in raza
             </Text>
             {sorted.length === 0 ? (
@@ -183,6 +203,18 @@ export default function Nearby() {
           </>
         )}
       </ScrollView>
+
+      {focusActive && (
+        <FocusMode
+          session={sessions[0] ?? null}
+          now={now}
+          onExit={() => setFocusActive(false)}
+          onSessionLost={() => {
+            setFocusActive(false);
+            void presence.pause();
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
