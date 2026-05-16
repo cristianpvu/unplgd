@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   AppState,
   type AppStateStatus,
+  BackHandler,
   Easing,
   Pressable,
   StyleSheet,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 import { useKeepAwake } from 'expo-keep-awake';
 import Svg, { Circle } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
@@ -73,11 +74,24 @@ export function FocusMode({
     return () => sub.remove();
   }, [onSessionLost]);
 
+  // Blocam butonul hardware Back pe Android — singura iesire e long-press-ul
+  // de 3s. `return true` din handler anuleaza propagarea catre stack-ul de
+  // navigare. iOS swipe-back e dezactivat separat via Stack.Screen mai jos.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, []);
+
   // La intoarcerea in app (daca cumva onSessionLost a tras pauza), informam
   // user-ul. Detectia se face in parinte; aici doar afisam un alert daca
   // ne reactiveaza si nu mai exista sesiune.
   return (
     <View style={styles.overlay}>
+      {/* Dezactiveaza iOS swipe-back si headerBackButton cat overlay-ul e
+          montat. Cand componenta se demonteaza, optiunile revin la default. */}
+      <Stack.Screen
+        options={{ gestureEnabled: false, headerBackVisible: false }}
+      />
       <View style={styles.scrim} />
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
