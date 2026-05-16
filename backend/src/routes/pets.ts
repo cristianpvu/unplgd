@@ -210,6 +210,9 @@ petsRouter.post('/equip-default', async (req, res, next) => {
       data: { speciesId: defaultSpecies.id, name: 'Buddy' },
       include: { species: true },
     });
+    // Chat-ul pet-ului anterior nu mai are sens cu specia noua (alta voce,
+    // alt personaj). Stergem ca utilizatorul sa primeasca intro proaspat.
+    await clearChatHistory(chatCacheKey(userId));
 
     res.json({
       pet: {
@@ -244,6 +247,9 @@ petsRouter.post('/equip', async (req, res, next) => {
       data: { speciesId: card.speciesId },
       include: { species: true },
     });
+    // Chat-ul pet-ului anterior nu mai are sens cu specia noua. Stergem ca
+    // user-ul sa primeasca un intro proaspat in vocea noului companion.
+    await clearChatHistory(chatCacheKey(userId));
 
     const [petSpecies, cardSpeciesDto] = await Promise.all([
       speciesDto(pet.species),
@@ -319,10 +325,10 @@ petsRouter.patch('/cards/:id', async (req, res, next) => {
 // interests). Istoricul stocat in Redis 1h cu cap pe turn-uri (vezi
 // chatContext.ts). NU exista "task done" — chat liber.
 //
-// Cheie Redis: pet:chat:{userId} — istoricul e pe user, NU pe specie. Daca
-// echipezi alt card, conversatia continua dar persona se schimba (pet-ul
-// nou "tine minte" ce s-a discutat cu cel anterior, oarecum). Acceptabil
-// pentru MVP — alternativa (history per specie) ar duce la fragmentare.
+// Cheie Redis: pet:chat:{userId} — istoricul e pe user, NU pe specie.
+// Cand user-ul schimba pet-ul via /pets/equip sau /pets/equip-default,
+// stergem explicit cache-ul (vezi handler-ele) ca noul pet sa porneasca
+// proaspat — alta voce, alta personalitate.
 // =====================================================================
 
 const chatMessageSchema = z.object({

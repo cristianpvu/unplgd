@@ -87,6 +87,9 @@ export default function Pets() {
           defaultEquipped: false,
         };
       });
+      // Backend a sters chat history-ul la /equip — invalidate ca la urmatoarea
+      // deschidere a chat-ului sa primim intro-ul noului pet (cu TTS proaspat).
+      qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
     },
     onError: (err: any) => {
       Alert.alert('Eroare', err?.message ?? 'Nu am putut echipa cardul');
@@ -105,6 +108,7 @@ export default function Pets() {
           defaultEquipped: true,
         };
       });
+      qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
     },
     onError: (err: any) => {
       Alert.alert('Eroare', err?.message ?? 'Nu am putut activa Buddy');
