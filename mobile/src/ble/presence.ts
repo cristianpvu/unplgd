@@ -22,7 +22,7 @@ import {
   resolveBleTokens,
   postPresenceHeartbeat,
   getCurrentCoWalk,
-  leaveCoWalk,
+  pauseCoWalk,
   type ServerSession,
 } from '../api/ble';
 import { getMe } from '../api/me';
@@ -46,6 +46,10 @@ export type Peer = {
 export type ClientSession = {
   id: string;
   startedAtClient: number;
+  // Pasi facuti de mine de la inceputul sesiunii (myStepCount - startStepCount).
+  // Folosit pentru afisare "147 / 200 pasi" in UI; reflecta count-ul local in
+  // timp real, nu valoarea sincronizata cu backend (care vine la 30s).
+  mySteps: number;
   // Toti membrii (inclusiv eu). Fiecare cu joinedAt convertit la ceasul local.
   members: Array<{
     userId: string;
@@ -59,14 +63,21 @@ export type ClientSession = {
   }>;
 };
 
-export type CoWalkEvent = {
-  type: 'completed';
-  userId: string;
-  name: string;
-  durationSec: number;
-  squadSize: number;
-  isMe: boolean;
-};
+export type CoWalkEvent =
+  | {
+      type: 'completed';
+      userId: string;
+      name: string;
+      durationSec: number;
+      squadSize: number;
+      isMe: boolean;
+    }
+  | {
+      type: 'failed';
+      reason: 'steps' | 'rssi_static' | 'rssi_samples';
+      steps: number;
+      stepsRequired: number;
+    };
 
 export type PresenceSnapshot = {
   peers: Peer[];
@@ -74,6 +85,7 @@ export type PresenceSnapshot = {
   myToken: string | null;
   sessions: ClientSession[];
   paused: boolean;
+  pausedAt: number | null;
   advertiseFailed: boolean;
   advertiseLastError: string | null;
   bleState: string;
@@ -151,9 +163,12 @@ class PresenceEngine {
   private scanOnlyMode = false;
   // Pauza manuala: scan/advertise raman pornite (peer-ii vizibili in UI nearby),
   // dar nu raportam mutual visibility la backend (heartbeat trimite lista goala)
-  // si curatam local sesiunile. Pe resume backend-ul re-creeaza sesiunea la
-  // urmatorul tick mutual — handshake-ul (10 min) porneste de la zero.
+  // si curatam local sesiunile. Pe resume backend-ul reia sesiunea cu progres
+  // pastrat daca ghostul nu a expirat (3 min singular / 5 min cumulat).
   private paused = false;
+  // Timestamp local cand a inceput pauza curenta — UI-ul afiseaza un countdown
+  // pana la expirare. Null cand nu suntem pe pauza.
+  private pausedAt: number | null = null;
 
   isRunning() {
     return this.running;
@@ -187,29 +202,32 @@ class PresenceEngine {
     }
   }
 
-  // Pune toate sesiunile active pe pauza. Inchidem server-side imediat
-  // (leaveCoWalk → cowalk:left la peer-i) si oprim raportarea vizibilitatii
-  // mutuale pana la resume. Scan/advertise continua — vrem ca user-ul sa vada
-  // ca prietenul e in raza si sa poata "Reia" instant.
+  // Pune sesiunea pe pauza fara s-o distruga server-side. Apel /cowalk/pause
+  // → backend muta user-ul in pausedParticipants (pastreaza joinedAt, steps,
+  // RSSI), emite cowalk:left la peer-i. Cat e paused, heartbeat-ul nu raporteaza
+  // mutual visibility → backend nu re-creeaza sesiunea pana la resume.
+  // Reluarea reia de unde a ramas daca pauza singulara < 3min si total < 5min.
   async pause() {
     if (this.paused) return;
     this.paused = true;
+    this.pausedAt = Date.now();
     this.serverSessions.clear();
     this.emit();
     try {
-      await leaveCoWalk();
+      await pauseCoWalk();
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.warn('[presence] pause leaveCoWalk failed:', e);
+      console.warn('[presence] pause failed:', e);
     }
   }
 
   // Iesim din pauza: urmatorul heartbeat raporteaza peer-ii vazuti si backend-ul
-  // recreeaza sesiunea daca mutual visibility se confirma. Trimitem imediat un
-  // heartbeat ca sa nu mai astepte user-ul pana la 25s.
+  // re-introduce user-ul in sesiune (continua progresul daca ghostul nu a expirat,
+  // altfel handshake nou). Trimitem imediat un heartbeat ca sa nu astepte 25s.
   async resume() {
     if (!this.paused) return;
     this.paused = false;
+    this.pausedAt = null;
     this.emit();
     void this.sendHeartbeat();
   }
@@ -416,6 +434,7 @@ class PresenceEngine {
     this.myToken = null;
     this.scanOnlyMode = false;
     this.paused = false;
+    this.pausedAt = null;
     this.emit();
   }
 
@@ -430,6 +449,7 @@ class PresenceEngine {
     s.on('cowalk:left', (p: any) => this.onLeft(p));
     s.on('cowalk:ended', (p: any) => this.onEnded(p));
     s.on('cowalk:completed', (p: any) => this.onCompleted(p));
+    s.on('cowalk:failed', (p: any) => this.onFailed(p));
 
     // La fiecare connect (initial sau reconnect), re-sincronizam state-ul
     // server-driven. Daca am pierdut event-uri cat am fost offline, acum le
@@ -452,6 +472,7 @@ class PresenceEngine {
     this.socket.off('cowalk:left');
     this.socket.off('cowalk:ended');
     this.socket.off('cowalk:completed');
+    this.socket.off('cowalk:failed');
     this.socket.off('connect');
     this.socket.off('disconnect');
     this.socketHandlersAttached = false;
@@ -599,6 +620,31 @@ class PresenceEngine {
     for (const [token, peer] of this.peers) {
       if (peer.userId === userId) this.peers.delete(token);
     }
+  }
+
+  // Backend a stabilit ca am depasit pragul de 10min+grace fara sa indeplinim
+  // anti-cheat (pasi/RSSI). Curatam sesiunea local (a venit si un cowalk:left
+  // separat, dar evenimentul `failed` ne lasa sa emitem alerta cu motivul).
+  private onFailed(p: {
+    sessionId: string;
+    userId: string;
+    reason: 'steps' | 'rssi_static' | 'rssi_samples';
+    steps: number;
+    stepsRequired: number;
+    rssiSamples: number;
+    rssiStdDev: number;
+  }) {
+    // Backend trimite cowalk:failed numai catre user-ul afectat, dar verificam
+    // suplimentar (defense in depth).
+    if (!this.myUserId || p.userId !== this.myUserId) return;
+    this.serverSessions.delete(p.sessionId);
+    this.fireEvent({
+      type: 'failed',
+      reason: p.reason,
+      steps: p.steps,
+      stepsRequired: p.stepsRequired,
+    });
+    this.emit();
   }
 
   private onCompleted(p: {
@@ -774,7 +820,8 @@ class PresenceEngine {
         if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
         return a.joinedAtClient - b.joinedAtClient;
       });
-      out.push({ id: s.id, startedAtClient, members });
+      const mySteps = Math.max(0, this.myStepCount - s.startStepCount);
+      out.push({ id: s.id, startedAtClient, mySteps, members });
     }
     return out.sort((a, b) => a.startedAtClient - b.startedAtClient);
   }
@@ -786,6 +833,7 @@ class PresenceEngine {
       myToken: this.myToken,
       sessions: this.buildClientSessions(),
       paused: this.paused,
+      pausedAt: this.pausedAt,
       advertiseFailed: this.advertiseFailed,
       advertiseLastError: this.advertiseLastError,
       bleState: this.bleState,

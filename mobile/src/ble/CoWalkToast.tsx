@@ -7,17 +7,26 @@ import { useCoWalkEvents } from './usePresence';
 import type { CoWalkEvent } from './presence';
 import { colors } from '../theme/colors';
 
-// Toast in-app pentru co-walk completate. Asculta event-uri din socket prin
-// engine — fie XP-ul a venit la mine, fie la alt membru din sesiune. Auto-hide
-// dupa 4.5s. Tap → deschide Nearby.
+// Toast in-app pentru co-walk events: completed (XP) sau failed (anti-cheat
+// nu a trecut). Asculta din socket prin engine. Auto-hide dupa 4.5s (success)
+// / 6s (failed, mesaj mai lung). Tap → deschide Nearby.
 
-type ToastData = {
-  id: number;
-  name: string;
-  durationMin: number;
-  squadSize: number;
-  isMe: boolean;
-};
+type ToastData =
+  | {
+      kind: 'completed';
+      id: number;
+      name: string;
+      durationMin: number;
+      squadSize: number;
+      isMe: boolean;
+    }
+  | {
+      kind: 'failed';
+      id: number;
+      reason: 'steps' | 'rssi_static' | 'rssi_samples';
+      steps: number;
+      stepsRequired: number;
+    };
 
 export function CoWalkToast() {
   const qc = useQueryClient();
@@ -27,17 +36,27 @@ export function CoWalkToast() {
 
   const onEvent = useCallback(
     (e: CoWalkEvent) => {
-      if (e.type !== 'completed') return;
-      // Cand vine event pentru mine, refresh-uim cache-ul XP/level (server-ul
-      // a actualizat user-ul). Altfel UI-ul ramane stale.
-      if (e.isMe) qc.invalidateQueries({ queryKey: ['me'] });
-      setData({
-        id: ++idRef.current,
-        name: e.name,
-        durationMin: Math.max(1, Math.floor(e.durationSec / 60)),
-        squadSize: e.squadSize,
-        isMe: e.isMe,
-      });
+      if (e.type === 'completed') {
+        // Cand vine event pentru mine, refresh-uim cache-ul XP/level (server-ul
+        // a actualizat user-ul). Altfel UI-ul ramane stale.
+        if (e.isMe) qc.invalidateQueries({ queryKey: ['me'] });
+        setData({
+          kind: 'completed',
+          id: ++idRef.current,
+          name: e.name,
+          durationMin: Math.max(1, Math.floor(e.durationSec / 60)),
+          squadSize: e.squadSize,
+          isMe: e.isMe,
+        });
+      } else if (e.type === 'failed') {
+        setData({
+          kind: 'failed',
+          id: ++idRef.current,
+          reason: e.reason,
+          steps: e.steps,
+          stepsRequired: e.stepsRequired,
+        });
+      }
     },
     [qc],
   );
@@ -51,24 +70,21 @@ export function CoWalkToast() {
       friction: 8,
       tension: 60,
     }).start();
+    // Fail are mesaj mai lung — lasam mai mult timp.
+    const dwellMs = data.kind === 'failed' ? 6000 : 4500;
     const hideId = setTimeout(() => {
       Animated.timing(translateY, {
         toValue: -220,
         duration: 250,
         useNativeDriver: true,
       }).start(() => setData(null));
-    }, 4500);
+    }, dwellMs);
     return () => clearTimeout(hideId);
   }, [data, translateY]);
 
   if (!data) return null;
 
-  const title = data.isMe
-    ? `Co-walk reusit cu ${data.name}!`
-    : `${data.name} a primit XP din co-walk!`;
-  const sub = data.isMe
-    ? `${data.durationMin} min · squad ${data.squadSize} · XP acordat`
-    : `${data.durationMin} min · faceti parte din acelasi squad`;
+  const { bg, emoji, title, sub } = renderToast(data);
 
   return (
     <Animated.View
@@ -80,21 +96,55 @@ export function CoWalkToast() {
           onPress={() => router.push('/(app)/nearby')}
           style={({ pressed }) => [
             styles.card,
-            { backgroundColor: data.isMe ? colors.success : colors.accent },
+            { backgroundColor: bg },
             pressed && styles.cardPressed,
           ]}
         >
-          <Text style={styles.emoji}>{data.isMe ? '🎉' : '👏'}</Text>
+          <Text style={styles.emoji}>{emoji}</Text>
           <View style={styles.body}>
             <Text style={styles.title} numberOfLines={1}>
               {title}
             </Text>
-            <Text style={styles.sub}>{sub}</Text>
+            <Text style={styles.sub} numberOfLines={2}>
+              {sub}
+            </Text>
           </View>
         </Pressable>
       </SafeAreaView>
     </Animated.View>
   );
+}
+
+function renderToast(data: ToastData): {
+  bg: string;
+  emoji: string;
+  title: string;
+  sub: string;
+} {
+  if (data.kind === 'completed') {
+    return {
+      bg: data.isMe ? colors.success : colors.accent,
+      emoji: data.isMe ? '🎉' : '👏',
+      title: data.isMe
+        ? `Co-walk reusit cu ${data.name}!`
+        : `${data.name} a primit XP din co-walk!`,
+      sub: data.isMe
+        ? `${data.durationMin} min · squad ${data.squadSize} · XP acordat`
+        : `${data.durationMin} min · faceti parte din acelasi squad`,
+    };
+  }
+  // Mesaje friendly pentru copii — explica ce a lipsit, nu acuzator.
+  const subByReason: Record<typeof data.reason, string> = {
+    steps: `Ai facut ${data.steps} pasi din ${data.stepsRequired}. Trebuie sa va plimbati, nu sa stati pe loc.`,
+    rssi_static: 'Telefoanele au stat prea aproape, fara miscare. Mergeti impreuna!',
+    rssi_samples: 'Semnalul Bluetooth a fost prea slab. Tine telefoanele aproape.',
+  };
+  return {
+    bg: colors.danger,
+    emoji: '⏱️',
+    title: 'Sesiune anulata',
+    sub: subByReason[data.reason],
+  };
 }
 
 const styles = StyleSheet.create({

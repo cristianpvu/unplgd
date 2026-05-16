@@ -15,6 +15,8 @@ export type PresenceState = {
   peers: Peer[];
   sessions: ClientSession[];
   paused: boolean;
+  pausedAt: number | null;
+  bleState: string;
   error: string | null;
   // Advertising-ul (CBPeripheralManager pe iOS, BluetoothLeAdvertiser pe
   // Android) poate sa pice independent de scan: BT off, permisiune refuzata,
@@ -33,6 +35,8 @@ export function usePresence() {
     peers: [],
     sessions: [],
     paused: presence.isPaused(),
+    pausedAt: null,
+    bleState: 'Unknown',
     error: null,
     advertiseFailed: false,
     socketConnected: false,
@@ -47,6 +51,8 @@ export function usePresence() {
         myToken: snap.myToken,
         sessions: snap.sessions,
         paused: snap.paused,
+        pausedAt: snap.pausedAt,
+        bleState: snap.bleState,
         active: presence.isRunning(),
         advertiseFailed: snap.advertiseFailed,
         socketConnected: snap.socketConnected,

@@ -10,6 +10,7 @@ import {
   leaveSession,
   isLeftRecently,
   filterRecentlyLeft,
+  effectiveJoinedAt,
 } from '../lib/cowalk/session.js';
 import { emitSyncEvents, resolveParticipantInfo } from '../lib/socket/cowalkEmit.js';
 import { awardCowalkParticipant } from '../lib/cowalk/award.js';
@@ -95,6 +96,24 @@ presenceRouter.post('/cowalk/leave', async (req, res, next) => {
   }
 });
 
+// Pune sesiunea curenta in pauza fara sa o distruga. Spre deosebire de leave:
+//   - nu seteaza leftGuard → urmatorul heartbeat poate sa-l reia
+//   - pastreaza joinedAt original, steps, rssiSamples si totalPausedMs
+//   - daca user-ul revine in ABSENT_MAX_SINGLE_MS (3min) si total < 5min,
+//     continua de unde a ramas; altfel ghostul expira si urmatorul handshake
+//     porneste de la 0
+presenceRouter.post('/cowalk/pause', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const events = await leaveSession(me, { pausable: true });
+    await markSeen(me, []);
+    await emitSyncEvents(events);
+    res.json({ ok: true, leftEvents: events.length });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Returneaza sesiunea curenta de co-walk a userului (daca exista). Folosit
 // la reconnect: mobile-ul cere starea curenta si reia UI-ul de unde a ramas.
 presenceRouter.get('/cowalk/current', async (req, res, next) => {
@@ -116,7 +135,8 @@ presenceRouter.get('/cowalk/current', async (req, res, next) => {
           const u = info.get(p.userId);
           return {
             userId: p.userId,
-            joinedAt: p.joinedAt,
+            // Effective joinedAt — vezi cowalkEmit.thin() pt rationament.
+            joinedAt: effectiveJoinedAt(p),
             awarded: p.awarded,
             name: u?.name ?? 'Unknown',
             level: u?.level ?? 1,

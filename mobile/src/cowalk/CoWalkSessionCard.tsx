@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { COWALK_MIN_DURATION_MS } from '../ble/constants';
+import { COWALK_MIN_DURATION_MS, COWALK_MIN_STEPS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
 import { colors } from '../theme/colors';
 import { AvatarStack } from './AvatarStack';
@@ -87,6 +87,8 @@ export function CoWalkSessionCard({
         </Text>
       </View>
 
+      {!myAwarded && <StepsBar steps={session.mySteps} />}
+
       {(onPause || onFocus) && !myAwarded && (
         <View style={styles.actionsRow}>
           {onFocus && (
@@ -119,10 +121,28 @@ export function CoWalkSessionCard({
   );
 }
 
-// Card afisat cand user-ul a apasat manual "Pauza". Sesiunea server-side e
-// inchisa (cowalk:left a iesit catre peer-i); backend-ul va re-crea sesiunea
-// la urmatorul heartbeat dupa "Reia" daca prietenul e inca in raza.
-export function CoWalkPausedCard({ onResume }: { onResume: () => void }) {
+// Pauza singulara admisa pana cand ghost-ul expira pe backend si sesiunea
+// porneste de la 0 la urmatoarea reluare. Trebuie sa fie identic cu
+// ABSENT_MAX_SINGLE_MS din backend/lib/cowalk/session.ts.
+const RESUME_GRACE_MS = 3 * 60 * 1000;
+
+// Card afisat cand user-ul a apasat manual "Pauza". Sesiunea server-side a
+// fost mutata in pausedParticipants (joinedAt + steps + RSSI pastrate). Daca
+// user-ul apasa Reia in 3 min, sesiunea continua de unde a ramas; daca trec
+// 3 min, urmatorul handshake porneste de la 0.
+export function CoWalkPausedCard({
+  pausedAt,
+  now,
+  onResume,
+}: {
+  pausedAt: number | null;
+  now: number;
+  onResume: () => void;
+}) {
+  const elapsed = pausedAt ? Math.max(0, now - pausedAt) : 0;
+  const remainingMs = Math.max(0, RESUME_GRACE_MS - elapsed);
+  const expired = pausedAt !== null && remainingMs === 0;
+
   return (
     <View style={[styles.scene, styles.pausedScene]}>
       <View style={styles.pausedBadgeRow}>
@@ -130,9 +150,15 @@ export function CoWalkPausedCard({ onResume }: { onResume: () => void }) {
           <Text style={styles.pausedBadgeText}>PE PAUZA</Text>
         </View>
       </View>
-      <Text style={styles.pausedTitle}>Co-walk oprit manual</Text>
+      <Text style={styles.pausedTitle}>
+        {expired ? 'Pauza expirata' : 'Co-walk oprit manual'}
+      </Text>
       <Text style={styles.pausedHint}>
-        La reluare, contorul de 10 minute incepe din nou (re-handshake).
+        {expired
+          ? 'La reluare va incepe un handshake nou (de la 0).'
+          : pausedAt
+            ? `Ai ${formatDuration(remainingMs)} sa revii. Dupa, sesiunea reincepe.`
+            : 'La reluare, sesiunea continua de unde a ramas.'}
       </Text>
       <Pressable
         onPress={onResume}
@@ -143,6 +169,36 @@ export function CoWalkPausedCard({ onResume }: { onResume: () => void }) {
       >
         <Text style={styles.resumeBtnText}>Reia</Text>
       </Pressable>
+    </View>
+  );
+}
+
+// =====================================================================
+// StepsBar — pasi facuti pana la prag (anti-cheat 200)
+// =====================================================================
+
+function StepsBar({ steps }: { steps: number }) {
+  const ratio = Math.min(1, steps / COWALK_MIN_STEPS);
+  const reached = steps >= COWALK_MIN_STEPS;
+  const color = reached ? colors.success : colors.accent;
+  return (
+    <View style={styles.stepsWrap}>
+      <View style={styles.stepsLabelRow}>
+        <Text style={styles.stepsIcon}>🚶</Text>
+        <Text style={styles.stepsLabel}>
+          {reached
+            ? `${steps} pasi · prag indeplinit`
+            : `${steps} / ${COWALK_MIN_STEPS} pasi`}
+        </Text>
+      </View>
+      <View style={styles.stepsTrack}>
+        <View
+          style={[
+            styles.stepsFill,
+            { width: `${ratio * 100}%`, backgroundColor: color },
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -388,6 +444,35 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
     textAlign: 'right',
+  },
+
+  stepsWrap: {
+    marginTop: 6,
+    gap: 5,
+    zIndex: 2,
+  },
+  stepsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  stepsIcon: {
+    fontSize: 13,
+  },
+  stepsLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  stepsTrack: {
+    height: 6,
+    backgroundColor: 'rgba(45, 42, 74, 0.10)',
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  stepsFill: {
+    height: 6,
+    borderRadius: 999,
   },
 
   actionsRow: {

@@ -19,6 +19,8 @@ RUN npm ci && npm cache clean --force
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 EXPOSE 4000
-# Seed-ul e idempotent (upsert pe slug), il rulam la fiecare start ca sa
-# garantam ca tabelele Item/ItemType reflecta intotdeauna codul deployat.
+# Seed-ul are guard intern: pe DB deja populata se opreste imediat (1 query).
+# Pe DB virgina populeaza catalogul. Pentru re-aplicare seed (dupa adaugare
+# item-uri/carduri/challenges noi): FORCE_SEED=1 docker compose up -d backend
+# o singura data, apoi scoate flagul.
 CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && node dist/server.js"]

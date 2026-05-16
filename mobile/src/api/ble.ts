@@ -62,3 +62,12 @@ export function leaveCoWalk(): Promise<{ ok: boolean; leftEvents: number }> {
     method: 'POST',
   });
 }
+
+// Pune sesiunea pe pauza fara s-o distruga. La urmatorul heartbeat mutual,
+// daca pauza singulara < 3min si total < 5min, sesiunea continua de unde a
+// ramas. Altfel ghostul expira si pornim un handshake nou.
+export function pauseCoWalk(): Promise<{ ok: boolean; leftEvents: number }> {
+  return api<{ ok: boolean; leftEvents: number }>('/presence/cowalk/pause', {
+    method: 'POST',
+  });
+}

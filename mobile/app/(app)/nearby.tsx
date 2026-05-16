@@ -22,23 +22,27 @@ import { leaveCoWalk } from '../../src/api/ble';
 import { ApiError } from '../../src/api/client';
 import { CoWalkSessionCard, CoWalkPausedCard } from '../../src/cowalk/CoWalkSessionCard';
 import { FocusMode } from '../../src/cowalk/FocusMode';
+import { HandshakeCard, type HandshakeStage } from '../../src/cowalk/HandshakeCard';
 import { colors } from '../../src/theme/colors';
 
 export default function Nearby() {
   const qc = useQueryClient();
   // Presence engine ruleaza global (auto-start din (app)/_layout.tsx). Acest
   // ecran doar consuma snapshot-ul; nu mai pornim/oprim la mount.
-  const { active, peers, sessions, paused, error, advertiseFailed } = usePresence();
+  const { active, peers, sessions, paused, pausedAt, bleState, error, advertiseFailed } =
+    usePresence();
   const cowalkEnabled = useCowalkEnabled();
   const [adding, setAdding] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   const [focusActive, setFocusActive] = useState(false);
 
   useEffect(() => {
-    if (sessions.length === 0) return;
+    // Tick si cat e paused — countdown-ul de 3 min in CoWalkPausedCard se
+    // bazeaza pe `now` ca sa scada vizibil.
+    if (sessions.length === 0 && !paused) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [sessions.length]);
+  }, [sessions.length, paused]);
 
   const add = useMutation({
     mutationFn: (userId: string) => addFriend(userId, 'ble'),
@@ -94,6 +98,18 @@ export default function Nearby() {
     };
     return score(a) - score(b);
   });
+
+  // Loader stage — cat timp engine-ul lucreaza si nu avem inca sesiune.
+  // Ordinea evalueaza cea mai "avansata" stare disponibila.
+  const friendsInRange = peers.filter((p) => p.isFriend && p.userId);
+  const unresolvedCount = peers.filter((p) => !p.userId).length;
+  const handshakeStage: HandshakeStage | null = (() => {
+    if (paused || sessions.length > 0) return null;
+    if (!active || bleState !== 'PoweredOn') return 'starting';
+    if (friendsInRange.length > 0) return 'handshake';
+    if (peers.length > 0) return 'detecting';
+    return 'scanning';
+  })();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -154,51 +170,59 @@ export default function Nearby() {
             {paused ? (
               <>
                 <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
-                <CoWalkPausedCard onResume={() => void presence.resume()} />
+                <CoWalkPausedCard
+                  pausedAt={pausedAt}
+                  now={now}
+                  onResume={() => void presence.resume()}
+                />
               </>
-            ) : (
-              sessions.length > 0 && (
-                <>
-                  <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
-                  {sessions.map((s) => (
-                    <CoWalkSessionCard
-                      key={s.id}
-                      session={s}
-                      now={now}
-                      onPause={() => void presence.pause()}
-                      onFocus={() => setFocusActive(true)}
+            ) : sessions.length > 0 ? (
+              <>
+                <Text style={styles.sectionTitle}>Co-walk in derulare</Text>
+                {sessions.map((s) => (
+                  <CoWalkSessionCard
+                    key={s.id}
+                    session={s}
+                    now={now}
+                    onPause={() => void presence.pause()}
+                    onFocus={() => setFocusActive(true)}
+                  />
+                ))}
+              </>
+            ) : handshakeStage ? (
+              <>
+                <Text style={styles.sectionTitle}>Status</Text>
+                <HandshakeCard
+                  stage={handshakeStage}
+                  unresolvedCount={unresolvedCount}
+                  friendsInRange={friendsInRange}
+                />
+              </>
+            ) : null}
+
+            {sorted.some((p) => p.userId) && (
+              <>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    (paused || sessions.length > 0 || !!handshakeStage) && {
+                      marginTop: 18,
+                    },
+                  ]}
+                >
+                  Prieteni in raza
+                </Text>
+                {sorted
+                  .filter((p) => p.userId)
+                  .map((peer) => (
+                    <PeerRow
+                      key={peer.token}
+                      peer={peer}
+                      isAdding={adding === peer.userId}
+                      onAdd={() => onAdd(peer)}
                     />
                   ))}
-                </>
-              )
-            )}
-
-            <Text
-              style={[
-                styles.sectionTitle,
-                (paused || sessions.length > 0) && { marginTop: 18 },
-              ]}
-            >
-              Prieteni in raza
-            </Text>
-            {sorted.length === 0 ? (
-              <View style={styles.emptyBox}>
-                {active && <ActivityIndicator color={colors.accent} />}
-                <Text style={styles.empty}>
-                  {active
-                    ? 'Caut prieteni in apropiere... Tine telefonul aproape de altcineva care are aplicatia deschisa.'
-                    : 'Bluetooth oprit.'}
-                </Text>
-              </View>
-            ) : (
-              sorted.map((peer) => (
-                <PeerRow
-                  key={peer.token}
-                  peer={peer}
-                  isAdding={adding === peer.userId}
-                  onAdd={() => onAdd(peer)}
-                />
-              ))
+              </>
             )}
           </>
         )}

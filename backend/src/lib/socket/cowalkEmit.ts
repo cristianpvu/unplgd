@@ -1,7 +1,7 @@
 import { getIO } from './io.js';
 import { userRoomName } from './io.js';
 import { prisma } from '../prisma.js';
-import type { Participant, SyncEvent } from '../cowalk/session.js';
+import { effectiveJoinedAt, type Participant, type SyncEvent } from '../cowalk/session.js';
 import { getPetSummariesByUserIds, type PetSummary } from '../petImage.js';
 
 // Toate event-urile co-walk merg pe room-ul `user:<userId>` (auto-join la
@@ -82,7 +82,11 @@ async function thin(ps: Participant[]): Promise<ThinParticipant[]> {
     const n = info.get(p.userId);
     return {
       userId: p.userId,
-      joinedAt: p.joinedAt,
+      // Effective joinedAt = joinedAt + totalPausedMs. Mobile-ul calculeaza
+      // countdown-ul ca `now - joinedAt`, deci adunand pauza cumulata aici
+      // face ca pauzele sa nu se contabilizeze ca progres pentru pragul de 10
+      // min. Tot offset-ul anti-cheat e ascuns de client.
+      joinedAt: effectiveJoinedAt(p),
       name: n?.name ?? 'Unknown',
       level: n?.level ?? 1,
       avatarSvg: n?.avatarSvg ?? null,
@@ -126,6 +130,16 @@ export type CowalkCompletedPayload = {
   userId: string;
   durationSec: number;
   squadSize: number;
+};
+
+export type CowalkFailedPayload = {
+  sessionId: string;
+  userId: string;
+  reason: 'steps' | 'rssi_static' | 'rssi_samples';
+  steps: number;
+  stepsRequired: number;
+  rssiSamples: number;
+  rssiStdDev: number;
 };
 
 export async function emitSyncEvents(events: SyncEvent[]): Promise<void> {
@@ -187,6 +201,17 @@ export async function emitSyncEvents(events: SyncEvent[]): Promise<void> {
           durationSec: ev.durationSec,
           squadSize: ev.squadSize,
         } satisfies CowalkCompletedPayload);
+        break;
+      case 'failed':
+        io.to(rooms).emit('cowalk:failed', {
+          sessionId: ev.sessionId,
+          userId: ev.userId,
+          reason: ev.reason,
+          steps: ev.steps,
+          stepsRequired: ev.stepsRequired,
+          rssiSamples: ev.rssiSamples,
+          rssiStdDev: ev.rssiStdDev,
+        } satisfies CowalkFailedPayload);
         break;
     }
   }

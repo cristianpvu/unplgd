@@ -445,6 +445,19 @@ const CARDS: SeedCard[] = [
 ];
 
 async function main() {
+  // Skip seed cand DB e deja populata — evita 100+ upsert-uri la fiecare
+  // container restart. Cand adaugi item-uri/carduri/challenges noi in seed,
+  // ruleaza cu FORCE_SEED=1 pentru o aplicare unica si dupa scoate flagul.
+  if (process.env.FORCE_SEED !== '1') {
+    const existingItems = await prisma.item.count();
+    if (existingItems > 0) {
+      console.log(
+        `Seed skipped: catalog populat deja (${existingItems} items). FORCE_SEED=1 ca sa rulezi.`,
+      );
+      return;
+    }
+  }
+
   for (const [typeIdx, type] of TYPES.entries()) {
     const typeRow = await prisma.itemType.upsert({
       where: { slug: type.slug },

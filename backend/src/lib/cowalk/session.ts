@@ -38,6 +38,19 @@ export const COWALK_MIN_STEPS = 200;
 export const COWALK_MIN_RSSI_STDDEV_DBM = 1.5;
 export const COWALK_MIN_RSSI_SAMPLES = 30;
 export const RSSI_SAMPLES_CAP = 1200;
+// Grace dupa pragul de 10min in care anti-cheat-ul mai poate trece (user e
+// aproape de 200 pasi etc). Dupa expirare, sesiunea esueaza explicit cu motiv,
+// in loc sa curga timerul la infinit fara award.
+export const COWALK_FAIL_GRACE_MS = 60_000;
+
+export type CowalkFailReason = 'steps' | 'rssi_static' | 'rssi_samples';
+
+// Smart resume: cat poate sa fie absent un participant intr-o singura pauza
+// (apel, mesaj scurt, ecran intrat in background) inainte ca sesiunea sa fie
+// pierduta definitiv. Si cat poate cumula pe toata sesiunea — apele multiple
+// permise dar nu spalt nelimitat.
+export const ABSENT_MAX_SINGLE_MS = 3 * 60 * 1000;
+export const ABSENT_MAX_TOTAL_MS = 5 * 60 * 1000;
 
 export type Participant = {
   userId: string;
@@ -46,13 +59,33 @@ export type Participant = {
   steps: number;
   rssiSamples: number[];
   awarded: boolean;
+  // Suma timpilor petrecuti "paused" (BLE invisible / app in background).
+  // Scade din durata efectiva la award (anti-cheat: nu poti pacali pragul de
+  // 10 min stand departe).
+  totalPausedMs: number;
+};
+
+// Un participant pausat pastreaza tot state-ul Participant (joinedAt, steps,
+// rssiSamples) + momentul cand a inceput pauza curenta. La resume revine in
+// `participants` cu totalPausedMs actualizat.
+export type PausedParticipant = Participant & {
+  pausedAt: number;
 };
 
 export type Session = {
   id: string;
   startedAt: number;
   participants: Record<string, Participant>;
+  // Membri care temporar nu sunt mutual vizibili. Pe heartbeat-ul urmator in
+  // care reapar (in fereastra de absenta admisibila), ii reluam in participants.
+  pausedParticipants?: Record<string, PausedParticipant>;
 };
+
+// Duraate efectiva acumulata in sesiune (exclude paused gaps). Folosita pentru
+// progresul afisat la client si pentru pragul anti-cheat.
+export function effectiveJoinedAt(p: Participant): number {
+  return p.joinedAt + (p.totalPausedMs ?? 0);
+}
 
 const sKey = (id: string) => `cowalk:s:${id}`;
 const uKey = (userId: string) => `cowalk:u:${userId}`;
@@ -92,7 +125,63 @@ function newParticipant(userId: string, now: number): Participant {
     steps: 0,
     rssiSamples: [],
     awarded: false,
+    totalPausedMs: 0,
   };
+}
+
+// Muta un participant activ in pausedParticipants. Folosit la:
+//  - leaveSession (pausable=true): user-ul a apasat "Pauza" sau focus mode a
+//    detectat background.
+//  - drop stale in tick: nu mai vedem mutual visibility (BLE off, telefon in
+//    buzunar pierde scan).
+function pauseParticipant(session: Session, userId: string, now: number): void {
+  const p = session.participants[userId];
+  if (!p) return;
+  delete session.participants[userId];
+  if (!session.pausedParticipants) session.pausedParticipants = {};
+  session.pausedParticipants[userId] = { ...p, pausedAt: now };
+}
+
+// Incearca sa readuca user-ul din pausedParticipants in participants.
+// Returneaza true daca reusit (resume valid), false daca pauza a depasit
+// ABSENT_MAX_SINGLE_MS sau ABSENT_MAX_TOTAL_MS — in acel caz ghost-ul e
+// curatat si caller-ul trebuie sa creeze participant nou de la zero.
+function tryResumeParticipant(session: Session, userId: string, now: number): boolean {
+  const ghost = session.pausedParticipants?.[userId];
+  if (!ghost) return false;
+  const sincePause = now - ghost.pausedAt;
+  const newTotalPaused = ghost.totalPausedMs + sincePause;
+  if (sincePause > ABSENT_MAX_SINGLE_MS || newTotalPaused > ABSENT_MAX_TOTAL_MS) {
+    delete session.pausedParticipants![userId];
+    return false;
+  }
+  const { pausedAt: _pausedAt, ...rest } = ghost;
+  session.participants[userId] = {
+    ...rest,
+    lastConfirmedAt: now,
+    totalPausedMs: newTotalPaused,
+  };
+  delete session.pausedParticipants![userId];
+  return true;
+}
+
+// Curata ghost-urile expirate (pauza singulara > 3min) la inceputul fiecarui
+// tick. Asa nu raman fantome in sesiune dupa ce userii au plecat efectiv.
+function expirePausedParticipants(session: Session, now: number): string[] {
+  const expired: string[] = [];
+  if (!session.pausedParticipants) return expired;
+  for (const [uid, g] of Object.entries(session.pausedParticipants)) {
+    if (now - g.pausedAt > ABSENT_MAX_SINGLE_MS) expired.push(uid);
+  }
+  for (const uid of expired) delete session.pausedParticipants![uid];
+  return expired;
+}
+
+function totalSessionPopulation(session: Session): number {
+  return (
+    Object.keys(session.participants).length +
+    Object.keys(session.pausedParticipants ?? {}).length
+  );
 }
 
 // Toate evenimentele isi cara propriul `recipients` (lista de userId-uri
@@ -120,6 +209,16 @@ export type SyncEvent = { recipients: string[] } & (
       durationSec: number;
       squadSize: number;
     }
+  | {
+      type: 'failed';
+      sessionId: string;
+      userId: string;
+      reason: CowalkFailReason;
+      steps: number;
+      stepsRequired: number;
+      rssiSamples: number;
+      rssiStdDev: number;
+    }
 );
 
 export type AwardFn = (args: {
@@ -144,6 +243,44 @@ export async function tickHeartbeat(
 ): Promise<{ events: SyncEvent[]; session: Session | null }> {
   const events: SyncEvent[] = [];
   let session = await getSessionForUser(userId);
+
+  // Step 0: cleanup ghost-uri expirate + resume self daca eram in pauza.
+  // Self-resume e prima ocazie sa ne reintegram in sesiune dupa drop stale —
+  // urmatorul pas (pair-up) trebuie sa ne gaseasca deja in participants ca
+  // peer-ul sa nu mai fie tratat ca "ne intalnim prima oara".
+  if (session) {
+    const expired = expirePausedParticipants(session, now);
+    for (const uid of expired) {
+      // Pauza singulara depasita — ghostul devine plecare definitiva. uKey-ul
+      // ramane si va fi sters mai jos in step 4 daca sesiunea moare.
+      events.push({
+        type: 'left',
+        sessionId: session.id,
+        userId: uid,
+        remaining: Object.values(session.participants),
+        recipients: [
+          ...new Set([
+            ...Object.keys(session.participants),
+            ...Object.keys(session.pausedParticipants ?? {}),
+            uid,
+          ]),
+        ],
+      });
+    }
+    if (session.pausedParticipants?.[userId]) {
+      const resumed = tryResumeParticipant(session, userId, now);
+      if (resumed) {
+        const p = session.participants[userId]!;
+        events.push({
+          type: 'joined',
+          sessionId: session.id,
+          participant: p,
+          participants: Object.values(session.participants),
+          recipients: Object.keys(session.participants),
+        });
+      }
+    }
+  }
 
   // Step 1: pair-up cu fiecare peer mutual.
   for (const peerId of mutualPeerIds) {
@@ -173,10 +310,13 @@ export async function tickHeartbeat(
         recipients: [userId, peerId],
       });
     } else if (session && !peerSessionId) {
-      // Peer-ul intra in sesiunea mea cu joinedAt = now.
+      // Peer-ul intra in sesiunea mea — fie resume daca era paused aici,
+      // fie ca participant nou.
       if (!session.participants[peerId]) {
-        const p = newParticipant(peerId, now);
-        session.participants[peerId] = p;
+        const resumed = tryResumeParticipant(session, peerId, now);
+        const p = resumed
+          ? session.participants[peerId]!
+          : (session.participants[peerId] = newParticipant(peerId, now));
         await Promise.all([
           redis.set(uKey(peerId), session.id, 'EX', SESSION_TTL_SECONDS),
           persist(session),
@@ -190,12 +330,15 @@ export async function tickHeartbeat(
         });
       }
     } else if (!session && peerSessionId) {
-      // Eu intru in sesiunea peer-ului.
+      // Eu intru in sesiunea peer-ului — fie resume daca eram paused acolo,
+      // fie ca participant nou.
       const peerSession = await getSession(peerSessionId);
       if (peerSession) {
         if (!peerSession.participants[userId]) {
-          const p = newParticipant(userId, now);
-          peerSession.participants[userId] = p;
+          const resumed = tryResumeParticipant(peerSession, userId, now);
+          const p = resumed
+            ? peerSession.participants[userId]!
+            : (peerSession.participants[userId] = newParticipant(userId, now));
           events.push({
             type: 'joined',
             sessionId: peerSession.id,
@@ -227,7 +370,7 @@ export async function tickHeartbeat(
     session.participants[userId].lastConfirmedAt = now;
   }
 
-  // Step 3: drop stale participants (nu mai au mutual visibility cu nimeni).
+  // Step 3: drop stale participants → muta in pausedParticipants (smart resume).
   // Snapshot recipients ÎNAINTE de drop ca event-ul `left` sa ajunga si la
   // cel care iese (asa stie sa-si curete UI-ul) si la cei care raman.
   const beforeDropIds = Object.keys(session.participants);
@@ -235,27 +378,25 @@ export async function tickHeartbeat(
   for (const [pid, p] of Object.entries(session.participants)) {
     if (now - p.lastConfirmedAt > PARTICIPANT_GRACE_MS) droppedIds.push(pid);
   }
-  if (droppedIds.length > 0) {
-    const pipeline = redis.pipeline();
-    for (const pid of droppedIds) {
-      delete session.participants[pid];
-      pipeline.del(uKey(pid));
-      events.push({
-        type: 'left',
-        sessionId: session.id,
-        userId: pid,
-        remaining: Object.values(session.participants),
-        recipients: beforeDropIds,
-      });
-    }
-    await pipeline.exec();
+  for (const pid of droppedIds) {
+    pauseParticipant(session, pid, now);
+    events.push({
+      type: 'left',
+      sessionId: session.id,
+      userId: pid,
+      remaining: Object.values(session.participants),
+      recipients: beforeDropIds,
+    });
   }
 
-  // Step 4: daca ramane sub 2, sesiunea se incheie (un singur user nu mai e
-  // co-walk). Trimitem `ended` la toti cei care erau in sesiune inainte de
-  // destroy ca sa-si curete UI-ul.
-  if (Object.keys(session.participants).length < 2) {
-    const finalIds = Object.keys(session.participants);
+  // Step 4: daca populatia totala (active + paused) ramane sub 2, sesiunea se
+  // incheie definitiv. Asa permitem cazul "ambii in pauza simultan" sa
+  // supravietuiasca, dar nu si "ramane unul singur".
+  if (totalSessionPopulation(session) < 2) {
+    const finalIds = [
+      ...Object.keys(session.participants),
+      ...Object.keys(session.pausedParticipants ?? {}),
+    ];
     await destroy(session.id, finalIds);
     events.push({
       type: 'ended',
@@ -265,18 +406,20 @@ export async function tickHeartbeat(
     return { events, session: null };
   }
 
-  // Step 5: cine a strans 10min + indeplineste anti-cheat → award.
+  // Step 5: cine a strans 10min EFECTIVI (excluzand paused) + indeplineste
+  // anti-cheat → award.
   const activeIds = Object.keys(session.participants);
   for (const p of Object.values(session.participants)) {
     if (p.awarded) continue;
-    if (now - p.joinedAt < COWALK_MIN_DURATION_MS) continue;
+    const effectiveElapsed = now - effectiveJoinedAt(p);
+    if (effectiveElapsed < COWALK_MIN_DURATION_MS) continue;
     if (p.steps < COWALK_MIN_STEPS) continue;
     if (p.rssiSamples.length < COWALK_MIN_RSSI_SAMPLES) continue;
     const std = stdDev(p.rssiSamples);
     if (std < COWALK_MIN_RSSI_STDDEV_DBM) continue;
 
     const peerIds = activeIds.filter((id) => id !== p.userId);
-    const durationSec = Math.floor((now - p.joinedAt) / 1000);
+    const durationSec = Math.floor(effectiveElapsed / 1000);
     const squadSize = activeIds.length;
     try {
       await award({
@@ -305,35 +448,140 @@ export async function tickHeartbeat(
     }
   }
 
+  // Step 6: fail detection. Daca dupa 10min + grace 60s un participant NU a
+  // primit award (anti-cheat n-a trecut), scoatem din sesiune cu motivul.
+  // Anti-cheat-ul nu mai poate fi reparat in practica dupa atatea minute fara
+  // pasi/miscare — mai bine alerta clara decat timer infinit.
+  type FailInfo = {
+    userId: string;
+    reason: CowalkFailReason;
+    steps: number;
+    rssiSamples: number;
+    rssiStdDev: number;
+  };
+  const fails: FailInfo[] = [];
+  const beforeFailIds = Object.keys(session.participants);
+  for (const p of Object.values(session.participants)) {
+    if (p.awarded) continue;
+    const effectiveElapsed = now - effectiveJoinedAt(p);
+    if (effectiveElapsed < COWALK_MIN_DURATION_MS + COWALK_FAIL_GRACE_MS) continue;
+    const reason = diagnoseFail(p);
+    if (!reason) continue;
+    fails.push({
+      userId: p.userId,
+      reason,
+      steps: p.steps,
+      rssiSamples: p.rssiSamples.length,
+      rssiStdDev: stdDev(p.rssiSamples),
+    });
+  }
+  if (fails.length > 0) {
+    const pipeline = redis.pipeline();
+    for (const f of fails) {
+      delete session.participants[f.userId];
+      pipeline.del(uKey(f.userId));
+    }
+    await pipeline.exec();
+    const remainingNow = Object.values(session.participants);
+    for (const f of fails) {
+      events.push({
+        type: 'failed',
+        sessionId: session.id,
+        userId: f.userId,
+        reason: f.reason,
+        steps: f.steps,
+        stepsRequired: COWALK_MIN_STEPS,
+        rssiSamples: f.rssiSamples,
+        rssiStdDev: f.rssiStdDev,
+        // Alerta ajunge doar la cel care a esuat. Ceilalti primesc `left`
+        // separat — nu vrem sa-i facem sa-l "judece" pe colegul lor public.
+        recipients: [f.userId],
+      });
+      events.push({
+        type: 'left',
+        sessionId: session.id,
+        userId: f.userId,
+        remaining: remainingNow,
+        recipients: beforeFailIds,
+      });
+    }
+    if (totalSessionPopulation(session) < 2) {
+      const finalIds = [
+        ...Object.keys(session.participants),
+        ...Object.keys(session.pausedParticipants ?? {}),
+      ];
+      await destroy(session.id, finalIds);
+      events.push({
+        type: 'ended',
+        sessionId: session.id,
+        recipients: [...new Set([...beforeFailIds, ...finalIds])],
+      });
+      return { events, session: null };
+    }
+  }
+
   await persist(session);
   return { events, session };
 }
 
-// Scoate explicit `userId` din sesiunea curenta (daca exista). Folosit cand
-// user-ul dezactiveaza manual co-walk-ul din UI — vrem reactie instant, nu
-// asteptam grace-ul de 90s din heartbeat. Returneaza event-urile de emis.
-export async function leaveSession(userId: string): Promise<SyncEvent[]> {
+// Returneaza motivul concret pentru care un participant NU a primit award la
+// pragul de durata. Verifica in ordine de severitate: pasi (cel mai usor de
+// observat pentru user), apoi samples, apoi stddev. Returneaza null daca toate
+// validarile trec (in care caz fail-ul nu se aplica — award va veni la tick-ul
+// urmator dupa retry).
+function diagnoseFail(p: Participant): CowalkFailReason | null {
+  if (p.steps < COWALK_MIN_STEPS) return 'steps';
+  if (p.rssiSamples.length < COWALK_MIN_RSSI_SAMPLES) return 'rssi_samples';
+  if (stdDev(p.rssiSamples) < COWALK_MIN_RSSI_STDDEV_DBM) return 'rssi_static';
+  return null;
+}
+
+// Scoate explicit `userId` din sesiunea curenta (daca exista). Folosit in
+// doua contexte:
+//   pausable=false (default) — toggle off cowalk in UI. Hard leave: ghost
+//     sters, leftGuard activ 120s sa nu intram inapoi din heartbeat-uri in zbor.
+//   pausable=true — buton "Pauza" sau focus mode background. Muta user-ul in
+//     pausedParticipants si NU seteaza leftGuard, ca resume sa fie posibil
+//     pana la ABSENT_MAX_SINGLE_MS.
+export async function leaveSession(
+  userId: string,
+  opts: { pausable?: boolean } = {},
+): Promise<SyncEvent[]> {
+  const pausable = !!opts.pausable;
   const events: SyncEvent[] = [];
   const session = await getSessionForUser(userId);
   if (!session) return events;
 
-  const beforeIds = Object.keys(session.participants);
+  const beforeIds = [
+    ...Object.keys(session.participants),
+    ...Object.keys(session.pausedParticipants ?? {}),
+  ];
   if (!session.participants[userId]) {
-    // Index pointeaza catre o sesiune din care user-ul lipseste — curatam
-    // pointer-ul orfan si plecam.
+    // User-ul nu e activ in sesiune. Daca era in pausedParticipants si caller-ul
+    // a vrut hard-leave, il scoatem definitiv. Altfel doar curatam orphan.
+    if (!pausable && session.pausedParticipants?.[userId]) {
+      delete session.pausedParticipants[userId];
+      await persist(session);
+    }
     await redis.del(uKey(userId));
     return events;
   }
 
-  delete session.participants[userId];
-  await Promise.all([
-    redis.del(uKey(userId)),
-    // Guard impotriva re-crearii sesiunii: heartbeat-urile in zbor (proprii sau
-    // ale peer-ilor care inca vad BLE-ul user-ului) nu trebuie sa-l prinda din
-    // nou intr-o sesiune noua imediat. Vezi filterRecentlyLeft + check in
-    // route handler-ul de heartbeat.
-    redis.set(leftGuardKey(userId), '1', 'EX', LEFT_GUARD_TTL_SECONDS),
-  ]);
+  if (pausable) {
+    pauseParticipant(session, userId, Date.now());
+    // NU sterg uKey si NU setez leftGuard — vrem ca user-ul sa fie regasit
+    // de heartbeat-ul propriu la resume.
+  } else {
+    delete session.participants[userId];
+    delete session.pausedParticipants?.[userId];
+    await Promise.all([
+      redis.del(uKey(userId)),
+      // Guard impotriva re-crearii sesiunii: heartbeat-urile in zbor (proprii
+      // sau ale peer-ilor care inca vad BLE-ul user-ului) nu trebuie sa-l
+      // prinda din nou intr-o sesiune noua imediat.
+      redis.set(leftGuardKey(userId), '1', 'EX', LEFT_GUARD_TTL_SECONDS),
+    ]);
+  }
 
   events.push({
     type: 'left',
@@ -343,13 +591,16 @@ export async function leaveSession(userId: string): Promise<SyncEvent[]> {
     recipients: beforeIds,
   });
 
-  if (Object.keys(session.participants).length < 2) {
-    const remainingIds = Object.keys(session.participants);
-    await destroy(session.id, remainingIds);
+  if (totalSessionPopulation(session) < 2) {
+    const finalIds = [
+      ...Object.keys(session.participants),
+      ...Object.keys(session.pausedParticipants ?? {}),
+    ];
+    await destroy(session.id, finalIds);
     events.push({
       type: 'ended',
       sessionId: session.id,
-      recipients: [...new Set([...beforeIds, ...remainingIds])],
+      recipients: [...new Set([...beforeIds, ...finalIds])],
     });
   } else {
     await persist(session);
