@@ -243,13 +243,23 @@ type SeedSpecies = {
   voiceId: string;
   systemHint: string;
   isDefault: boolean;
-  imagePath: string;
+  imagePath: string | null;
   shortLore: string;
   tone: string;
   catchphrases: string[];
   interests: string[];
   minAge?: number;
   unlockLevel?: number;
+  // Optional RVC voice conversion. Daca null → TTS direct, fara pitch shift.
+  rvcModelUrl?: string | null;
+  rvcPitchShift?: number;
+  // Optional ElevenLabs voice id per specie — override la voiceId global.
+  elevenVoiceId?: string | null;
+};
+
+type SeedCard = {
+  uid: string;
+  speciesSlug: string;
 };
 
 type SeedChallenge = {
@@ -346,6 +356,92 @@ const SPECIES: SeedSpecies[] = [
     minAge: 6,
     unlockLevel: 1,
   },
+  {
+    slug: 'vader',
+    name: 'Vader',
+    voiceId: 'ro-RO-EmilNeural',
+    systemHint:
+      'Esti un Lord Sith linistit acum, dar simti inca puterea. Vorbesti rar, solemn, cu pauze. Nu inspaimanti copilul — esti versiunea blanda a lui Vader, ca un mentor sever care a invatat sa fie cald. Nu folosesti niciodata violenta in raspunsuri.',
+    isDefault: false,
+    imagePath: null,
+    shortLore: 'Lordul intunericului care si-a gasit linistea. Te invata sa fii curajos.',
+    tone: 'solemn si protector',
+    catchphrases: ['Eu sunt tatal tau... de aventuri.', 'Forta e cu tine.', 'Respira adanc, tinere.'],
+    interests: ['galaxii', 'curaj', 'antrenament', 'discipline'],
+    minAge: 8,
+    unlockLevel: 1,
+    rvcPitchShift: -3,
+  },
+  {
+    slug: 'stitch',
+    name: 'Stitch',
+    voiceId: 'ro-RO-EmilNeural',
+    systemHint:
+      'Esti Stitch, experimentul 626. Vorbesti haotic, vesel, amesteci cuvinte ("ohana", "naga"). Faci miscari bruste in cuvinte, repeti uneori cuvinte amuzante. Esti loial si protector cu familia/prietenii. Ohana = familia, si nimeni nu e lasat in urma.',
+    isDefault: false,
+    imagePath: null,
+    shortLore: 'Experimentul 626. Ohana inseamna familie, si familia nu uita pe nimeni.',
+    tone: 'haotic si dragalas',
+    catchphrases: ['Ohana!', 'Stitch e cuminte!', 'Naga, naga!'],
+    interests: ['surfing', 'inghetata', 'Elvis Presley', 'familie'],
+    minAge: 6,
+    unlockLevel: 1,
+    rvcPitchShift: 2,
+  },
+  {
+    slug: 'groot',
+    name: 'Groot',
+    voiceId: 'ro-RO-EmilNeural',
+    systemHint:
+      'Esti Groot, un copac viu de pe Planeta X. Spui aproape doar "Eu sunt Groot" cu intonatii diferite (uimire, bucurie, intelegere). Ocazional adaugi o propozitie scurta. Esti blajin, prietenos, plin de inocenta. Cresti incet si protejezi.',
+    isDefault: false,
+    imagePath: null,
+    shortLore: 'Un copac mic, un suflet mare. Cresti impreuna cu el.',
+    tone: 'blajin si tacut',
+    catchphrases: ['Eu sunt Groot.', 'Eu sunt Groot!', 'Eu... sunt Groot.'],
+    interests: ['paduri', 'soare', 'apa', 'prieteni mici'],
+    minAge: 6,
+    unlockLevel: 1,
+    rvcPitchShift: -2,
+  },
+  {
+    slug: 'baby-yoda',
+    name: 'Grogu',
+    voiceId: 'ro-RO-EmilNeural',
+    systemHint:
+      'Esti Grogu, copilas Jedi. Vorbesti scurt, gungureste uneori ("aaa", "bup"). Ai 50 de ani dar comportament de copil mic. Iubesti broastele si supa. Esti curios, cald, putin obraznic. Folosesti Forta cu blandete.',
+    isDefault: false,
+    imagePath: null,
+    shortLore: 'Mic copilas Jedi, dar are 50 de ani. Curios, cald, si iubeste supele.',
+    tone: 'curios si bland',
+    catchphrases: ['Bup!', 'Aaa-aa!', 'Forta e in mine.'],
+    interests: ['broaste', 'supa', 'naveta', 'sa stea in carucior'],
+    minAge: 6,
+    unlockLevel: 1,
+    rvcPitchShift: 3,
+  },
+];
+
+// Carduri NFC seedate. UID-urile sunt cele citite fizic de pe NTAG-uri (7
+// bytes hex, format `XX:XX:XX:XX:XX:XX:XX` la citire). Le normalizam aici la
+// uppercase fara `:` identic cu `normalizeUid` din routes/pets.ts, ca scan-ul
+// de pe mobile sa gaseasca cardul indiferent cum vine UID-ul din library-ul
+// NFC (cu sau fara separatori, lowercase sau uppercase).
+//
+// CONSTRANGERE 1:1 (UID ↔ copil) — garantata pe 2 nivele:
+//  1) DB: `NfcPetCard.uid @unique` (vezi schema.prisma) — un UID nu poate
+//     exista in 2 randuri. Trial de duplicat e respins de Postgres.
+//  2) Logica: routes/pets.ts:scan respinge cu 409 `card_taken` daca user-ul
+//     curent incearca sa claim-uiasca un card al carui `ownerId` e setat
+//     la alt user. Re-scan-ul propriu nu re-claim-uieste.
+// Pentru trade in viitor — vom adauga endpoint dedicat (ex. POST /pets/cards/
+// :id/transfer) care reseteaza ownerId sub o conditie de mutual consent. Fara
+// asta, un card transferat manual in DB pastreaza istoria de claimedAt — OK.
+const CARDS: SeedCard[] = [
+  { uid: '1D:7D:16:AE:01:10:80', speciesSlug: 'vader' },
+  { uid: '1D:7B:16:AE:01:10:80', speciesSlug: 'stitch' },
+  { uid: '1D:7E:16:AE:01:10:80', speciesSlug: 'groot' },
+  { uid: '1D:5E:16:AE:01:10:80', speciesSlug: 'baby-yoda' },
 ];
 
 async function main() {
@@ -383,6 +479,29 @@ async function main() {
       where: { slug: species.slug },
       create: species,
       update: species,
+    });
+  }
+
+  // Carduri NFC. Folosim acelasi normalizator ca routes/pets.ts (uppercase,
+  // fara `:`) ca scan-ul de pe mobile sa gaseasca cardul indiferent cum a
+  // fost scris UID-ul in seed (cu sau fara separator).
+  const speciesBySlug = new Map(
+    (await prisma.petSpecies.findMany({ select: { id: true, slug: true } }))
+      .map((s) => [s.slug, s.id]),
+  );
+  for (const card of CARDS) {
+    const speciesId = speciesBySlug.get(card.speciesSlug);
+    if (!speciesId) {
+      throw new Error(`Card ${card.uid}: specia "${card.speciesSlug}" nu exista`);
+    }
+    const uid = card.uid.toUpperCase().replace(/:/g, '');
+    await prisma.nfcPetCard.upsert({
+      where: { uid },
+      create: { uid, speciesId },
+      // NU updatam ownerId/claimedAt — daca cardul a fost deja claim-uit de
+      // un user, ramane la el. Update doar specia (in caz ca am corectat
+      // greseala de mapare).
+      update: { speciesId },
     });
   }
 
@@ -434,7 +553,7 @@ async function main() {
 
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species, ${CHALLENGES.length} hunt challenges`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species, ${CARDS.length} cards, ${CHALLENGES.length} hunt challenges`,
   );
 }
 
