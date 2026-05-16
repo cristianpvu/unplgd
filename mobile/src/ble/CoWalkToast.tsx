@@ -56,6 +56,12 @@ export function CoWalkToast() {
           steps: e.steps,
           stepsRequired: e.stepsRequired,
         });
+      } else if (e.type === 'tick') {
+        // XP-ul user-ului a crescut server-side — invalidate cache 'me' ca
+        // UI-ul (home, avatar, level) sa reflecte. Nu afisam toast — tick-ul
+        // e per minut, ar fi spam. Progress card-ul din nearby afiseaza
+        // counterul singur.
+        qc.invalidateQueries({ queryKey: ['me'] });
       }
     },
     [qc],
@@ -133,9 +139,10 @@ function renderToast(data: ToastData): {
         : `${data.durationMin} min · faceti parte din acelasi squad`,
     };
   }
-  // Mesaje friendly pentru copii — explica ce a lipsit, nu acuzator.
+  // Mesaje friendly pentru copii — explica ce a lipsit, fara cifre concrete
+  // (pedometrul Android/iOS raporteaza diferit; cifrele exacte deruteaza).
   const subByReason: Record<typeof data.reason, string> = {
-    steps: `Ai facut ${data.steps} pasi din ${data.stepsRequired}. Trebuie sa va plimbati, nu sa stati pe loc.`,
+    steps: 'Nu ati mers destul. Plimbati-va impreuna, nu va opriti pe loc.',
     rssi_static: 'Telefoanele au stat prea aproape, fara miscare. Mergeti impreuna!',
     rssi_samples: 'Semnalul Bluetooth a fost prea slab. Tine telefoanele aproape.',
   };

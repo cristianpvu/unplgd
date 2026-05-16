@@ -28,6 +28,13 @@ export async function requestBlePermissions(): Promise<BlePermissionResult> {
 
   const sdk = Number(Platform.Version);
   const perms: string[] = [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+  if (sdk >= 29) {
+    // Pedometru: pe Android 10+ ACTIVITY_RECOGNITION e dangerous runtime
+    // permission. Fara prompt explicit, expo-sensors Pedometer pare ca merge
+    // (isAvailableAsync poate returna true) dar watchStepCount nu emite
+    // niciodata callback → anti-cheat-ul de pasi pica silentios pe Android.
+    perms.push(PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION);
+  }
   if (sdk >= 31) {
     perms.push(
       PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
@@ -48,7 +55,12 @@ export async function requestBlePermissions(): Promise<BlePermissionResult> {
       // POST_NOTIFICATIONS e cosmetic (notificare foreground service); permitem
       // sa lipseasca. BLUETOOTH_ADVERTISE NU e optional pe Android 12+ — fara
       // ea, BluetoothLeAdvertiser arunca SecurityException si peer-ii nu ne vad.
-      if (p === PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS) {
+      // ACTIVITY_RECOGNITION e doar pt anti-cheat-ul de pasi — daca e refuzata,
+      // BLE si co-walk detection functioneaza dar user-ul nu va primi XP.
+      if (
+        p === PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS ||
+        p === PermissionsAndroid.PERMISSIONS.ACTIVITY_RECOGNITION
+      ) {
         continue;
       }
       // eslint-disable-next-line no-console

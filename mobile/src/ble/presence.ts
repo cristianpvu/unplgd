@@ -47,9 +47,15 @@ export type ClientSession = {
   id: string;
   startedAtClient: number;
   // Pasi facuti de mine de la inceputul sesiunii (myStepCount - startStepCount).
-  // Folosit pentru afisare "147 / 200 pasi" in UI; reflecta count-ul local in
-  // timp real, nu valoarea sincronizata cu backend (care vine la 30s).
+  // Folosit doar in dev/debug — UI-ul nu mai afiseaza cifre exacte (pedometrul
+  // Android raporteaza burst-y, induce confuzie). Sursa de adevar e backend.
   mySteps: number;
+  // XP cumulat in tick-uri pentru user-ul curent. Vine prin cowalk:tick si la
+  // reconnect via /cowalk/current. UI-ul afiseaza contor langa timer.
+  myTickXp: number;
+  // Palier curent (0-3) si rata XP/min — populate la primul cowalk:tick.
+  myTickTier: number;
+  myTickRate: number;
   // Toti membrii (inclusiv eu). Fiecare cu joinedAt convertit la ceasul local.
   members: Array<{
     userId: string;
@@ -77,6 +83,14 @@ export type CoWalkEvent =
       reason: 'steps' | 'rssi_static' | 'rssi_samples';
       steps: number;
       stepsRequired: number;
+    }
+  | {
+      type: 'tick';
+      minute: number;
+      deltaXp: number;
+      totalTickXp: number;
+      tier: number;
+      rate: number;
     };
 
 export type PresenceSnapshot = {
@@ -133,6 +147,11 @@ type ServerSideSession = {
   >;
   startStepCount: number;
   rssiBufferUnreported: number[];
+  // Tick XP state pentru USER-UL CURENT (alti membri nu se vad public).
+  // Populat din cowalk:tick events si /cowalk/current snapshot.
+  myTickXp: number;
+  myTickTier: number;
+  myTickRate: number;
 };
 
 class PresenceEngine {
@@ -450,6 +469,7 @@ class PresenceEngine {
     s.on('cowalk:ended', (p: any) => this.onEnded(p));
     s.on('cowalk:completed', (p: any) => this.onCompleted(p));
     s.on('cowalk:failed', (p: any) => this.onFailed(p));
+    s.on('cowalk:tick', (p: any) => this.onTick(p));
 
     // La fiecare connect (initial sau reconnect), re-sincronizam state-ul
     // server-driven. Daca am pierdut event-uri cat am fost offline, acum le
@@ -473,6 +493,7 @@ class PresenceEngine {
     this.socket.off('cowalk:ended');
     this.socket.off('cowalk:completed');
     this.socket.off('cowalk:failed');
+    this.socket.off('cowalk:tick');
     this.socket.off('connect');
     this.socket.off('disconnect');
     this.socketHandlersAttached = false;
@@ -504,6 +525,7 @@ class PresenceEngine {
     const startStepCount = existing?.startStepCount ?? this.myStepCount;
     const rssiBufferUnreported = existing?.rssiBufferUnreported ?? [];
     const members: ServerSideSession['members'] = new Map();
+    let myTickXp = existing?.myTickXp ?? 0;
     for (const p of s.participants) {
       members.set(p.userId, {
         userId: p.userId,
@@ -514,6 +536,9 @@ class PresenceEngine {
         avatarSvg: p.avatarSvg,
         petImageUrl: p.pet?.imageUrl ?? null,
       });
+      if (this.myUserId && p.userId === this.myUserId) {
+        myTickXp = p.totalTickXp ?? myTickXp;
+      }
     }
     this.serverSessions.set(s.id, {
       id: s.id,
@@ -522,6 +547,9 @@ class PresenceEngine {
       members,
       startStepCount,
       rssiBufferUnreported,
+      myTickXp,
+      myTickTier: existing?.myTickTier ?? 0,
+      myTickRate: existing?.myTickRate ?? 0,
     });
   }
 
@@ -551,6 +579,9 @@ class PresenceEngine {
       members,
       startStepCount: this.myStepCount,
       rssiBufferUnreported: [],
+      myTickXp: 0,
+      myTickTier: 0,
+      myTickRate: 0,
     });
     this.emit();
   }
@@ -644,6 +675,35 @@ class PresenceEngine {
       steps: p.steps,
       stepsRequired: p.stepsRequired,
     });
+    this.emit();
+  }
+
+  // XP-tick acordat: actualizam state-ul sesiunii si reemit. UI-ul vede contor
+  // crescand. Backend trimite tick doar la cel afectat.
+  private onTick(p: {
+    sessionId: string;
+    userId: string;
+    minute: number;
+    deltaXp: number;
+    totalTickXp: number;
+    tier: number;
+    rate: number;
+  }) {
+    if (!this.myUserId || p.userId !== this.myUserId) return;
+    const session = this.serverSessions.get(p.sessionId);
+    if (!session) return;
+    session.myTickXp = p.totalTickXp;
+    session.myTickTier = p.tier;
+    session.myTickRate = p.rate;
+    this.fireEvent({
+      type: 'tick',
+      minute: p.minute,
+      deltaXp: p.deltaXp,
+      totalTickXp: p.totalTickXp,
+      tier: p.tier,
+      rate: p.rate,
+    });
+    // Refresh cache XP/level — backend a updatat user.xp / user.level.
     this.emit();
   }
 
@@ -821,7 +881,15 @@ class PresenceEngine {
         return a.joinedAtClient - b.joinedAtClient;
       });
       const mySteps = Math.max(0, this.myStepCount - s.startStepCount);
-      out.push({ id: s.id, startedAtClient, mySteps, members });
+      out.push({
+        id: s.id,
+        startedAtClient,
+        mySteps,
+        myTickXp: s.myTickXp,
+        myTickTier: s.myTickTier,
+        myTickRate: s.myTickRate,
+        members,
+      });
     }
     return out.sort((a, b) => a.startedAtClient - b.startedAtClient);
   }

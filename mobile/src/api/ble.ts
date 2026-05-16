@@ -16,6 +16,9 @@ export type ServerSession = {
     userId: string;
     joinedAt: number;
     awarded: boolean;
+    // XP cumulat din tick-uri (escaladator dupa baseline). 0 = inca nu se
+    // acorda (sesiune sub 10 min sau prag nedat).
+    totalTickXp: number;
     name: string;
     level: number;
     // SVG-ul capului (Avatar.svg din DB) cand userul si-a generat avatar.

@@ -1,11 +1,16 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { COWALK_MIN_DURATION_MS, COWALK_MIN_STEPS } from '../ble/constants';
+import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
 import { colors } from '../theme/colors';
 import { AvatarStack } from './AvatarStack';
 import { Landscape } from './Landscape';
+
+// Palier display data — trebuie aliniat cu COWALK_XP_TIERS din backend.
+// Index = palier (0=baseline 10min, 1..3 = tick paliere).
+const TIER_LABELS = ['Obiectiv 10 min', 'Palier 1', 'Palier 2', 'Palier 3'];
+const TIER_RATES = [0, 5, 10, 15];
 
 // Scena de co-walk activa: un strip imersiv care da senzatia ca grupul merge
 // continuu spre obiectivul XP. Trei layere de animatie:
@@ -40,8 +45,22 @@ export function CoWalkSessionCard({
   const myJoinedAt = me?.joinedAtClient ?? session.startedAtClient;
   const myAwarded = me?.awarded ?? false;
   const elapsed = Math.max(0, now - myJoinedAt);
-  const ratio = Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
+
+  // Pre-baseline (sub 10 min): bara umple liniar spre prima stea.
+  // Post-baseline: ciclam la fiecare 10 min, marcam o stea pentru fiecare
+  // palier complet. Stelele acumulate raman vizibile in partea stanga a barei.
+  // Palierul curent dicteaza culoarea + rata XP afisata.
+  const tier = me ? session.myTickTier : 0;
+  // Cate stele/checkpoint-uri am atins. Pre-baseline: 0. Post-baseline: 1+tier.
+  const checkpointsReached = myAwarded ? 1 + tier : 0;
+  // Progress in palierul curent. Pre-baseline e fata de 10min; post-baseline
+  // e progresul fata de urmatoarea stea, in cadrul aceluiasi tier de 10min.
+  const ratio = myAwarded
+    ? (elapsed % COWALK_MIN_DURATION_MS) / COWALK_MIN_DURATION_MS
+    : Math.min(1, elapsed / COWALK_MIN_DURATION_MS);
   const remainingMs = Math.max(0, COWALK_MIN_DURATION_MS - elapsed);
+  const currentRate = myAwarded ? (TIER_RATES[tier + 1] ?? TIER_RATES[TIER_RATES.length - 1]!) : 0;
+  const tierLabel = myAwarded ? TIER_LABELS[Math.min(tier + 1, TIER_LABELS.length - 1)] : TIER_LABELS[0];
 
   const headline =
     others.length === 0
@@ -73,21 +92,32 @@ export function CoWalkSessionCard({
         {headline}
       </Text>
 
-      {/* Drumul spre XP. */}
-      <ProgressTrail ratio={ratio} awarded={myAwarded} />
+      {/* Drumul spre XP — checkpoint-uri la fiecare 10 min dupa baseline. */}
+      <CheckpointTrail
+        ratio={ratio}
+        awarded={myAwarded}
+        checkpointsReached={checkpointsReached}
+      />
+
+      {myAwarded && (
+        <View style={styles.tierRow}>
+          <Text style={styles.tierLabel} numberOfLines={1}>
+            {tierLabel} · {currentRate} XP/min
+          </Text>
+          <Text style={styles.tierXp}>+{session.myTickXp} XP</Text>
+        </View>
+      )}
 
       <View style={styles.footerRow}>
         <Text style={[styles.timer, myAwarded && { color: colors.success }]}>
-          {myAwarded ? '✓ Acordat' : formatDuration(elapsed)}
+          {formatDuration(elapsed)}
         </Text>
         <Text style={styles.hint}>
           {myAwarded
-            ? 'XP primit pentru aceasta sesiune'
-            : `inca ${formatDuration(remainingMs)} pana la XP`}
+            ? 'Continui sa primesti XP cat mergi'
+            : `inca ${formatDuration(remainingMs)} pana la primul XP`}
         </Text>
       </View>
-
-      {!myAwarded && <StepsBar steps={session.mySteps} />}
 
       {(onPause || onFocus) && !myAwarded && (
         <View style={styles.actionsRow}>
@@ -174,36 +204,6 @@ export function CoWalkPausedCard({
 }
 
 // =====================================================================
-// StepsBar — pasi facuti pana la prag (anti-cheat 200)
-// =====================================================================
-
-function StepsBar({ steps }: { steps: number }) {
-  const ratio = Math.min(1, steps / COWALK_MIN_STEPS);
-  const reached = steps >= COWALK_MIN_STEPS;
-  const color = reached ? colors.success : colors.accent;
-  return (
-    <View style={styles.stepsWrap}>
-      <View style={styles.stepsLabelRow}>
-        <Text style={styles.stepsIcon}>🚶</Text>
-        <Text style={styles.stepsLabel}>
-          {reached
-            ? `${steps} pasi · prag indeplinit`
-            : `${steps} / ${COWALK_MIN_STEPS} pasi`}
-        </Text>
-      </View>
-      <View style={styles.stepsTrack}>
-        <View
-          style={[
-            styles.stepsFill,
-            { width: `${ratio * 100}%`, backgroundColor: color },
-          ]}
-        />
-      </View>
-    </View>
-  );
-}
-
-// =====================================================================
 // LIVE badge cu dot pulsant
 // =====================================================================
 
@@ -255,10 +255,20 @@ function LiveBadge({ awarded }: { awarded: boolean }) {
 }
 
 // =====================================================================
-// ProgressTrail — drumul spre XP cu marker animat
+// CheckpointTrail — drumul spre XP. Pre-baseline: bara umple liniar spre
+// prima stea (10 min). Post-baseline: bara cicleaza la fiecare 10 min, fiecare
+// ciclu adauga o stea pe track-ul de checkpoint-uri din partea stanga.
 // =====================================================================
 
-function ProgressTrail({ ratio, awarded }: { ratio: number; awarded: boolean }) {
+function CheckpointTrail({
+  ratio,
+  awarded,
+  checkpointsReached,
+}: {
+  ratio: number;
+  awarded: boolean;
+  checkpointsReached: number;
+}) {
   const TRACK_H = 14;
   const target = useRef(new Animated.Value(ratio)).current;
   useEffect(() => {
@@ -277,14 +287,10 @@ function ProgressTrail({ ratio, awarded }: { ratio: number; awarded: boolean }) 
 
   const fillColor = awarded ? colors.success : colors.accent;
 
-  // Stea de obiectiv la capatul drumului — pulsa cand nu e cucerit, fixa cand
-  // ratio === 1. SVG simplu pe layer separat ca sa fie peste track.
+  // Stea de obiectiv la capatul drumului — pulsa cand nu e cucerit inca,
+  // fixa altfel. Post-baseline e tot o stea care pulseaza (urmatorul ciclu).
   const goalPulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (awarded) {
-      goalPulse.setValue(0);
-      return;
-    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(goalPulse, {
@@ -303,36 +309,54 @@ function ProgressTrail({ ratio, awarded }: { ratio: number; awarded: boolean }) 
     );
     loop.start();
     return () => loop.stop();
-  }, [awarded, goalPulse]);
+  }, [goalPulse]);
 
   const goalScale = goalPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.18] });
 
   return (
-    <View style={styles.trail}>
-      <View style={[styles.track, { height: TRACK_H }]}>
-        <Animated.View
-          style={[
-            styles.fill,
-            { width: fillWidth, backgroundColor: fillColor, height: TRACK_H },
-          ]}
-        />
-      </View>
+    <View style={styles.trailWrap}>
+      {checkpointsReached > 0 && (
+        <View style={styles.checkpointRow}>
+          {Array.from({ length: Math.min(checkpointsReached, 6) }).map((_, i) => (
+            <Star key={i} size={18} color={colors.success} />
+          ))}
+          {checkpointsReached > 6 && (
+            <Text style={styles.checkpointMore}>+{checkpointsReached - 6}</Text>
+          )}
+        </View>
+      )}
 
-      <Animated.View style={[styles.goal, { transform: [{ scale: goalScale }] }]}>
-        <Svg width={26} height={26} viewBox="0 0 24 24">
-          <Path
-            d="M12 2 L14.5 9 L22 9.5 L16 14 L18 22 L12 17.5 L6 22 L8 14 L2 9.5 L9.5 9 Z"
-            fill={awarded ? colors.success : colors.accent}
-            stroke="#FFFFFF"
-            strokeWidth={1.2}
-            strokeLinejoin="round"
+      <View style={styles.trail}>
+        <View style={[styles.track, { height: TRACK_H }]}>
+          <Animated.View
+            style={[
+              styles.fill,
+              { width: fillWidth, backgroundColor: fillColor, height: TRACK_H },
+            ]}
           />
-        </Svg>
-      </Animated.View>
+        </View>
 
-      {/* Linii la capete pentru "start / finish". */}
-      <View style={[styles.endCap, { left: 0 }]} />
+        <Animated.View style={[styles.goal, { transform: [{ scale: goalScale }] }]}>
+          <Star size={26} color={fillColor} />
+        </Animated.View>
+
+        <View style={[styles.endCap, { left: 0 }]} />
+      </View>
     </View>
+  );
+}
+
+function Star({ size, color }: { size: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Path
+        d="M12 2 L14.5 9 L22 9.5 L16 14 L18 22 L12 17.5 L6 22 L8 14 L2 9.5 L9.5 9 Z"
+        fill={color}
+        stroke="#FFFFFF"
+        strokeWidth={1.2}
+        strokeLinejoin="round"
+      />
+    </Svg>
   );
 }
 
@@ -446,33 +470,42 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
-  stepsWrap: {
-    marginTop: 6,
-    gap: 5,
+  trailWrap: {
+    gap: 6,
     zIndex: 2,
   },
-  stepsLabelRow: {
+  checkpointRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    paddingLeft: 2,
   },
-  stepsIcon: {
-    fontSize: 13,
-  },
-  stepsLabel: {
-    color: colors.textMuted,
+  checkpointMore: {
+    color: colors.success,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '900',
+    marginLeft: 4,
   },
-  stepsTrack: {
-    height: 6,
-    backgroundColor: 'rgba(45, 42, 74, 0.10)',
-    borderRadius: 999,
-    overflow: 'hidden',
+
+  tierRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 2,
+    zIndex: 2,
   },
-  stepsFill: {
-    height: 6,
-    borderRadius: 999,
+  tierLabel: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  tierXp: {
+    color: colors.success,
+    fontSize: 14,
+    fontWeight: '900',
   },
 
   actionsRow: {
