@@ -4,6 +4,7 @@ import { verifyToken } from '../jwt.js';
 import { logger } from '../logger.js';
 import { prisma } from '../prisma.js';
 import { recordReport } from '../cowalk/session.js';
+import { phoneDownRoomName } from './phonedownEmit.js';
 
 // Singleton — initializat o data la boot in server.ts.
 let io: IOServer | null = null;
@@ -101,6 +102,43 @@ export function initIO(server: HttpServer): IOServer {
             : null;
         if (!sessionId) throw new Error('missing_sessionId');
         await socket.leave(huntRoomName(sessionId));
+        ack?.({ ok: true });
+      } catch (e: any) {
+        ack?.({ ok: false, error: e?.message ?? 'leave_failed' });
+      }
+    });
+
+    // phonedown:join { sessionId } — abonare la room-ul sesiunii (events
+    // tip lobby_changed, started, surrendered, ended). Verifica autorizarea
+    // prin lookup participant — non-participantii nu primesc nimic.
+    socket.on('phonedown:join', async (payload: unknown, ack?: (resp: unknown) => void) => {
+      try {
+        const sessionId =
+          payload && typeof payload === 'object' && 'sessionId' in payload
+            ? String((payload as { sessionId: unknown }).sessionId)
+            : null;
+        if (!sessionId) throw new Error('missing_sessionId');
+        const userId = socket.data.userId;
+        const part = await prisma.phoneDownParticipant.findUnique({
+          where: { sessionId_userId: { sessionId, userId } },
+          select: { id: true },
+        });
+        if (!part) throw new Error('not_participant');
+        await socket.join(phoneDownRoomName(sessionId));
+        ack?.({ ok: true });
+      } catch (e: any) {
+        ack?.({ ok: false, error: e?.message ?? 'join_failed' });
+      }
+    });
+
+    socket.on('phonedown:leave', async (payload: unknown, ack?: (resp: unknown) => void) => {
+      try {
+        const sessionId =
+          payload && typeof payload === 'object' && 'sessionId' in payload
+            ? String((payload as { sessionId: unknown }).sessionId)
+            : null;
+        if (!sessionId) throw new Error('missing_sessionId');
+        await socket.leave(phoneDownRoomName(sessionId));
         ack?.({ ok: true });
       } catch (e: any) {
         ack?.({ ok: false, error: e?.message ?? 'leave_failed' });

@@ -5,7 +5,7 @@
 // Datele de stil (fata) referentiaza DiceBear "Adventurer" by Lisa Wischofsky
 // (CC BY 4.0). Corpul, hainele si economia level-gated sunt originale.
 
-import { PrismaClient } from '@prisma/client';
+import { AttachmentPoint, PrismaClient, Rarity } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -14,6 +14,9 @@ type SeedItem = {
   name: string;
   feature: string | null;
   level: number;
+  rarity?: Rarity;
+  exclusive?: boolean;
+  attachmentPoint?: AttachmentPoint | null;
 };
 
 type SeedType = {
@@ -220,16 +223,39 @@ const TYPES: SeedType[] = [
     ],
   },
   {
+    // Slot redefinit ca "accesoriu" general — un singur slot care suporta
+    // atasari diverse (HAND in mana, NECK la gat, FEET la picior, BACK in
+    // spate, HEAD pe cap). Slug-ul DB ramane "holding" pentru compat cu
+    // istoricul de FK-uri si AVATAR_INCLUDE; label-ul user-facing e
+    // "Accesoriu" si itemele de aici se pot castiga din cufere Phone-Down.
     slug: 'holding',
-    name: 'In mana',
+    name: 'Accesoriu',
     group: 'body',
     items: [
-      { slug: 'hd-00', feature: null, name: 'Mana libera', level: 1 },
-      { slug: 'hd-01', feature: 'hand::::book', name: 'Carte', level: 5 },
-      { slug: 'hd-02', feature: 'hand::::ball', name: 'Minge', level: 5 },
-      { slug: 'hd-03', feature: 'hand::::phone', name: 'Telefon', level: 10 },
-      { slug: 'hd-04', feature: 'hand::::plant', name: 'Planta', level: 20 },
-      { slug: 'hd-05', feature: 'hand::::skateboard', name: 'Skateboard', level: 30 },
+      // HAND
+      { slug: 'hd-00', feature: null, name: 'Fara accesoriu', level: 1, rarity: 'COMMON', attachmentPoint: null },
+      { slug: 'hd-01', feature: 'book', name: 'Carte', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      { slug: 'hd-02', feature: 'ball-red', name: 'Minge rosie', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      { slug: 'hd-03', feature: 'ball-soccer', name: 'Minge fotbal', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      { slug: 'hd-04', feature: 'balloon-blue', name: 'Balon', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      { slug: 'hd-05', feature: 'plushie-bear', name: 'Ursulet de plus', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
+      { slug: 'hd-06', feature: 'star-wand:f4c842:6b3a1e', name: 'Bagheta stea', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
+      // NECK
+      { slug: 'hd-10', feature: 'scarf-stripe', name: 'Fular', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
+      { slug: 'hd-11', feature: 'bowtie', name: 'Papion', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
+      { slug: 'hd-12', feature: 'necklace-gold', name: 'Lantisor de aur', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
+      { slug: 'hd-13', feature: 'necklace-heart', name: 'Pandant inima', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
+      // FEET
+      { slug: 'hd-20', feature: 'ball-at-foot', name: 'Minge la picior', level: 1, rarity: 'COMMON', attachmentPoint: 'FEET' },
+      { slug: 'hd-21', feature: 'puppy', name: 'Catelus prieten', level: 1, rarity: 'EPIC', attachmentPoint: 'FEET' },
+      { slug: 'hd-22', feature: 'kitten', name: 'Pisicuta', level: 1, rarity: 'EPIC', attachmentPoint: 'FEET' },
+      // BACK
+      { slug: 'hd-30', feature: 'backpack', name: 'Ghiozdan', level: 1, rarity: 'COMMON', attachmentPoint: 'BACK' },
+      { slug: 'hd-31', feature: 'wings-fairy', name: 'Aripi de zana', level: 1, rarity: 'LEGENDARY', exclusive: true, attachmentPoint: 'BACK' },
+      // HEAD
+      { slug: 'hd-40', feature: 'cap-baseball', name: 'Sapca', level: 1, rarity: 'COMMON', attachmentPoint: 'HEAD' },
+      { slug: 'hd-41', feature: 'halo', name: 'Aureola', level: 1, rarity: 'EPIC', attachmentPoint: 'HEAD' },
+      { slug: 'hd-42', feature: 'crown', name: 'Coroana de rege', level: 1, rarity: 'LEGENDARY', exclusive: true, attachmentPoint: 'HEAD' },
     ],
   },
 ];
@@ -466,6 +492,11 @@ async function main() {
     });
 
     for (const [itemIdx, item] of type.items.entries()) {
+      const extras = {
+        rarity: item.rarity ?? 'COMMON',
+        exclusive: item.exclusive ?? false,
+        attachmentPoint: item.attachmentPoint ?? null,
+      } as const;
       await prisma.item.upsert({
         where: { slug: item.slug },
         create: {
@@ -475,6 +506,7 @@ async function main() {
           level: item.level,
           sortOrder: itemIdx,
           typeId: typeRow.id,
+          ...extras,
         },
         update: {
           name: item.name,
@@ -482,6 +514,7 @@ async function main() {
           level: item.level,
           sortOrder: itemIdx,
           typeId: typeRow.id,
+          ...extras,
         },
       });
     }

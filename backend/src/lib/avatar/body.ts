@@ -3,9 +3,9 @@
 // Layer order matches the prototype: body-base → bottom (skipped if dress) →
 // top → shoes → head (head drawn last so its outline overlaps the neck).
 
-import type { Item } from '@prisma/client';
+import type { AttachmentPoint, Item } from '@prisma/client';
 import type { Slot } from './catalog.js';
-import { BODY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
+import { ACCESSORY_PARTS, BODY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
 
 export const VIEWBOX_W = BODY_VIEWBOX.w;
 export const VIEWBOX_H = BODY_VIEWBOX.h;
@@ -58,15 +58,34 @@ function colors(items: EquippedItems) {
 // SvgXml on RN doesn't expand CSS variables. The asset SVGs use literal
 // `var(--name, #fallback)` placeholders so the prototype renders standalone;
 // we string-replace them with the literal hex picked from the catalog.
+// Accesoriile reutilizeaza acelasi mecanism cu doua slot-uri suplimentare
+// (`--acc`, `--acc2`) populate din feature-parts (ex. "ball-red:d94545").
 function fillVars(
   svg: string,
-  vars: { skin: string; top: string; bottom: string; shoes: string },
+  vars: { skin: string; top: string; bottom: string; shoes: string; acc?: string; acc2?: string },
 ): string {
   return svg.replace(/var\(--(\w+),\s*#?([0-9a-fA-F]{6})\)/g, (_m, name, fallback) => {
     const v = (vars as Record<string, string | undefined>)[name];
     const hex = (v ?? fallback).replace(/^#/, '');
     return `#${hex}`;
   });
+}
+
+// Accesoriul ramane echipat in slot-ul holding. Feature-format: "id" sau
+// "id:hex" sau "id:hex:hex" (al doilea hex pt detalii — ex. coronita = aur
+// cu pietre rosii). Daca feature lipseste/itemul nu exista in catalog →
+// no-op (echivalent cu "fara accesoriu").
+function renderAccessoryAt(
+  holding: Item,
+  point: AttachmentPoint,
+  base: { skin: string; top: string; bottom: string; shoes: string },
+): string {
+  if (holding.attachmentPoint !== point) return '';
+  const [id, acc, acc2] = featureParts(holding);
+  if (!id) return '';
+  const part = ACCESSORY_PARTS[id];
+  if (!part) return '';
+  return fillVars(part, { ...base, acc, acc2 });
 }
 
 // Wrap DiceBear's full <svg> as a positioned nested viewport. Adventurer
@@ -88,6 +107,16 @@ export function composeAvatar(items: EquippedItems, headSvg: string): string {
   const sk = shoesKey(items);
   const head = wrapHead(headSvg);
   const renderBottom = tk !== 'top-dress';
+  const holding = items.holding;
+
+  // Accesoriile sunt impartite in straturi: BACK/NECK/FEET sub head (sa nu
+  // acopere fata), HEAD/HAND peste head (sa fie vizibile complet). Toate
+  // pleaca de la acelasi Item (holding), doar attachmentPoint difera.
+  const accBack = renderAccessoryAt(holding, 'BACK', c);
+  const accNeck = renderAccessoryAt(holding, 'NECK', c);
+  const accFeet = renderAccessoryAt(holding, 'FEET', c);
+  const accHead = renderAccessoryAt(holding, 'HEAD', c);
+  const accHand = renderAccessoryAt(holding, 'HAND', c);
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEWBOX_W} ${VIEWBOX_H}" width="100%" height="100%">` +
@@ -95,7 +124,12 @@ export function composeAvatar(items: EquippedItems, headSvg: string): string {
     (renderBottom ? fillVars(BODY_PARTS[bk], c) : '') +
     fillVars(BODY_PARTS[tk], c) +
     fillVars(BODY_PARTS[sk], c) +
+    accBack +
+    accNeck +
+    accFeet +
     head +
+    accHead +
+    accHand +
     `</svg>`
   );
 }

@@ -23,23 +23,26 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  friendshipsSent     Friendship[]      @relation("FriendshipRequester")
-  friendshipsReceived Friendship[]      @relation("FriendshipReceiver")
-  interactionsAsA     DailyInteraction[] @relation("InteractionUser")
-  interactionsAsB     DailyInteraction[] @relation("InteractionFriend")
-  xpTransactions      XpTransaction[]
-  avatar              Avatar?
-  bracelet            NfcBracelet?
-  pet                 Pet?
-  petCards            NfcPetCard[]
-  stories             Story[]
-  storyClaims         StoryClaim[]
-  coCreationsAsA      CoCreation[]      @relation("CoCreationUserA")
-  coCreationsAsB      CoCreation[]      @relation("CoCreationUserB")
-  huntsHosted         HuntSession[]     @relation("HuntHost")
-  huntTeamships       HuntTeamMember[]
-  huntChallengeRuns   HuntChallengeRun[]
-  huntLobbyMemberships HuntLobbyMember[]
+  friendshipsSent         Friendship[]           @relation("FriendshipRequester")
+  friendshipsReceived     Friendship[]           @relation("FriendshipReceiver")
+  interactionsAsA         DailyInteraction[]     @relation("InteractionUser")
+  interactionsAsB         DailyInteraction[]     @relation("InteractionFriend")
+  xpTransactions          XpTransaction[]
+  avatar                  Avatar?
+  bracelet                NfcBracelet?
+  pet                     Pet?
+  petCards                NfcPetCard[]
+  stories                 Story[]
+  storyClaims             StoryClaim[]
+  coCreationsAsA          CoCreation[]           @relation("CoCreationUserA")
+  coCreationsAsB          CoCreation[]           @relation("CoCreationUserB")
+  huntsHosted             HuntSession[]          @relation("HuntHost")
+  huntTeamships           HuntTeamMember[]
+  huntChallengeRuns       HuntChallengeRun[]
+  huntLobbyMemberships    HuntLobbyMember[]
+  phoneDownSessionsHosted PhoneDownSession[]     @relation("PhoneDownHost")
+  phoneDownParticipations PhoneDownParticipant[]
+  chests                  Chest[]
 
   @@index([email])
 }
@@ -73,16 +76,45 @@ model ItemType {
   items Item[]
 }
 
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+// Punct de atasare pe corp pentru itemele de accesorii. Body composer-ul
+// alege pozitia SVG in functie de aceasta: HAND la pumn, NECK la gat, FEET
+// la picior, BACK in spate, HEAD deasupra capului. NULL pentru iteme care
+// nu apartin slot-ului holding (skin, hair, top, etc.).
+enum AttachmentPoint {
+  HAND
+  NECK
+  FEET
+  BACK
+  HEAD
+}
+
 model Item {
-  id        String  @id @default(cuid())
-  typeId    String
-  slug      String  @unique
-  name      String
+  id              String           @id @default(cuid())
+  typeId          String
+  slug            String           @unique
+  name            String
   // Codul de redare folosit de DiceBear / body composer. NULL = "fara"
   // (ochelari, cercei, vesta, holding) — opt-out explicit, item real in catalog.
-  feature   String?
-  level     Int     @default(1)
-  sortOrder Int     @default(0)
+  feature         String?
+  level           Int              @default(1)
+  sortOrder       Int              @default(0)
+  // Raritatea picarii din cufere; influenteaza loot table weighting + culoarea
+  // de prezentare in inventar.
+  rarity          Rarity           @default(COMMON)
+  // Iteme legendare obtenibile DOAR din PhoneDown (prestigiu social). False
+  // pentru iteme catalog standard care vin oricum din avatar default sau
+  // unlock la level.
+  exclusive       Boolean          @default(false)
+  // Doar pentru iteme din slot accesoriu (legacy slot "holding"). NULL pentru
+  // restul sloturilor.
+  attachmentPoint AttachmentPoint?
 
   type ItemType @relation(fields: [typeId], references: [id], onDelete: Cascade)
 
@@ -138,22 +170,22 @@ model Avatar {
   footwearItemId  String
   holdingItemId   String
 
-  user          User @relation(fields: [userId],          references: [id], onDelete: Cascade)
-  skinItem      Item @relation("AvatarSkin",      fields: [skinItemId],      references: [id])
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skinItem      Item @relation("AvatarSkin", fields: [skinItemId], references: [id])
   hairColorItem Item @relation("AvatarHairColor", fields: [hairColorItemId], references: [id])
-  hairItem      Item @relation("AvatarHair",      fields: [hairItemId],      references: [id])
-  eyesItem      Item @relation("AvatarEyes",      fields: [eyesItemId],      references: [id])
-  mouthItem     Item @relation("AvatarMouth",     fields: [mouthItemId],     references: [id])
-  eyebrowsItem  Item @relation("AvatarEyebrows",  fields: [eyebrowsItemId],  references: [id])
-  glassesItem   Item @relation("AvatarGlasses",   fields: [glassesItemId],   references: [id])
-  earringsItem  Item @relation("AvatarEarrings",  fields: [earringsItemId],  references: [id])
-  featuresItem  Item @relation("AvatarFeatures",  fields: [featuresItemId],  references: [id])
+  hairItem      Item @relation("AvatarHair", fields: [hairItemId], references: [id])
+  eyesItem      Item @relation("AvatarEyes", fields: [eyesItemId], references: [id])
+  mouthItem     Item @relation("AvatarMouth", fields: [mouthItemId], references: [id])
+  eyebrowsItem  Item @relation("AvatarEyebrows", fields: [eyebrowsItemId], references: [id])
+  glassesItem   Item @relation("AvatarGlasses", fields: [glassesItemId], references: [id])
+  earringsItem  Item @relation("AvatarEarrings", fields: [earringsItemId], references: [id])
+  featuresItem  Item @relation("AvatarFeatures", fields: [featuresItemId], references: [id])
   bodyShapeItem Item @relation("AvatarBodyShape", fields: [bodyShapeItemId], references: [id])
-  topItem       Item @relation("AvatarTop",       fields: [topItemId],       references: [id])
+  topItem       Item @relation("AvatarTop", fields: [topItemId], references: [id])
   outerwearItem Item @relation("AvatarOuterwear", fields: [outerwearItemId], references: [id])
-  bottomItem    Item @relation("AvatarBottom",    fields: [bottomItemId],    references: [id])
-  footwearItem  Item @relation("AvatarFootwear", fields: [footwearItemId],  references: [id])
-  holdingItem   Item @relation("AvatarHolding",   fields: [holdingItemId],   references: [id])
+  bottomItem    Item @relation("AvatarBottom", fields: [bottomItemId], references: [id])
+  footwearItem  Item @relation("AvatarFootwear", fields: [footwearItemId], references: [id])
+  holdingItem   Item @relation("AvatarHolding", fields: [holdingItemId], references: [id])
 }
 
 enum FriendshipStatus {
@@ -169,13 +201,13 @@ enum InteractionMethod {
 }
 
 model Friendship {
-  id            String            @id @default(cuid())
-  requesterId   String
-  receiverId    String
-  status        FriendshipStatus  @default(PENDING)
-  connectedVia  InteractionMethod?
-  createdAt     DateTime          @default(now())
-  acceptedAt    DateTime?
+  id           String             @id @default(cuid())
+  requesterId  String
+  receiverId   String
+  status       FriendshipStatus   @default(PENDING)
+  connectedVia InteractionMethod?
+  createdAt    DateTime           @default(now())
+  acceptedAt   DateTime?
 
   requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
   receiver  User @relation("FriendshipReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
@@ -193,7 +225,7 @@ model DailyInteraction {
   method    InteractionMethod
   createdAt DateTime          @default(now())
 
-  user   User @relation("InteractionUser",   fields: [userId],   references: [id], onDelete: Cascade)
+  user   User @relation("InteractionUser", fields: [userId], references: [id], onDelete: Cascade)
   friend User @relation("InteractionFriend", fields: [friendId], references: [id], onDelete: Cascade)
 
   @@unique([userId, friendId, date])
@@ -211,19 +243,19 @@ model DailyInteraction {
 // in card-detail. `minAge` filtreaza speciile potrivite pt copilul curent;
 // `unlockLevel` permite carduri "rare" deblocate la level mare.
 model PetSpecies {
-  id           String   @id @default(cuid())
-  slug         String   @unique
-  name         String
-  voiceId      String
-  systemHint   String
-  isDefault    Boolean  @default(false)
-  imagePath    String?
-  shortLore    String   @default("")
-  tone         String   @default("prietenos")
-  catchphrases String[] @default([])
-  interests    String[] @default([])
-  minAge       Int      @default(6)
-  unlockLevel  Int      @default(1)
+  id            String   @id @default(cuid())
+  slug          String   @unique
+  name          String
+  voiceId       String
+  systemHint    String
+  isDefault     Boolean  @default(false)
+  imagePath     String?
+  shortLore     String   @default("")
+  tone          String   @default("prietenos")
+  catchphrases  String[] @default([])
+  interests     String[] @default([])
+  minAge        Int      @default(6)
+  unlockLevel   Int      @default(1)
   // RVC voice conversion: URL la .zip cu .pth + .index (HuggingFace, voice-models.com).
   // Daca null → TTS-ul se livreaza direct, fara conversie. Daca setat → backendul
   // ruleaza pipeline 2-pasi (TTS romana → Replicate RVC) si livreaza vocea
@@ -231,7 +263,7 @@ model PetSpecies {
   rvcModelUrl   String?
   // Semitone shift aplicat in RVC. Pt voce grava (Vader) -3 / -4. Pt voce de
   // copil (Stitch) +2 / +3. 0 = fara shift.
-  rvcPitchShift Int     @default(0)
+  rvcPitchShift Int      @default(0)
   // ElevenLabs voice id per specie (override la ELEVENLABS_VOICE_ID din env).
   // Cand setat, sintetiza folosind aceasta voce (chiar daca TTS_PROVIDER=edge
   // global). Util pt impersonari: Vader = voce dark masculine din Voice Library,
@@ -301,16 +333,16 @@ model NfcPetCard {
 // intregul fir). audioUrl/audioProvider salveaza mp3-ul TTS al propriului
 // capitol (pentru audiobook-ul lantului = secventa de capitole).
 model Story {
-  id              String   @id @default(cuid())
-  authorId        String
-  title           String
-  body            String
-  keyFacts        Json
-  parentStoryId   String?
-  chainRootId     String?
-  audioUrl        String?
-  audioProvider   String?
-  createdAt       DateTime @default(now())
+  id            String   @id @default(cuid())
+  authorId      String
+  title         String
+  body          String
+  keyFacts      Json
+  parentStoryId String?
+  chainRootId   String?
+  audioUrl      String?
+  audioProvider String?
+  createdAt     DateTime @default(now())
 
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parent      Story?       @relation("StoryChain", fields: [parentStoryId], references: [id], onDelete: SetNull)
@@ -363,12 +395,12 @@ model StoryClaim {
 // expiresAt = startedAt + 30min; dupa, /submit refuza si seteaza EXPIRED.
 // originalImageKey/aiImageKey = chei GCS, signed URLs generate la GET.
 enum CoCreationStatus {
-  ACTIVE     // start trimis, asteapta submit poza
+  ACTIVE // start trimis, asteapta submit poza
   PROCESSING // poza primita, ruleaza validare + image gen async
-  COMPLETED  // valid + AI image gata, aparut in album
-  REJECTED   // AI a refuzat (off-topic / continut nepotrivit)
-  EXPIRED    // 30 min fara submit
-  FAILED     // eroare interna pipeline (Imagen / GCS down)
+  COMPLETED // valid + AI image gata, aparut in album
+  REJECTED // AI a refuzat (off-topic / continut nepotrivit)
+  EXPIRED // 30 min fara submit
+  FAILED // eroare interna pipeline (Imagen / GCS down)
 }
 
 // Cum s-a alaturat userB sesiunii — relevant pt audit + lucrare licenta.
@@ -382,11 +414,11 @@ enum CoCreationJoinMethod {
 }
 
 model CoCreation {
-  id               String   @id @default(cuid())
+  id               String               @id @default(cuid())
   userAId          String
   userBId          String
   storyId          String
-  startedAt        DateTime @default(now())
+  startedAt        DateTime             @default(now())
   expiresAt        DateTime
   submittedById    String?
   submittedAt      DateTime?
@@ -394,10 +426,10 @@ model CoCreation {
   aiImageKey       String?
   aiValid          Boolean?
   aiFeedback       String?
-  status           CoCreationStatus @default(ACTIVE)
+  status           CoCreationStatus     @default(ACTIVE)
   joinMethod       CoCreationJoinMethod @default(NFC_BAND)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   userA User  @relation("CoCreationUserA", fields: [userAId], references: [id], onDelete: Cascade)
   userB User  @relation("CoCreationUserB", fields: [userBId], references: [id], onDelete: Cascade)
@@ -415,10 +447,10 @@ model CoCreation {
 // stocat ca string pt portabilitate (Postgres are PostGIS dar nu vrem
 // dependinta extra pt MVP — turf.js face calcule client-server in JS).
 model Park {
-  id            String        @id @default(cuid())
+  id            String   @id @default(cuid())
   // Identificator OSM (way/12345 sau relation/67890). Unique pe el ca
   // sa de-duplicam la re-fetch.
-  osmId         String        @unique
+  osmId         String   @unique
   name          String
   // GeoJSON Polygon sau MultiPolygon stringified. Calculele de zona si
   // contains se fac in JS via turf.
@@ -433,11 +465,11 @@ model Park {
   // prea mic pentru hunt cu mai multe echipe".
   areaSqm       Float
   city          String?
-  lastFetchedAt DateTime      @default(now())
-  createdAt     DateTime      @default(now())
+  lastFetchedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
 
-  content       ParkContent?
-  sessions      HuntSession[]
+  content  ParkContent?
+  sessions HuntSession[]
 
   @@index([bboxMinLat, bboxMaxLat])
   @@index([bboxMinLng, bboxMaxLng])
@@ -449,12 +481,12 @@ model Park {
 // challenges[] sunt referente la HuntChallenge.id-uri tematice (ex: parc cu
 // lac → ghicitori despre apa).
 model ParkContent {
-  id            String   @id @default(cuid())
-  parkId        String   @unique
-  monsters      Json
-  themeSummary  String   // ex: "parc urban cu lac mare, salcii, banci, rate"
-  generatedAt   DateTime @default(now())
-  refreshedAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  parkId       String   @unique
+  monsters     Json
+  themeSummary String // ex: "parc urban cu lac mare, salcii, banci, rate"
+  generatedAt  DateTime @default(now())
+  refreshedAt  DateTime @default(now())
 
   park Park @relation(fields: [parkId], references: [id], onDelete: Cascade)
 }
@@ -463,36 +495,36 @@ model ParkContent {
 // quests, ~10 counting quests. Tematice (themeTags[]) ca selectorul sa
 // gaseasca pe potriva contextului parcului.
 enum ChallengeType {
-  mcq       // grila cu 4 variante, comparatie text exact
-  riddle    // text liber, deprecated — pastrat pt compat istoric
-  photo     // user trimite foto, validat de Claude vision (TBD)
-  counting  // numarare obiect din mediu, tap pe ecran
+  mcq // grila cu 4 variante, comparatie text exact
+  riddle // text liber, deprecated — pastrat pt compat istoric
+  photo // user trimite foto, validat de Claude vision (TBD)
+  counting // numarare obiect din mediu, tap pe ecran
 }
 
 model HuntChallenge {
-  id          String        @id @default(cuid())
+  id         String        @id @default(cuid())
   // Slug stabil pentru seed idempotent — re-rularea seed-ului doar updateaza
   // prompt/expected, nu creeaza duplicate.
-  slug        String        @unique
-  type        ChallengeType
-  prompt      String        // text afisat copilului
+  slug       String        @unique
+  type       ChallengeType
+  prompt     String // text afisat copilului
   // mcq: "expected" e textul variantei corecte (matchuit exact din options);
   // riddle: "expected" e raspunsul corect (legacy, semantic match);
   // photo: "expected" e descrierea a ce trebuie sa apara in poza;
   // counting: "expected" e numarul int (stocat ca string).
-  expected    String
+  expected   String
   // mcq: pipe-delimited "var1|var2|var3|var4" (4 variante, una egala cu expected).
   // Nullabil pt compat cu celelalte tipuri.
-  options     String?
+  options    String?
   // Praguri de varsta — selector ia dupa birthDate. Inclusiv-inclusiv.
-  ageMin      Int
-  ageMax      Int
+  ageMin     Int
+  ageMax     Int
   // Tag-uri tematice (apa/padure/animale/...) pt potrivire cu themeTags-urile
   // monstrului. Stocate ca CSV simplu pt query rapid.
-  themeTags   String        @default("")
-  difficulty  Int           @default(1) // 1=usor, 2=mediu, 3=greu
-  active      Boolean       @default(true)
-  createdAt   DateTime      @default(now())
+  themeTags  String        @default("")
+  difficulty Int           @default(1) // 1=usor, 2=mediu, 3=greu
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
 
   runs HuntChallengeRun[]
 
@@ -500,25 +532,25 @@ model HuntChallenge {
 }
 
 enum HuntStatus {
-  LOBBY      // host a creat, asteapta alti membri sa accepte (sau auto-pornire)
-  ACTIVE     // gameplay in progres
-  COMPLETED  // timeout sau host a apasat end
-  CANCELLED  // criterii ne-indeplinite (echipe rupte etc.)
+  LOBBY // host a creat, asteapta alti membri sa accepte (sau auto-pornire)
+  ACTIVE // gameplay in progres
+  COMPLETED // timeout sau host a apasat end
+  CANCELLED // criterii ne-indeplinite (echipe rupte etc.)
 }
 
 model HuntSession {
-  id          String     @id @default(cuid())
-  hostId      String
-  parkId      String
-  status      HuntStatus @default(LOBBY)
-  durationSec Int        // 900 / 1800 / 2700 (15 / 30 / 45 min)
-  startedAt   DateTime?
-  endsAt      DateTime?  // startedAt + durationSec
-  endedAt     DateTime?
+  id           String     @id @default(cuid())
+  hostId       String
+  parkId       String
+  status       HuntStatus @default(LOBBY)
+  durationSec  Int // 900 / 1800 / 2700 (15 / 30 / 45 min)
+  startedAt    DateTime?
+  endsAt       DateTime? // startedAt + durationSec
+  endedAt      DateTime?
   // Cache: numar total de monstri spawn-ati la pornire, pentru progress UI.
-  monsterCount Int       @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  monsterCount Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
   host     User              @relation("HuntHost", fields: [hostId], references: [id], onDelete: Cascade)
   park     Park              @relation(fields: [parkId], references: [id])
@@ -547,26 +579,26 @@ model HuntLobbyMember {
 }
 
 model HuntTeam {
-  id        String   @id @default(cuid())
-  sessionId String
+  id               String   @id @default(cuid())
+  sessionId        String
   // Liderul echipei (ales aleatoriu la Start dintre membri). Doar el joaca
   // efectiv pe telefonul lui — restul echipei sta langa el fizic.
-  leaderId  String?
-  name      String   // "Lac" / "Padure" / sau "Echipa 1" — default pana liderul il schimba
+  leaderId         String?
+  name             String // "Lac" / "Padure" / sau "Echipa 1" — default pana liderul il schimba
   // Liderul confirma/schimba numele inainte sa apara AR-ul. Pana atunci
   // membrii vad "asteptam pe lider sa numeasca echipa".
-  nameSet   Boolean  @default(false)
+  nameSet          Boolean  @default(false)
   // GeoJSON Polygon — sub-zona din parc atribuita echipei. Calculat la
   // pornire prin turf intersection (bbox stripes ∩ park polygon).
-  zone      String
-  zoneArea  Float    // m^2
+  zone             String
+  zoneArea         Float // m^2
   // Scor cumulativ in sesiune. Update incremental la fiecare monstru ucis,
   // ca polling-ul de scoreboard sa fie 1 SELECT.
-  score     Int      @default(0)
-  monstersDefeated Int @default(0)
-  createdAt DateTime @default(now())
+  score            Int      @default(0)
+  monstersDefeated Int      @default(0)
+  createdAt        DateTime @default(now())
 
-  session  HuntSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session  HuntSession         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   members  HuntTeamMember[]
   monsters HuntMonster[]
   defeats  HuntMonsterDefeat[]
@@ -575,10 +607,10 @@ model HuntTeam {
 }
 
 model HuntTeamMember {
-  id        String   @id @default(cuid())
-  teamId    String
-  userId    String
-  joinedAt  DateTime @default(now())
+  id       String   @id @default(cuid())
+  teamId   String
+  userId   String
+  joinedAt DateTime @default(now())
 
   team HuntTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -588,42 +620,42 @@ model HuntTeamMember {
 }
 
 enum MonsterType {
-  green   // 50 puncte, 1 challenge per teammate
-  yellow  // 150 puncte, 2 challenge per teammate
-  red     // 400 puncte, 3 challenge per teammate
-  gold    // 1000 puncte, rar, 1 challenge dificil per teammate, time-limited spawn
+  green // 50 puncte, 1 challenge per teammate
+  yellow // 150 puncte, 2 challenge per teammate
+  red // 400 puncte, 3 challenge per teammate
+  gold // 1000 puncte, rar, 1 challenge dificil per teammate, time-limited spawn
 }
 
 enum MonsterStatus {
-  HIDDEN     // pe harta, nedescoperit inca
-  ENGAGED    // o echipa l-a descoperit si a pornit lupta
-  DEFEATED   // ucis cu succes
-  ESCAPED    // timer expirat sau toate challenges esuate
+  HIDDEN // pe harta, nedescoperit inca
+  ENGAGED // o echipa l-a descoperit si a pornit lupta
+  DEFEATED // ucis cu succes
+  ESCAPED // timer expirat sau toate challenges esuate
 }
 
 model HuntMonster {
-  id          String         @id @default(cuid())
-  sessionId   String
+  id        String        @id @default(cuid())
+  sessionId String
   // Echipa careia ii apartine (zona ei). NULL inseamna ca nu e atribuit (eroare)
   // — in practica setat la spawn.
-  teamId      String?
-  type        MonsterType
+  teamId    String?
+  type      MonsterType
   // Slug-ul si meta din ParkContent (e.g. "spirit-lac"). Cache local pe monster
   // sa nu necesite join la fiecare query.
-  slug        String
-  name        String
-  loreShort   String
+  slug      String
+  name      String
+  loreShort String
   // Pozitie GPS spawn (validata sa fie in zona team-ului).
-  lat         Float
-  lng         Float
-  status      MonsterStatus  @default(HIDDEN)
+  lat       Float
+  lng       Float
+  status    MonsterStatus @default(HIDDEN)
   // Timestamp engaged — fereastra de 90 sec pentru completion.
-  engagedAt   DateTime?
-  expiresAt   DateTime?
-  createdAt   DateTime       @default(now())
+  engagedAt DateTime?
+  expiresAt DateTime?
+  createdAt DateTime      @default(now())
 
-  session HuntSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  team    HuntTeam?   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  session HuntSession        @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  team    HuntTeam?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
   runs    HuntChallengeRun[]
   defeat  HuntMonsterDefeat?
 
@@ -637,7 +669,7 @@ enum ChallengeOutcome {
   PENDING
   CORRECT
   WRONG
-  SKIPPED  // user a renuntat / timeout
+  SKIPPED // user a renuntat / timeout
 }
 
 model HuntChallengeRun {
@@ -665,12 +697,12 @@ model HuntChallengeRun {
 // Audit log pe fiecare monstru ucis cu succes — pt scoreboard final si stats.
 // Idempotent prin (monsterId) unique: max 1 record per monstru.
 model HuntMonsterDefeat {
-  id          String   @id @default(cuid())
-  monsterId   String   @unique
-  teamId      String
+  id            String   @id @default(cuid())
+  monsterId     String   @unique
+  teamId        String
   pointsAwarded Int
-  durationMs  Int      // cat a durat lupta
-  defeatedAt  DateTime @default(now())
+  durationMs    Int // cat a durat lupta
+  defeatedAt    DateTime @default(now())
 
   monster HuntMonster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
   team    HuntTeam    @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -689,4 +721,111 @@ model XpTransaction {
 
   @@unique([userId, sourceType, sourceId])
   @@index([userId, createdAt])
+}
+
+// ===== PHONE DOWN (concurs "cine rezista cel mai mult fara sa atinga
+// telefonul"). BLE e folosit doar pentru a invita prietenii din raza in
+// lobby; dupa start fiecare device joaca independent, server-ul tine
+// clasamentul si emite events prin socket.
+//
+// Cap silentios 4h: peste atat sesiunea se inchide automat (anti "am uitat
+// telefonul jos"). Sub 5 min jucate = niciun cufar (anti farm).
+
+enum PhoneDownStatus {
+  WAITING // lobby deschis, host astepta join-uri (fereastra 30s)
+  PLAYING // runda activa, participantii cu telefonul jos
+  ENDED // toti au cedat sau cap-ul de 4h s-a atins
+  CANCELLED // host a anulat lobby-ul inainte de start
+}
+
+enum PhoneDownParticipantStatus {
+  ACTIVE // telefon jos, in concurs
+  PAUSED // apel telefonic in curs, timer-ul ingheata
+  SURRENDERED // a atins telefonul → eliminat
+  WINNER // ultimul ramas activ la final
+}
+
+model PhoneDownSession {
+  id        String          @id @default(cuid())
+  hostId    String
+  status    PhoneDownStatus @default(WAITING)
+  // Timestamp cand host a apasat Start (toti participantii incep countdown-ul
+  // de 5s in acelasi moment). NULL cat e WAITING.
+  startedAt DateTime?
+  // Cap silentios = startedAt + 4h. Server-ul forteaza ENDED la atingere.
+  capAt     DateTime?
+  endedAt   DateTime?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  host         User                   @relation("PhoneDownHost", fields: [hostId], references: [id], onDelete: Cascade)
+  participants PhoneDownParticipant[]
+
+  @@index([hostId, status])
+  @@index([status, capAt])
+}
+
+model PhoneDownParticipant {
+  id            String                     @id @default(cuid())
+  sessionId     String
+  userId        String
+  status        PhoneDownParticipantStatus @default(ACTIVE)
+  joinedAt      DateTime                   @default(now())
+  // Timestamp efectiv cand a pus telefonul jos (dupa countdown-ul de 5s).
+  // Toti participantii o au aproximativ identica = session.startedAt + 5s.
+  phoneDownAt   DateTime?
+  // Timestamp cand a atins/unlock-uit telefonul. NULL daca inca rezista.
+  surrenderedAt DateTime?
+  // Cumulativ timp petrecut in pauza (apel telefonic). Scaderea din durata
+  // efectiva la calcul: durationMs = (surrenderedAt - phoneDownAt) - pausedAccumMs.
+  pausedAccumMs Int                        @default(0)
+  // Timestamp cand a inceput pauza curenta. NULL daca nu e in pauza acum.
+  pausedAt      DateTime?
+  // Atribuite la sfarsit (1 = ultimul ramas activ, N = primul cedat).
+  rank          Int?
+  // Durata efectiva fara pauze. Cache la closure ca sa nu recalculam la fiecare GET.
+  durationMs    Int?
+  chestId       String?                    @unique
+
+  session PhoneDownSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chest   Chest?           @relation(fields: [chestId], references: [id])
+
+  @@unique([sessionId, userId])
+  @@index([userId, status])
+  @@index([sessionId, status])
+}
+
+// Cufere obtinute din PhoneDown (si surse viitoare). Cand sunt create,
+// continutul e PRE-ROLAT in lootJson — deschiderea e doar revealing
+// (anti save-scum prin restart app). User-ul poate strange cufere si le
+// deschide cand vrea.
+enum ChestTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+  DIAMOND
+  CHAMPION // dedicat castigatorului PhoneDown (#1), loot exclusiv legendary
+}
+
+model Chest {
+  id         String    @id @default(cuid())
+  userId     String
+  tier       ChestTier
+  // Sursa: "phone_down" pt MVP. Las string ca sa adaug viitoare (treasure_hunt,
+  // story_chain, etc.) fara migrare.
+  sourceType String
+  sourceId   String?
+  // Continut pre-rolat: { xp: number, items: [{ itemId, slug, name, rarity }],
+  // duplicates: [{ slug, shardsXp: number }] }. Stocat ca JSON pentru
+  // flexibilitate de schema viitoare.
+  lootJson   Json
+  openedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  participant PhoneDownParticipant?
+
+  @@index([userId, openedAt])
 }
