@@ -6,7 +6,6 @@ import { requireAuth } from '../middleware/auth.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import {
   PHONE_DOWN_CAP_MS,
-  PHONE_DOWN_COUNTDOWN_MS,
   effectiveDurationMs,
   endSession,
   finalizeIfExpired,
@@ -252,8 +251,9 @@ phoneDownRouter.post('/sessions/:id/start', requireAuth, async (req, res, next) 
     }
 
     const startedAt = new Date();
-    const phoneDownAt = new Date(startedAt.getTime() + PHONE_DOWN_COUNTDOWN_MS);
-    const capAt = new Date(phoneDownAt.getTime() + PHONE_DOWN_CAP_MS);
+    // Fara countdown — jocul porneste imediat. Mobile-ul afiseaza imediat
+    // ecranul de blocare cu timer la 00:00 si pleaca de acolo.
+    const capAt = new Date(startedAt.getTime() + PHONE_DOWN_CAP_MS);
 
     await prisma.$transaction(async (tx) => {
       await tx.phoneDownSession.update({
@@ -268,7 +268,7 @@ phoneDownRouter.post('/sessions/:id/start', requireAuth, async (req, res, next) 
         where: { sessionId },
         data: {
           status: PhoneDownParticipantStatus.ACTIVE,
-          phoneDownAt,
+          phoneDownAt: startedAt,
         },
       });
     });
@@ -305,13 +305,6 @@ phoneDownRouter.post('/sessions/:id/surrender', requireAuth, async (req, res, ne
     }
 
     const now = new Date();
-    // Anti-bug: nu acceptam surrender in countdown (inainte ca phoneDownAt sa
-    // se intample). In cazul asta, duration ar fi negativa → clamp la 0 →
-    // assignRanks vede tie pe 0 si declara toti WINNER cu 00:00. Mai bine
-    // returnam no-op si lasam client-ul sa reincerce dupa countdown.
-    if (me.phoneDownAt && me.phoneDownAt > now) {
-      return res.json(serializeSession(session, now));
-    }
     // Daca era in pauza, finalizam si pauza curenta in accumulator inainte
     // sa calculam durata, ca durata sa nu includa fragmentul de apel.
     const extraPause = me.pausedAt

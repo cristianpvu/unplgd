@@ -8,10 +8,6 @@ import { awardChestForParticipant } from './award.js';
 // participantii care n-au cedat. Anti "am uitat telefonul jos toata noaptea".
 export const PHONE_DOWN_CAP_MS = 4 * 60 * 60 * 1000;
 
-// Countdown pana intra in "telefon jos" — toti participantii incep ceasul
-// dupa 5 secunde de la start.
-export const PHONE_DOWN_COUNTDOWN_MS = 5_000;
-
 // Minimul absolut pentru a primi cufar (in ms). Sub 5 min nu se acorda nimic
 // — anti-farm prin lobby-uri rapide.
 export const PHONE_DOWN_MIN_DURATION_MS = 5 * 60 * 1000;
