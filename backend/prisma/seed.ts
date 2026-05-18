@@ -383,22 +383,6 @@ const SPECIES: SeedSpecies[] = [
     unlockLevel: 1,
   },
   {
-    slug: 'vader',
-    name: 'Vader',
-    voiceId: 'ro-RO-EmilNeural',
-    systemHint:
-      'Esti un Lord Sith linistit acum, dar simti inca puterea. Vorbesti rar, solemn, cu pauze. Nu inspaimanti copilul — esti versiunea blanda a lui Vader, ca un mentor sever care a invatat sa fie cald. Nu folosesti niciodata violenta in raspunsuri.',
-    isDefault: false,
-    imagePath: null,
-    shortLore: 'Lordul intunericului care si-a gasit linistea. Te invata sa fii curajos.',
-    tone: 'solemn si protector',
-    catchphrases: ['Eu sunt tatal tau... de aventuri.', 'Forta e cu tine.', 'Respira adanc, tinere.'],
-    interests: ['galaxii', 'curaj', 'antrenament', 'discipline'],
-    minAge: 8,
-    unlockLevel: 1,
-    rvcPitchShift: -3,
-  },
-  {
     slug: 'stitch',
     name: 'Stitch',
     voiceId: 'ro-RO-EmilNeural',
@@ -464,7 +448,6 @@ const SPECIES: SeedSpecies[] = [
 // :id/transfer) care reseteaza ownerId sub o conditie de mutual consent. Fara
 // asta, un card transferat manual in DB pastreaza istoria de claimedAt — OK.
 const CARDS: SeedCard[] = [
-  { uid: '1D:7D:16:AE:01:10:80', speciesSlug: 'vader' },
   { uid: '1D:7B:16:AE:01:10:80', speciesSlug: 'stitch' },
   { uid: '1D:7E:16:AE:01:10:80', speciesSlug: 'groot' },
   { uid: '1D:5E:16:AE:01:10:80', speciesSlug: 'baby-yoda' },
