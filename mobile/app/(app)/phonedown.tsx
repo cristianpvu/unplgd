@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
-  Easing,
+  BackHandler,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -29,15 +29,41 @@ import {
 } from '../../src/api/phonedown';
 import { usePresence } from '../../src/ble/usePresence';
 import { usePhoneDownPlay } from '../../src/phonedown/usePhoneDownPlay';
-import { PHONE_DOWN_COUNTDOWN_MS } from '../../src/phonedown/constants';
 import { colors } from '../../src/theme/colors';
+import {
+  IconAlert,
+  IconArrowLeft,
+  IconBluetooth,
+  IconCheck,
+  IconClose,
+  IconFlag,
+  IconLock,
+  IconPause,
+  IconPhoneCall,
+  IconPlay,
+  IconTrophy,
+  IconUsers,
+} from '../../src/ui/icons';
 
-// Ecran central Phone Down. Faze: pre-lobby (alegere prieteni BLE), lobby
-// (asteptam joins), countdown, play (face-down), pauza apel, rezultate.
-//
-// State machine-ul live e in usePhoneDownPlay; ecranul doar selecteaza
-// componenta de afisat. Detectia face-down + apelurile sunt orchestrate de
-// hook, nu de UI.
+// Culori semantice locale pentru tema Phone Down (overlay peste tema globala).
+const PD = {
+  ink: '#0F1020',
+  card: '#FFFFFF',
+  cardBorder: 'rgba(15, 16, 32, 0.08)',
+  cardMuted: 'rgba(15, 16, 32, 0.04)',
+  text: '#0F1020',
+  textMuted: 'rgba(15, 16, 32, 0.55)',
+  accent: '#7C5CFC', // mov modern — Phone Down vibe
+  accentSoft: 'rgba(124, 92, 252, 0.12)',
+  success: '#1FA67A',
+  danger: '#E74C5C',
+  // Lock screen — OLED friendly (pur negru)
+  lockBg: '#000000',
+  lockSurface: 'rgba(255,255,255,0.06)',
+  lockText: '#FFFFFF',
+  lockTextMuted: 'rgba(255,255,255,0.55)',
+  lockAccent: '#9F84FF',
+};
 
 export default function PhoneDownScreen() {
   const params = useLocalSearchParams<{ sessionId?: string }>();
@@ -50,7 +76,6 @@ export default function PhoneDownScreen() {
     enabled: !!token,
   });
 
-  // Daca exista deja o sesiune activa pentru user, intram in ea.
   const currentQuery = useQuery({
     queryKey: ['phonedown', 'current'],
     queryFn: getCurrent,
@@ -58,7 +83,6 @@ export default function PhoneDownScreen() {
     refetchInterval: false,
   });
 
-  // Sesiunea curenta = cea din URL > sesiunea activa pe server.
   const sessionId =
     initialSessionId ?? currentQuery.data?.session?.id ?? undefined;
 
@@ -66,7 +90,7 @@ export default function PhoneDownScreen() {
     return (
       <SafeAreaView style={styles.safeLoading} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={PD.accent} />
       </SafeAreaView>
     );
   }
@@ -78,7 +102,7 @@ export default function PhoneDownScreen() {
   return <Session sessionId={sessionId} myUserId={meQuery.data.id} />;
 }
 
-// ---------- Pre-lobby: alege prieteni si creeaza sesiunea ----------
+// ---------- Pre-lobby ----------
 
 function PreLobby() {
   const qc = useQueryClient();
@@ -86,8 +110,6 @@ function PreLobby() {
   const friendsQ = useQuery({ queryKey: ['friends'], queryFn: listFriends });
   const friends = friendsQ.data?.friends ?? [];
 
-  // Prietenii din raza BLE — facem cross-reference cu friendsQ pentru name +
-  // avatar + level (presence-ul are doar name brut).
   const blePeerUserIds = useMemo(
     () => new Set(peers.filter((p) => p.userId && p.isFriend).map((p) => p.userId!)),
     [peers],
@@ -97,9 +119,6 @@ function PreLobby() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // Pre-bifam toti prietenii in raza la mount — flow optim este "porneste
-  // jocul cu cei vizibili". User-ul poate sa debifeze sau sa adauge alti
-  // prieteni (chiar daca nu sunt in raza — pot intra dupa, daca au app-ul).
   useEffect(() => {
     if (inRange.length > 0 && selected.size === 0) {
       setSelected(new Set(inRange.map((f) => f.user.id)));
@@ -129,28 +148,24 @@ function PreLobby() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
-        </Pressable>
-        <Text style={styles.title}>Phone Down</Text>
-        <View style={{ width: 44 }} />
-      </View>
+      <Header title="Phone Down" onBack={() => router.back()} />
 
-      <View style={styles.heroCard}>
-        <Text style={styles.heroEmoji}>📵</Text>
-        <Text style={styles.heroTitle}>Cine sta cel mai mult fara telefon?</Text>
+      <View style={styles.hero}>
+        <View style={styles.heroIcon}>
+          <IconLock size={28} color={PD.accent} />
+        </View>
+        <Text style={styles.heroTitle}>Lasa telefonul, castiga cufar</Text>
         <Text style={styles.heroSub}>
-          Pune telefonul cu fata in jos. Cel care rezista mai mult castiga un cufar mai bun.
+          Cine rezista mai mult fara sa atinga telefonul primeste rasplata.
         </Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
-        <Text style={styles.sectionTitle}>In raza BLE ({inRange.length})</Text>
+        <SectionLabel>In raza acum · {inRange.length}</SectionLabel>
         {inRange.length === 0 ? (
-          <Text style={styles.emptyHint}>
-            Nimeni in raza acum. Poti sa inviti oricum prietenii si vor primi notificare.
-          </Text>
+          <EmptyHint>
+            Nimeni in raza. Poti invita prieteni si vor primi notificare.
+          </EmptyHint>
         ) : (
           inRange.map((f) => (
             <FriendRow
@@ -165,9 +180,7 @@ function PreLobby() {
 
         {outOfRange.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { marginTop: 18 }]}>
-              Alti prieteni
-            </Text>
+            <SectionLabel style={{ marginTop: 22 }}>Alti prieteni</SectionLabel>
             {outOfRange.map((f) => (
               <FriendRow
                 key={f.user.id}
@@ -182,28 +195,17 @@ function PreLobby() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Pressable
+        <PrimaryButton
           disabled={create.isPending}
+          loading={create.isPending}
           onPress={() => create.mutate()}
-          style={({ pressed }) => [
-            styles.primaryBtn,
-            pressed && { opacity: 0.85 },
-            create.isPending && { opacity: 0.6 },
-          ]}
-        >
-          {create.isPending ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.primaryBtnText}>
-              {selected.size > 0
-                ? `Creeaza lobby cu ${selected.size} ${selected.size === 1 ? 'prieten' : 'prieteni'}`
-                : 'Creeaza lobby gol'}
-            </Text>
-          )}
-        </Pressable>
-        <Text style={styles.footerHint}>
-          Min. 2 jucatori pentru a porni. Maxim — fara limita.
-        </Text>
+          label={
+            selected.size > 0
+              ? `Creeaza lobby cu ${selected.size} ${selected.size === 1 ? 'prieten' : 'prieteni'}`
+              : 'Creeaza lobby gol'
+          }
+        />
+        <Text style={styles.footerHint}>Minim 2 jucatori pentru a porni.</Text>
       </View>
     </SafeAreaView>
   );
@@ -226,35 +228,43 @@ function FriendRow({
       style={({ pressed }) => [
         styles.row,
         checked && styles.rowChecked,
-        pressed && { opacity: 0.9 },
+        pressed && { opacity: 0.92 },
       ]}
     >
-      <View style={styles.rowLeft}>
+      <View style={[styles.avatarDot, { backgroundColor: friend.user.id.slice(-1).match(/[0-7]/) ? PD.accent : '#FFC36A' }]}>
+        <Text style={styles.avatarDotText}>{friend.user.name.slice(0, 1).toUpperCase()}</Text>
+      </View>
+      <View style={styles.rowMain}>
         <Text style={styles.rowName}>{friend.user.name}</Text>
-        <View style={styles.rowMeta}>
-          <Text style={styles.metaItem}>Lvl {friend.user.level}</Text>
+        <View style={styles.rowMetaLine}>
+          <Text style={styles.rowMetaText}>Nivel {friend.user.level}</Text>
           {inRange && (
-            <View style={styles.bleBadge}>
-              <Text style={styles.bleBadgeText}>BLE</Text>
+            <View style={styles.bleChip}>
+              <IconBluetooth size={11} color={PD.accent} />
+              <Text style={styles.bleChipText}>aproape</Text>
             </View>
           )}
         </View>
       </View>
       <View style={[styles.checkBox, checked && styles.checkBoxChecked]}>
-        {checked && <Text style={styles.checkMark}>✓</Text>}
+        {checked && <IconCheck size={14} color="#FFFFFF" />}
       </View>
     </Pressable>
   );
 }
 
-// ---------- Session: lobby + countdown + play + result ----------
+// ---------- Session router ----------
 
 function Session({ sessionId, myUserId }: { sessionId: string; myUserId: string }) {
   const qc = useQueryClient();
-  const play = usePhoneDownPlay({ sessionId, active: true, myUserId });
+  // Citim status-ul din cache (poate fi inca undefined la primul mount). Cand
+  // sesiunea e PLAYING activam low-power mode (polling 5s vs 1.5s) — economisim
+  // baterie pe lockscreen. Socket-ul aduce oricum schimbarile importante.
+  const cached = qc.getQueryData<PhoneDownSessionDto>(['phonedown', 'session', sessionId]);
+  const lowPower = cached?.status === 'PLAYING';
+  const play = usePhoneDownPlay({ sessionId, active: true, myUserId, lowPower });
   const session = play.session;
 
-  // Daca sesiunea s-a anulat (CANCELLED inainte de start), iesim.
   useEffect(() => {
     if (session?.status === 'CANCELLED') {
       Alert.alert('Lobby anulat', 'Host-ul a parasit lobby-ul.', [
@@ -263,90 +273,61 @@ function Session({ sessionId, myUserId }: { sessionId: string; myUserId: string 
     }
   }, [session?.status]);
 
-  // Daca getSession a esuat (404/403/etc), aratam un ecran de eroare cu
-  // detalii in loc sa redirectionam tacut — ne ajuta sa diagnosticam.
   if (play.sessionError && !session) {
     const err = play.sessionError;
     const status = err instanceof ApiError ? err.status : undefined;
     const code = err instanceof ApiError ? err.code : undefined;
-    const message =
-      err instanceof Error ? err.message : 'Nu pot incarca sesiunea';
+    const message = err instanceof Error ? err.message : 'Nu pot incarca sesiunea';
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.replace('/(app)')}
-            hitSlop={12}
-            style={styles.backBtn}
-          >
-            <Text style={styles.back}>←</Text>
-          </Pressable>
-          <Text style={styles.title}>Eroare sesiune</Text>
-          <View style={{ width: 44 }} />
-        </View>
-        <View style={[styles.fullCenter, { backgroundColor: colors.bg }]}>
-          <Text style={styles.bigEmoji}>⚠️</Text>
-          <Text style={[styles.heroTitle, { color: colors.text }]}>
+        <Header title="Eroare" onBack={() => router.replace('/(app)')} />
+        <View style={styles.errorWrap}>
+          <View style={[styles.heroIcon, { backgroundColor: 'rgba(231,76,92,0.12)' }]}>
+            <IconAlert size={28} color={PD.danger} />
+          </View>
+          <Text style={styles.errorTitle}>
             {status === 404
               ? 'Sesiunea nu exista'
               : status === 403
-                ? 'Nu esti participant la sesiune'
+                ? 'Nu esti participant'
                 : 'Nu pot incarca sesiunea'}
           </Text>
-          <Text style={[styles.heroSub, { color: colors.textMuted }]}>
+          <Text style={styles.errorSub}>
             {status ? `HTTP ${status}` : ''}
             {code ? ` · ${code}` : ''}
           </Text>
-          <Text style={[styles.heroSub, { color: colors.textMuted, marginTop: 8 }]}>
-            {message}
-          </Text>
-          {status === 403 && (
-            <Pressable
-              onPress={async () => {
-                try {
-                  const s = await joinSession(sessionId);
-                  qc.setQueryData(['phonedown', 'session', s.id], s);
-                  qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
-                } catch (e) {
-                  const m =
-                    e instanceof ApiError
-                      ? e.code === 'lobby_closed'
-                        ? 'Lobby-ul nu mai e disponibil.'
-                        : e.message
-                      : 'Nu pot intra acum.';
-                  Alert.alert('Nu pot intra', m);
-                }
+          <Text style={styles.errorMessage}>{message}</Text>
+          <View style={{ gap: 10, alignSelf: 'stretch', marginTop: 22 }}>
+            {status === 403 && (
+              <PrimaryButton
+                label="Intra in lobby"
+                onPress={async () => {
+                  try {
+                    const s = await joinSession(sessionId);
+                    qc.setQueryData(['phonedown', 'session', s.id], s);
+                    qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
+                  } catch (e) {
+                    const m =
+                      e instanceof ApiError
+                        ? e.code === 'lobby_closed'
+                          ? 'Lobby-ul nu mai e disponibil.'
+                          : e.message
+                        : 'Nu pot intra acum.';
+                    Alert.alert('Nu pot intra', m);
+                  }
+                }}
+              />
+            )}
+            <SecondaryButton
+              label="Inapoi"
+              onPress={() => {
+                qc.removeQueries({ queryKey: ['phonedown', 'session', sessionId] });
+                qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
+                router.replace('/(app)/phonedown');
               }}
-              style={({ pressed }) => [
-                styles.primaryBtn,
-                { marginTop: 20, paddingHorizontal: 32 },
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Text style={styles.primaryBtnText}>Intra in lobby</Text>
-            </Pressable>
-          )}
-          <Pressable
-            onPress={() => {
-              qc.removeQueries({ queryKey: ['phonedown', 'session', sessionId] });
-              qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
-              router.replace('/(app)/phonedown');
-            }}
-            style={({ pressed }) => [
-              status === 403 ? styles.secondaryBtnLight : styles.primaryBtn,
-              { marginTop: status === 403 ? 12 : 20, paddingHorizontal: 32 },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Text
-              style={
-                status === 403 ? styles.secondaryBtnTextLight : styles.primaryBtnText
-              }
-            >
-              Inapoi la pre-lobby
-            </Text>
-          </Pressable>
+            />
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -355,7 +336,7 @@ function Session({ sessionId, myUserId }: { sessionId: string; myUserId: string 
   if (!session) {
     return (
       <SafeAreaView style={styles.safeLoading} edges={['top']}>
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={PD.accent} />
       </SafeAreaView>
     );
   }
@@ -366,7 +347,6 @@ function Session({ sessionId, myUserId }: { sessionId: string; myUserId: string 
   if (session.status === 'ENDED' || session.status === 'CANCELLED') {
     return <Results session={session} myUserId={myUserId} />;
   }
-  // PLAYING — joc activ.
   return <Playing play={play} session={session} myUserId={myUserId} />;
 }
 
@@ -381,7 +361,6 @@ function Lobby({
 }) {
   const qc = useQueryClient();
   const isHost = session.hostId === myUserId;
-  // socket join se face deja in usePhoneDownPlay (montat in Session).
 
   const startMut = useMutation({
     mutationFn: () => startSession(session.id),
@@ -405,18 +384,14 @@ function Lobby({
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable onPress={() => leaveMut.mutate()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
-        </Pressable>
-        <Text style={styles.title}>Lobby</Text>
-        <View style={{ width: 44 }} />
-      </View>
+      <Header title="Lobby" onBack={() => leaveMut.mutate()} />
 
-      <View style={styles.lobbyHero}>
-        <Text style={styles.heroEmoji}>📵</Text>
+      <View style={styles.hero}>
+        <View style={styles.heroIcon}>
+          <IconUsers size={26} color={PD.accent} />
+        </View>
         <Text style={styles.heroTitle}>
-          {isHost ? 'Tu esti host' : 'Astepti host-ul sa porneasca'}
+          {isHost ? 'Asteapta jucatorii sa intre' : 'Astepti host-ul sa porneasca'}
         </Text>
         <Text style={styles.heroSub}>
           {session.participants.length} {session.participants.length === 1 ? 'jucator' : 'jucatori'} in lobby
@@ -424,21 +399,26 @@ function Lobby({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
-        <Text style={styles.sectionTitle}>Jucatori</Text>
+        <SectionLabel>Jucatori</SectionLabel>
         {session.participants.map((p) => (
           <View key={p.id} style={styles.playerRow}>
-            <View style={styles.playerLeft}>
-              <Text style={styles.playerName}>{p.name}</Text>
-              {p.userId === session.hostId && (
-                <View style={styles.hostBadge}>
-                  <Text style={styles.hostBadgeText}>HOST</Text>
-                </View>
-              )}
-              {p.userId === myUserId && (
-                <View style={[styles.hostBadge, { backgroundColor: colors.secondary }]}>
-                  <Text style={styles.hostBadgeText}>TU</Text>
-                </View>
-              )}
+            <View style={[styles.avatarDot, { backgroundColor: PD.accent }]}>
+              <Text style={styles.avatarDotText}>{p.name.slice(0, 1).toUpperCase()}</Text>
+            </View>
+            <View style={styles.rowMain}>
+              <Text style={styles.rowName}>{p.name}</Text>
+              <View style={styles.rowMetaLine}>
+                {p.userId === session.hostId && (
+                  <View style={[styles.tag, { backgroundColor: PD.accentSoft }]}>
+                    <Text style={[styles.tagText, { color: PD.accent }]}>HOST</Text>
+                  </View>
+                )}
+                {p.userId === myUserId && (
+                  <View style={[styles.tag, { backgroundColor: 'rgba(31,166,122,0.12)' }]}>
+                    <Text style={[styles.tagText, { color: PD.success }]}>TU</Text>
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         ))}
@@ -446,36 +426,28 @@ function Lobby({
 
       <View style={styles.footer}>
         {!amIn ? (
-          <Pressable
-            disabled={joinMut.isPending}
+          <PrimaryButton
+            label="Intra in lobby"
+            loading={joinMut.isPending}
             onPress={() => joinMut.mutate()}
-            style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-          >
-            <Text style={styles.primaryBtnText}>Intra in lobby</Text>
-          </Pressable>
+          />
         ) : isHost ? (
-          <Pressable
+          <PrimaryButton
+            label={
+              session.participants.length < 2
+                ? 'Astept inca un jucator'
+                : 'Porneste'
+            }
+            icon={
+              session.participants.length >= 2 ? <IconPlay size={16} color="#FFFFFF" /> : null
+            }
             disabled={startMut.isPending || session.participants.length < 2}
+            loading={startMut.isPending}
             onPress={() => startMut.mutate()}
-            style={({ pressed }) => [
-              styles.primaryBtn,
-              session.participants.length < 2 && { opacity: 0.5 },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            {startMut.isPending ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.primaryBtnText}>
-                {session.participants.length < 2
-                  ? 'Astept inca un jucator'
-                  : 'Porneste runda'}
-              </Text>
-            )}
-          </Pressable>
+          />
         ) : (
           <View style={styles.waitingBox}>
-            <ActivityIndicator color={colors.accent} />
+            <ActivityIndicator color={PD.accent} />
             <Text style={styles.waitingText}>Astept host-ul...</Text>
           </View>
         )}
@@ -484,7 +456,7 @@ function Lobby({
   );
 }
 
-// ---------- Playing ----------
+// ---------- Playing — LOCKSCREEN STYLE ----------
 
 function Playing({
   play,
@@ -498,189 +470,243 @@ function Playing({
   useKeepAwake('phonedown-play');
   const me = session.participants.find((p) => p.userId === myUserId);
 
-  const sorted = [...session.participants].sort(
-    (a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0),
-  );
-
-  // Countdown vizual cand server-ul a dat startedAt dar phoneDownAt-ul e
-  // in viitor. Calculam din me.phoneDownAt sa fim sincronizati cu serverul.
-  const phoneDownAt = me?.phoneDownAt ? new Date(me.phoneDownAt).getTime() : null;
-  const [nowMs, setNowMs] = useState(Date.now());
+  // Dimming mode — pe OLED, tot negru = lumini stinse → consum aproape zero.
+  // Tap pe ecran trece intre full UI <-> doar timer dimmed. Default: full.
+  const [dimmed, setDimmed] = useState(false);
+  // Auto-dimming dupa 8s fara interactiune.
   useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 250);
-    return () => clearInterval(id);
+    if (dimmed) return;
+    const id = setTimeout(() => setDimmed(true), 8000);
+    return () => clearTimeout(id);
+  }, [dimmed]);
+
+  // Block hardware back complet — ecranul de blocare nu trebuie sa permita iesire
+  // accidentala. User-ul foloseste butonul "Renunt" cu confirmare.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
   }, []);
 
-  const countdownSec = phoneDownAt
-    ? Math.max(0, Math.ceil((phoneDownAt - nowMs) / 1000))
-    : null;
-
-  // Ecran de countdown — instructiune mare cu numarator pana la 0.
-  if (play.phase === 'countdown' && countdownSec !== null) {
-    return <CountdownView seconds={countdownSec} />;
-  }
-
-  // Telefonul ridicat dupa start → server-ul ne-a deja inregistrat surrender.
   if (play.phase === 'surrendered') {
-    return <PostSurrenderView session={session} myUserId={myUserId} />;
+    return <SurrenderedView session={session} myUserId={myUserId} />;
   }
 
-  // Telefonul in pauza pentru apel.
   if (play.phase === 'paused') {
     return <PausedView duration={play.myDurationMs} />;
   }
 
-  // Asteptam ca user-ul sa intoarca telefonul cu fata in jos.
-  if (play.phase === 'waitingDown') {
-    return <WaitingDownView />;
-  }
+  // Faza activa — lockscreen.
+  const sorted = [...session.participants].sort(
+    (a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0),
+  );
 
-  // Joc activ — face-down, ceasul curge. Afisam timer mare + clasament live.
+  // Timer-ul ne il calculam local din phoneDownAt — nu mai pollam REST pentru asta.
+  // Re-render izolat la 1s pe LiveTimer (nu pe tot ecranul) ca sa nu re-randam
+  // si leaderboard-ul.
+  const phoneDownAtMs = me?.phoneDownAt ? new Date(me.phoneDownAt).getTime() : null;
+
   return (
-    <View style={styles.playWrap}>
+    <Pressable
+      onPress={() => setDimmed((d) => !d)}
+      style={styles.lockWrap}
+    >
       <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-      <SafeAreaView style={styles.playSafe} edges={['top', 'bottom']}>
-        <View style={styles.playHeader}>
-          <View style={styles.lockBadge}>
-            <Text style={styles.lockBadgeText}>📵 TELEFON JOS</Text>
+      <StatusBar hidden />
+      <SafeAreaView style={styles.lockSafe} edges={['top', 'bottom']}>
+        <View style={styles.lockTopRow}>
+          <View style={styles.lockChip}>
+            <IconLock size={12} color={PD.lockTextMuted} />
+            <Text style={styles.lockChipText}>BLOCAT</Text>
           </View>
         </View>
 
-        <View style={styles.playCenter}>
-          <Text style={styles.playTimer}>{formatDuration(play.myDurationMs)}</Text>
-          <Text style={styles.playHint}>
-            Tine-l cu fata in jos. Cand il ridici, iesi din concurs.
-          </Text>
+        <View style={styles.lockCenter}>
+          <LiveTimer
+            phoneDownAtMs={phoneDownAtMs}
+            fallbackMs={play.myDurationMs}
+            dimmed={dimmed}
+          />
+          {!dimmed && (
+            <>
+              <Text style={styles.lockHint}>Nu deschide app-ul si nu deblochea telefonul</Text>
+              {me && (
+                <View style={styles.lockMeRow}>
+                  <View style={styles.lockMeDot} />
+                  <Text style={styles.lockMeText}>
+                    {me.rank ? `Locul ${me.rank}` : 'Activ'}
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
         </View>
 
-        <View style={styles.leaderboard}>
-          <Text style={styles.leaderboardTitle}>Clasament live</Text>
-          {sorted.map((p, idx) => (
-            <LeaderboardRow
-              key={p.id}
-              participant={p}
-              index={idx}
-              isMe={p.userId === myUserId}
-            />
-          ))}
-        </View>
+        {!dimmed && (
+          <View style={styles.lockLeaderboard}>
+            {sorted.slice(0, 4).map((p, idx) => (
+              <LockLeaderboardRow
+                key={p.id}
+                participant={p}
+                index={idx}
+                isMe={p.userId === myUserId}
+              />
+            ))}
+            {sorted.length > 4 && (
+              <Text style={styles.lockMoreText}>+ {sorted.length - 4} jucatori</Text>
+            )}
+          </View>
+        )}
 
-        <View style={styles.playFooter}>
-          <Pressable
-            onPress={() =>
-              Alert.alert(
-                'Renunti?',
-                'Iesi din concurs. Vei primi cufar in functie de cat ai rezistat.',
-                [
-                  { text: 'Inapoi', style: 'cancel' },
-                  {
-                    text: 'Renunt',
-                    style: 'destructive',
-                    onPress: () => void play.surrender(),
-                  },
-                ],
-              )
-            }
-            style={({ pressed }) => [styles.giveUpBtn, pressed && { opacity: 0.7 }]}
-          >
-            <Text style={styles.giveUpText}>Renunt</Text>
-          </Pressable>
+        {dimmed && <View style={{ flex: 1 }} />}
+
+        <View style={styles.lockFooter}>
+          {!dimmed && (
+            <Pressable
+              onPress={() =>
+                Alert.alert(
+                  'Renunti?',
+                  'Iesi din concurs. Vei primi cufar in functie de cat ai rezistat.',
+                  [
+                    { text: 'Inapoi', style: 'cancel' },
+                    {
+                      text: 'Renunt',
+                      style: 'destructive',
+                      onPress: () => void play.surrender(),
+                    },
+                  ],
+                )
+              }
+              style={({ pressed }) => [styles.lockGiveUp, pressed && { opacity: 0.5 }]}
+            >
+              <IconFlag size={14} color={PD.lockTextMuted} />
+              <Text style={styles.lockGiveUpText}>Renunt</Text>
+            </Pressable>
+          )}
+          {dimmed && (
+            <Text style={styles.lockDimHint}>Apasa pe ecran pentru a-l reactiva</Text>
+          )}
         </View>
       </SafeAreaView>
-    </View>
+    </Pressable>
   );
 }
 
-function CountdownView({ seconds }: { seconds: number }) {
-  const scale = useState(new Animated.Value(1))[0];
+// Timer izolat — singurul componenta care re-randa la 1s. Restul ecranului
+// nu se atinge → minim de munca pentru GPU. In modul dimmed, refresh-ul scade
+// la 5s (suficient pentru valoarea aproximativa, fara consum vizual).
+function LiveTimer({
+  phoneDownAtMs,
+  fallbackMs,
+  dimmed,
+}: {
+  phoneDownAtMs: number | null;
+  fallbackMs: number;
+  dimmed?: boolean;
+}) {
+  const [, setTick] = useState(0);
   useEffect(() => {
-    Animated.sequence([
-      Animated.timing(scale, {
-        toValue: 1.4,
-        duration: 300,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.cubic),
-      }),
-      Animated.timing(scale, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [seconds, scale]);
-
+    if (!phoneDownAtMs) return;
+    const id = setInterval(() => setTick((t) => t + 1), dimmed ? 5000 : 1000);
+    return () => clearInterval(id);
+  }, [phoneDownAtMs, dimmed]);
+  const ms = phoneDownAtMs
+    ? Math.max(0, Date.now() - phoneDownAtMs)
+    : fallbackMs;
   return (
-    <View style={styles.fullCenter}>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-      <Text style={styles.countdownHint}>Pregatiti-va sa puneti telefonul jos</Text>
-      <Animated.Text style={[styles.countdownNumber, { transform: [{ scale }] }]}>
-        {seconds}
-      </Animated.Text>
-      <Text style={styles.countdownSub}>
-        Cand ajunge la 0, intoarce-l cu fata pe masa
-      </Text>
-    </View>
+    <Text
+      style={[styles.lockTimer, dimmed && { color: 'rgba(255,255,255,0.35)' }]}
+    >
+      {formatDuration(ms)}
+    </Text>
   );
 }
 
-function WaitingDownView() {
+function LockLeaderboardRow({
+  participant,
+  index,
+  isMe,
+}: {
+  participant: PhoneDownParticipantDto;
+  index: number;
+  isMe: boolean;
+}) {
   return (
-    <View style={styles.fullCenter}>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-      <Text style={styles.bigEmoji}>📲</Text>
-      <Text style={styles.waitingDownTitle}>Pune telefonul jos</Text>
-      <Text style={styles.waitingDownSub}>
-        Intoarce-l cu fata pe masa ca sa pornim ceasul. Daca dureaza prea mult, iesi din concurs.
+    <View style={[styles.lockLbRow, isMe && styles.lockLbRowMe]}>
+      <Text style={[styles.lockLbIndex, isMe && { color: PD.lockAccent }]}>
+        {String(index + 1).padStart(2, '0')}
       </Text>
+      <Text style={[styles.lockLbName, isMe && { color: '#FFFFFF' }]} numberOfLines={1}>
+        {participant.name}
+        {isMe ? ' · tu' : ''}
+      </Text>
+      <Text style={[styles.lockLbDur, isMe && { color: '#FFFFFF' }]}>
+        {formatDuration(participant.durationMs ?? 0)}
+      </Text>
+      {participant.status === 'PAUSED' && (
+        <IconPause size={12} color={PD.lockTextMuted} />
+      )}
+      {participant.status === 'SURRENDERED' && (
+        <IconClose size={12} color={PD.lockTextMuted} />
+      )}
     </View>
   );
 }
 
 function PausedView({ duration }: { duration: number }) {
   return (
-    <View style={[styles.fullCenter, { backgroundColor: '#2D2A4A' }]}>
+    <View style={[styles.lockWrap, { backgroundColor: '#1A1730' }]}>
       <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-      <Text style={styles.bigEmoji}>📞</Text>
-      <Text style={[styles.pausedTitle]}>Pauza apel</Text>
-      <Text style={styles.pausedTimer}>{formatDuration(duration)}</Text>
-      <Text style={styles.pausedSub}>
-        Ceasul s-a oprit. Va reporni automat cand termini apelul.
-      </Text>
+      <StatusBar hidden />
+      <SafeAreaView style={styles.lockSafe} edges={['top', 'bottom']}>
+        <View style={styles.lockCenter}>
+          <View style={[styles.heroIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+            <IconPhoneCall size={26} color="#FFFFFF" />
+          </View>
+          <Text style={[styles.lockTimer, { fontSize: 56, marginTop: 16 }]}>
+            {formatDuration(duration)}
+          </Text>
+          <Text style={[styles.lockHint, { marginTop: 6 }]}>Pauza apel — ceasul s-a oprit</Text>
+          <Text style={[styles.lockHint, { opacity: 0.45, marginTop: 4 }]}>
+            Va reporni automat cand termini apelul
+          </Text>
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
 
-function PostSurrenderView({
+function SurrenderedView({
   session,
   myUserId,
 }: {
   session: PhoneDownSessionDto;
   myUserId: string;
 }) {
-  // Dupa ce am facut surrender astept ca toata sesiunea sa se incheie pentru
-  // a vedea cufarul. Daca sesiunea nu e ENDED inca, afisez "astepti finalul".
   const isEnded = session.status === 'ENDED';
-  if (!isEnded) {
-    const me = session.participants.find((p) => p.userId === myUserId);
-    return (
-      <View style={[styles.fullCenter, { backgroundColor: '#2D2A4A' }]}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <Text style={styles.bigEmoji}>⏳</Text>
-        <Text style={styles.pausedTitle}>Ai iesit din concurs</Text>
-        <Text style={styles.pausedTimer}>{formatDuration(me?.durationMs ?? 0)}</Text>
-        <Text style={styles.pausedSub}>
+  if (isEnded) {
+    return <Results session={session} myUserId={myUserId} />;
+  }
+  const me = session.participants.find((p) => p.userId === myUserId);
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.surrenderWrap}>
+        <View style={[styles.heroIcon, { backgroundColor: 'rgba(15,16,32,0.06)' }]}>
+          <IconFlag size={26} color={PD.text} />
+        </View>
+        <Text style={styles.heroTitle}>Ai iesit din concurs</Text>
+        <Text style={styles.bigTimer}>{formatDuration(me?.durationMs ?? 0)}</Text>
+        <Text style={styles.heroSub}>
           Astept sa termine ceilalti ca sa-ti dau cufarul.
         </Text>
-        <Pressable
+        <SecondaryButton
+          label="Asteapta in fundal"
           onPress={() => router.replace('/(app)')}
-          style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.85 }]}
-        >
-          <Text style={styles.secondaryBtnText}>Asteapta in fundal</Text>
-        </Pressable>
+          style={{ marginTop: 22 }}
+        />
       </View>
-    );
-  }
-  return <Results session={session} myUserId={myUserId} />;
+    </SafeAreaView>
+  );
 }
 
 // ---------- Results ----------
@@ -696,30 +722,30 @@ function Results({
   const ranked = [...session.participants]
     .filter((p) => p.rank !== null)
     .sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+  const winner = me?.status === 'WINNER';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.header}>
-        <Pressable onPress={() => router.replace('/(app)')} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>×</Text>
-        </Pressable>
-        <Text style={styles.title}>Rezultate</Text>
-        <View style={{ width: 44 }} />
-      </View>
+      <Header title="Rezultate" onBack={() => router.replace('/(app)')} closeStyle />
 
-      <View style={styles.heroCard}>
-        <Text style={styles.heroEmoji}>{me?.status === 'WINNER' ? '🏆' : '📵'}</Text>
+      <View style={styles.hero}>
+        <View
+          style={[
+            styles.heroIcon,
+            winner ? { backgroundColor: 'rgba(255,195,106,0.18)' } : null,
+          ]}
+        >
+          <IconTrophy size={28} color={winner ? '#E89A2C' : PD.accent} />
+        </View>
         <Text style={styles.heroTitle}>
-          {me?.status === 'WINNER' ? 'Ai castigat!' : `Locul ${me?.rank ?? '?'}`}
+          {winner ? 'Ai castigat!' : `Locul ${me?.rank ?? '?'}`}
         </Text>
-        <Text style={styles.heroSub}>
-          Ai stat {formatDuration(me?.durationMs ?? 0)} fara telefon
-        </Text>
+        <Text style={styles.bigTimer}>{formatDuration(me?.durationMs ?? 0)}</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
-        <Text style={styles.sectionTitle}>Clasament</Text>
+        <SectionLabel>Clasament</SectionLabel>
         {ranked.map((p) => (
           <View
             key={p.id}
@@ -728,26 +754,122 @@ function Results({
               p.userId === myUserId && styles.resultRowMe,
             ]}
           >
-            <Text style={styles.resultRank}>
-              {p.rank === 1 ? '🥇' : p.rank === 2 ? '🥈' : p.rank === 3 ? '🥉' : `#${p.rank}`}
-            </Text>
-            <View style={styles.rowLeft}>
+            <View style={styles.rankBadge}>
+              <Text style={styles.rankBadgeText}>{p.rank}</Text>
+            </View>
+            <View style={styles.rowMain}>
               <Text style={styles.rowName}>{p.name}</Text>
-              <Text style={styles.metaItem}>{formatDuration(p.durationMs ?? 0)}</Text>
+              <Text style={styles.rowMetaText}>{formatDuration(p.durationMs ?? 0)}</Text>
             </View>
           </View>
         ))}
       </ScrollView>
 
       <View style={styles.footer}>
-        <Pressable
+        <PrimaryButton
+          label="Vezi cufar"
           onPress={() => router.replace('/(app)/chests')}
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
-        >
-          <Text style={styles.primaryBtnText}>Vezi cufar</Text>
-        </Pressable>
+        />
       </View>
     </SafeAreaView>
+  );
+}
+
+// ---------- Shared components ----------
+
+function Header({
+  title,
+  onBack,
+  closeStyle,
+}: {
+  title: string;
+  onBack: () => void;
+  closeStyle?: boolean;
+}) {
+  return (
+    <View style={styles.header}>
+      <Pressable onPress={onBack} hitSlop={12} style={styles.iconButton}>
+        {closeStyle ? (
+          <IconClose size={22} color={PD.text} />
+        ) : (
+          <IconArrowLeft size={22} color={PD.text} />
+        )}
+      </Pressable>
+      <Text style={styles.headerTitle}>{title}</Text>
+      <View style={{ width: 44 }} />
+    </View>
+  );
+}
+
+function SectionLabel({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: any;
+}) {
+  return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
+}
+
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.emptyHint}>{children}</Text>;
+}
+
+function PrimaryButton({
+  label,
+  onPress,
+  disabled,
+  loading,
+  icon,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      disabled={disabled || loading}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.primaryBtn,
+        (disabled || loading) && { opacity: 0.55 },
+        pressed && { transform: [{ scale: 0.98 }] },
+      ]}
+    >
+      {loading ? (
+        <ActivityIndicator color="#FFFFFF" />
+      ) : (
+        <View style={styles.primaryBtnContent}>
+          {icon}
+          <Text style={styles.primaryBtnText}>{label}</Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function SecondaryButton({
+  label,
+  onPress,
+  style,
+}: {
+  label: string;
+  onPress: () => void;
+  style?: any;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.secondaryBtn,
+        pressed && { opacity: 0.85 },
+        style,
+      ]}
+    >
+      <Text style={styles.secondaryBtnText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -764,81 +886,86 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function LeaderboardRow({
-  participant,
-  index,
-  isMe,
-}: {
-  participant: PhoneDownParticipantDto;
-  index: number;
-  isMe: boolean;
-}) {
-  const status = participant.status;
-  return (
-    <View style={[styles.lbRow, isMe && styles.lbRowMe]}>
-      <Text style={styles.lbIndex}>{index + 1}.</Text>
-      <Text style={styles.lbName} numberOfLines={1}>
-        {participant.name}
-        {isMe && ' (tu)'}
-      </Text>
-      <Text style={styles.lbDuration}>{formatDuration(participant.durationMs ?? 0)}</Text>
-      {status === 'PAUSED' && <Text style={styles.lbStatus}>⏸</Text>}
-      {status === 'SURRENDERED' && <Text style={styles.lbStatus}>✗</Text>}
-    </View>
-  );
-}
-
 // ---------- Styles ----------
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  safeLoading: { flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' },
+  safeLoading: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  backBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  back: { color: colors.accent, fontSize: 24, fontWeight: '700' },
-  title: { color: colors.text, fontSize: 18, fontWeight: '800' },
-
-  heroCard: {
-    marginHorizontal: 20,
-    padding: 20,
-    backgroundColor: colors.card,
-    borderRadius: 20,
+  iconButton: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+  },
+  headerTitle: { color: PD.text, fontSize: 16, fontWeight: '800' },
+
+  hero: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
     gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
-  heroEmoji: { fontSize: 48 },
-  heroTitle: { color: colors.text, fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  heroSub: { color: colors.textMuted, fontSize: 13, fontWeight: '600', textAlign: 'center' },
-
-  lobbyHero: {
-    marginHorizontal: 20,
-    padding: 16,
+  heroIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    backgroundColor: PD.accentSoft,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  heroTitle: {
+    color: PD.text,
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  heroSub: {
+    color: PD.textMuted,
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  bigTimer: {
+    color: PD.text,
+    fontSize: 44,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -1,
+    marginTop: 8,
   },
 
-  scrollBody: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 10 },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 12,
+  scrollBody: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24, gap: 8 },
+  sectionLabel: {
+    color: PD.textMuted,
+    fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    paddingBottom: 6,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
   },
   emptyHint: {
-    color: colors.textMuted,
+    color: PD.textMuted,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     padding: 16,
     textAlign: 'center',
   },
@@ -846,206 +973,276 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 14,
+    backgroundColor: PD.card,
+    borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: PD.cardBorder,
     gap: 12,
   },
-  rowChecked: { borderColor: colors.accent, backgroundColor: '#FFF4EE' },
-  rowLeft: { flex: 1, gap: 4 },
-  rowName: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  rowMeta: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  metaItem: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  bleBadge: {
-    backgroundColor: colors.secondary,
+  rowChecked: {
+    borderColor: PD.accent,
+    backgroundColor: PD.accentSoft,
+  },
+  rowMain: { flex: 1, gap: 3 },
+  rowName: { color: PD.text, fontSize: 15, fontWeight: '700' },
+  rowMetaLine: { flexDirection: 'row', gap: 6, alignItems: 'center' },
+  rowMetaText: { color: PD.textMuted, fontSize: 12, fontWeight: '600' },
+
+  avatarDot: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarDotText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+
+  bleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: PD.accentSoft,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 3,
     borderRadius: 999,
   },
-  bleBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  bleChipText: { color: PD.accent, fontSize: 11, fontWeight: '700' },
+
   checkBox: {
     width: 26,
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: colors.border,
+    borderColor: PD.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkBoxChecked: { backgroundColor: colors.accent, borderColor: colors.accent },
-  checkMark: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  checkBoxChecked: { backgroundColor: PD.accent, borderColor: PD.accent },
+
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  tagText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 
   playerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: PD.card,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: 10,
+    borderColor: PD.cardBorder,
+    gap: 12,
   },
-  playerLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  playerName: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  hostBadge: {
-    backgroundColor: colors.accent,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  hostBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
 
   footer: {
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     paddingTop: 8,
     gap: 8,
   },
   primaryBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: PD.accent,
     paddingVertical: 16,
-    borderRadius: 999,
+    borderRadius: 18,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  primaryBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   primaryBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+
   secondaryBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    borderRadius: 999,
-    borderColor: 'rgba(255,255,255,0.4)',
-    borderWidth: 1,
-  },
-  secondaryBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  secondaryBtnLight: {
     paddingVertical: 14,
-    borderRadius: 999,
+    borderRadius: 18,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: PD.cardBorder,
     backgroundColor: 'transparent',
   },
-  secondaryBtnTextLight: { color: colors.text, fontSize: 15, fontWeight: '700' },
-  footerHint: { color: colors.textMuted, fontSize: 11, textAlign: 'center' },
+  secondaryBtnText: { color: PD.text, fontSize: 14, fontWeight: '700' },
+
+  footerHint: { color: PD.textMuted, fontSize: 11, textAlign: 'center' },
+
   waitingBox: {
     flexDirection: 'row',
     gap: 12,
     justifyContent: 'center',
     paddingVertical: 16,
   },
-  waitingText: { color: colors.textMuted, fontSize: 14, fontWeight: '700' },
+  waitingText: { color: PD.textMuted, fontSize: 14, fontWeight: '700' },
 
-  // Playing
-  playWrap: { flex: 1, backgroundColor: '#1A1730' },
-  playSafe: { flex: 1, paddingHorizontal: 20 },
-  playHeader: { alignItems: 'center', paddingTop: 8 },
-  lockBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  // Lock screen
+  lockWrap: { flex: 1, backgroundColor: PD.lockBg },
+  lockSafe: { flex: 1, paddingHorizontal: 20 },
+  lockTopRow: { alignItems: 'center', paddingTop: 6 },
+  lockChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: PD.lockSurface,
   },
-  lockBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  playCenter: { alignItems: 'center', paddingVertical: 28, gap: 10 },
-  playTimer: {
-    color: '#FFFFFF',
-    fontSize: 64,
+  lockChipText: {
+    color: PD.lockTextMuted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  lockCenter: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    gap: 8,
+  },
+  lockTimer: {
+    color: PD.lockText,
+    fontSize: 72,
     fontWeight: '900',
     fontVariant: ['tabular-nums'],
-    letterSpacing: -1,
+    letterSpacing: -2,
   },
-  playHint: {
-    color: 'rgba(255,255,255,0.6)',
+  lockHint: {
+    color: PD.lockTextMuted,
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
     paddingHorizontal: 24,
   },
-  leaderboard: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 18,
-    padding: 14,
-    gap: 6,
-  },
-  leaderboardTitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  lbRow: {
+  lockMeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    gap: 6,
+    marginTop: 8,
   },
-  lbRowMe: { backgroundColor: 'rgba(255,122,89,0.18)' },
-  lbIndex: { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '700', minWidth: 24 },
-  lbName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', flex: 1 },
-  lbDuration: {
-    color: '#FFFFFF',
-    fontSize: 14,
+  lockMeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: PD.lockAccent,
+  },
+  lockMeText: { color: PD.lockAccent, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+
+  lockLeaderboard: {
+    flex: 1,
+    paddingTop: 8,
+    gap: 4,
+  },
+  lockLbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  lockLbRowMe: { backgroundColor: 'rgba(159,132,255,0.12)' },
+  lockLbIndex: {
+    color: PD.lockTextMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    minWidth: 22,
+    fontVariant: ['tabular-nums'],
+  },
+  lockLbName: { color: PD.lockTextMuted, fontSize: 14, fontWeight: '700', flex: 1 },
+  lockLbDur: {
+    color: PD.lockTextMuted,
+    fontSize: 13,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },
-  lbStatus: { color: 'rgba(255,255,255,0.5)', fontSize: 14, marginLeft: 4 },
-  playFooter: { paddingBottom: 12, alignItems: 'center' },
-  giveUpBtn: {
-    paddingHorizontal: 22,
+  lockMoreText: {
+    color: PD.lockTextMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingTop: 8,
+    opacity: 0.6,
+  },
+
+  lockFooter: { paddingBottom: 8, alignItems: 'center' },
+  lockGiveUp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 999,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: 'rgba(255,255,255,0.15)',
     borderWidth: 1,
   },
-  giveUpText: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '700' },
+  lockGiveUpText: { color: PD.lockTextMuted, fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  lockDimHint: {
+    color: 'rgba(255,255,255,0.25)',
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
 
-  // Full-screen states
-  fullCenter: {
+  // Error
+  errorWrap: {
     flex: 1,
-    backgroundColor: '#1A1730',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    paddingHorizontal: 32,
+    padding: 28,
+    gap: 6,
   },
-  bigEmoji: { fontSize: 64 },
-  countdownHint: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '700' },
-  countdownNumber: { color: '#FFFFFF', fontSize: 128, fontWeight: '900', lineHeight: 140 },
-  countdownSub: { color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'center' },
-
-  waitingDownTitle: { color: '#FFFFFF', fontSize: 26, fontWeight: '900', textAlign: 'center' },
-  waitingDownSub: { color: 'rgba(255,255,255,0.65)', fontSize: 14, textAlign: 'center', lineHeight: 20 },
-
-  pausedTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
-  pausedTimer: {
-    color: '#FFFFFF',
-    fontSize: 48,
+  errorTitle: {
+    color: PD.text,
+    fontSize: 20,
     fontWeight: '900',
-    fontVariant: ['tabular-nums'],
+    marginTop: 12,
+    textAlign: 'center',
   },
-  pausedSub: { color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'center' },
+  errorSub: { color: PD.textMuted, fontSize: 12, fontWeight: '700' },
+  errorMessage: {
+    color: PD.textMuted,
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 4,
+  },
 
+  // Surrender
+  surrenderWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    gap: 6,
+  },
+
+  // Results
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: PD.card,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
+    borderColor: PD.cardBorder,
+    gap: 14,
   },
-  resultRowMe: { borderColor: colors.accent },
-  resultRank: { fontSize: 22, minWidth: 36 },
+  resultRowMe: { borderColor: PD.accent, backgroundColor: PD.accentSoft },
+  rankBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PD.cardMuted,
+  },
+  rankBadgeText: {
+    color: PD.text,
+    fontSize: 13,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
 });
-
-// PHONE_DOWN_COUNTDOWN_MS importat doar pentru consistenta de constanta cu
-// hook-ul de play. Daca devine necesar la randare (ex. ASCII bar), aici e.
-void PHONE_DOWN_COUNTDOWN_MS;
