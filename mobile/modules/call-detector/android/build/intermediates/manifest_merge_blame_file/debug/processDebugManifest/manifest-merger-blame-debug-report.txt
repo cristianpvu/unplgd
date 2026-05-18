@@ -1,0 +1,15 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.calldetector" >
+4
+5    <uses-sdk android:minSdkVersion="24" />
+6    <!--
+7       READ_PHONE_STATE necesar pentru TelephonyCallback / PhoneStateListener
+8       cu ASCULTARE de CALL_STATE pe Android 10+. Pe < 10 e implicit accesibil,
+9       dar declaratia o tinem ca runtime request sa functioneze in toate cazurile.
+10    -->
+11    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+11-->/Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:3-73
+11-->/Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:20-70
+12
+13</manifest>

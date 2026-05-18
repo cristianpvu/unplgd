@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- READ_PHONE_STATE necesar pentru TelephonyCallback / PhoneStateListener
+       cu ASCULTARE de CALL_STATE pe Android 10+. Pe < 10 e implicit accesibil,
+       dar declaratia o tinem ca runtime request sa functioneze in toate cazurile. -->
+  <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+</manifest>

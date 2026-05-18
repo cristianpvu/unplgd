@@ -1,0 +1,8 @@
+{
+  "name": "call-detector",
+  "version": "0.1.0",
+  "description": "Local module: detecteaza apeluri telefonice (iOS CXCallObserver + Android TelephonyManager). Folosit la Phone Down ca sa nu fie penalizat user-ul cand suna parintii.",
+  "main": "src/index.js",
+  "react-native": "src/index.ts",
+  "private": true
+}

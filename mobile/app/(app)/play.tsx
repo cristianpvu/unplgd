@@ -110,6 +110,28 @@ export default function Play() {
           </View>
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/(app)/phonedown')}
+          style={({ pressed }) => [
+            styles.heroCard,
+            { backgroundColor: '#2D2A4A' },
+            pressed && styles.cardPressed,
+          ]}
+        >
+          <View style={styles.heroIconWrap}>
+            <Text style={styles.heroEmoji}>📵</Text>
+            <View style={styles.heroSparkle}>
+              <SparklesIcon />
+            </View>
+          </View>
+          <View style={styles.heroText}>
+            <Text style={styles.heroTitle}>Phone Down</Text>
+            <Text style={styles.heroSubtitle}>
+              Cine sta cel mai mult fara telefon castiga un cufar. Cu prietenii sau cu toata clasa.
+            </Text>
+          </View>
+        </Pressable>
+
       </ScrollView>
     </SafeAreaView>
   );

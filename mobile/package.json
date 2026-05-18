@@ -34,6 +34,7 @@
     "react-native": "0.81.5",
     "react-native-ble-plx": "^3.5.1",
     "ble-presence": "file:./modules/ble-presence",
+    "call-detector": "file:./modules/call-detector",
     "react-native-maps": "1.20.1",
     "react-native-nfc-manager": "^3.17.2",
     "react-native-safe-area-context": "~5.6.0",

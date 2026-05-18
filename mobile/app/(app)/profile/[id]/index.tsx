@@ -100,11 +100,18 @@ export default function ProfileScreen() {
           </View>
 
           {isMe && (
-            <Button
-              label="Personalizeaza avatar"
-              variant="secondary"
-              onPress={() => router.push('/(app)/avatar-edit')}
-            />
+            <>
+              <Button
+                label="Personalizeaza avatar"
+                variant="secondary"
+                onPress={() => router.push('/(app)/avatar-edit')}
+              />
+              <Button
+                label="Cufere"
+                variant="secondary"
+                onPress={() => router.push('/(app)/chests')}
+              />
+            </>
           )}
 
           <Text style={styles.sectionTitle}>

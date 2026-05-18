@@ -7,6 +7,7 @@ import { requestBlePermissions } from '../../src/ble/permissions';
 import { CoWalkToast } from '../../src/ble/CoWalkToast';
 import { useCowalkEnabled, loadCowalkEnabled } from '../../src/ble/cowalkPref';
 import { useCoCreationNotifier } from '../../src/coCreation/useCoCreationNotifier';
+import { PhoneDownInviteToast } from '../../src/phonedown/PhoneDownInviteToast';
 import { colors } from '../../src/theme/colors';
 
 export default function AppLayout() {
@@ -63,6 +64,7 @@ export default function AppLayout() {
         }}
       />
       <CoWalkToast />
+      <PhoneDownInviteToast />
     </View>
   );
 }

@@ -1,0 +1,20 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:1:1-6:12
+INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:1:1-6:12
+	package
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml
+	xmlns:android
+		ADDED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:1:11-69
+uses-permission#android.permission.READ_PHONE_STATE
+ADDED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:3-73
+	android:name
+		ADDED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:20-70
+uses-sdk
+INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml
+INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml
