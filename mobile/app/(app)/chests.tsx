@@ -94,13 +94,13 @@ export default function ChestsScreen() {
           <Text style={styles.bigEmoji}>📦</Text>
           <Text style={styles.emptyTitle}>Inca nu ai cufere</Text>
           <Text style={styles.emptySub}>
-            Joaca Phone Down ca sa primesti cufere cu accesorii si XP.
+            Joaca Last Phone Standing ca sa primesti cufere cu accesorii si XP.
           </Text>
           <Pressable
             onPress={() => router.replace('/(app)/phonedown')}
             style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
           >
-            <Text style={styles.primaryBtnText}>Joaca Phone Down</Text>
+            <Text style={styles.primaryBtnText}>Joaca Last Phone Standing</Text>
           </Pressable>
         </View>
       ) : (
@@ -185,7 +185,7 @@ function ChestRow({
       <View style={styles.chestInfo}>
         <Text style={styles.chestTier}>Cufar {TIER_LABEL[chest.tier]}</Text>
         <Text style={styles.chestSub}>
-          {chest.sourceType === 'phone_down' ? 'Phone Down' : chest.sourceType}
+          {chest.sourceType === 'phone_down' ? 'Last Phone Standing' : chest.sourceType}
         </Text>
       </View>
       {opening ? (

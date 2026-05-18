@@ -1,85 +1,17 @@
-import { ChestTier, Rarity, type Item, type Prisma } from '@prisma/client';
+import {
+  ChestTier,
+  Rarity,
+  type ChestTierConfig,
+  type Item,
+  type Prisma,
+} from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { awardXp } from '../xp.js';
 
-// Tier dupa durata efectiva (minute jucate fara pauze). Sub 5 min nu se
-// ajunge aici — gardat la apelantul `endSession`. Bonus podium (#1) =
-// upgrade cu un tier; Diamond + #1 = Champion (loot exclusiv legendary).
-//
-// Praguri ales pentru o curba motivanta:
-//   5-14 min  → Bronze   (joc scurt, recompensa simbolica)
-//   15-29 min → Silver
-//   30-59 min → Gold     (un pranz fara telefon)
-//   60-119 min → Platinum
-//   120+ min  → Diamond  (probabil sub 5% din sesiuni)
-function baseTierForDuration(durationMs: number): ChestTier | null {
-  const min = durationMs / 60_000;
-  if (min < 5) return null;
-  if (min < 15) return ChestTier.BRONZE;
-  if (min < 30) return ChestTier.SILVER;
-  if (min < 60) return ChestTier.GOLD;
-  if (min < 120) return ChestTier.PLATINUM;
-  return ChestTier.DIAMOND;
-}
-
-function upgradeTier(tier: ChestTier): ChestTier {
-  // Champion e tier dedicat (loot exclusiv legendary, animatie aurie); nu
-  // se mai upgradeaza. Diamond + winner → Champion. Restul urca o treapta.
-  switch (tier) {
-    case ChestTier.BRONZE:
-      return ChestTier.SILVER;
-    case ChestTier.SILVER:
-      return ChestTier.GOLD;
-    case ChestTier.GOLD:
-      return ChestTier.PLATINUM;
-    case ChestTier.PLATINUM:
-      return ChestTier.DIAMOND;
-    case ChestTier.DIAMOND:
-      return ChestTier.CHAMPION;
-    case ChestTier.CHAMPION:
-      return ChestTier.CHAMPION;
-  }
-}
-
-// Greutati de rolling pe rarity. Cufer mai bun = sansa mai mare la rar.
-// Champion nu intra aici — are loot deterministic (1 legendary + 1 epic).
-type RarityWeights = Record<Rarity, number>;
-const WEIGHTS_BY_TIER: Record<Exclude<ChestTier, 'CHAMPION'>, RarityWeights> = {
-  BRONZE:   { COMMON: 90, RARE: 10, EPIC:  0, LEGENDARY: 0 },
-  SILVER:   { COMMON: 70, RARE: 25, EPIC:  5, LEGENDARY: 0 },
-  GOLD:     { COMMON: 40, RARE: 45, EPIC: 14, LEGENDARY: 1 },
-  PLATINUM: { COMMON: 15, RARE: 45, EPIC: 35, LEGENDARY: 5 },
-  DIAMOND:  { COMMON:  0, RARE: 30, EPIC: 50, LEGENDARY: 20 },
-};
-
-// Cate iteme pica pe tier (in afara de XP). Champion = 2 (legendary garantat).
-const ITEMS_PER_TIER: Record<ChestTier, number> = {
-  BRONZE: 1,
-  SILVER: 1,
-  GOLD: 2,
-  PLATINUM: 2,
-  DIAMOND: 3,
-  CHAMPION: 2,
-};
-
-// XP de baza pe tier. Cresterea e supraliniara — incurajeaza durabilitate.
-const XP_BY_TIER: Record<ChestTier, number> = {
-  BRONZE: 20,
-  SILVER: 50,
-  GOLD: 100,
-  PLATINUM: 200,
-  DIAMOND: 400,
-  CHAMPION: 600,
-};
-
-// XP bonus pentru iteme duplicate (shards in disguise). Cresterea reflecta
-// raritatea pierduta — un legendary duplicat e mai dureros decat un common.
-const DUPLICATE_XP_BY_RARITY: Record<Rarity, number> = {
-  COMMON: 5,
-  RARE: 15,
-  EPIC: 40,
-  LEGENDARY: 100,
-};
+// Toata configuratia de game balance (praguri, weights, XP) sta in DB —
+// modelele ChestTierConfig + RarityDuplicateXp. Vezi prisma/seed.ts pentru
+// valorile initiale. Schimbarile se aplica fara redeploy: edit row si proxima
+// sesiune ENDED preia noile valori.
 
 function pickWeighted<T>(entries: { value: T; weight: number }[]): T | null {
   const total = entries.reduce((s, e) => s + e.weight, 0);
@@ -94,10 +26,6 @@ function pickWeighted<T>(entries: { value: T; weight: number }[]): T | null {
 
 type DroppableItem = Pick<Item, 'id' | 'slug' | 'name' | 'rarity' | 'exclusive'>;
 
-// Cauta toate itemele de accesoriu (slot holding) eligibile drop-ului. Excludem
-// "Fara accesoriu" (feature=null) ca sa nu picam itemul neutru. Excludem
-// itemele non-exclusive cu rarity LEGENDARY in afara de cele exclusive (le
-// rezervam pentru CHAMPION + RNG la PLATINUM/DIAMOND).
 async function loadDroppableItems(): Promise<DroppableItem[]> {
   return prisma.item.findMany({
     where: {
@@ -108,25 +36,70 @@ async function loadDroppableItems(): Promise<DroppableItem[]> {
   });
 }
 
+async function loadTierConfigs(): Promise<Map<ChestTier, ChestTierConfig>> {
+  const rows = await prisma.chestTierConfig.findMany();
+  return new Map(rows.map((r) => [r.tier, r]));
+}
+
+async function loadDuplicateXp(): Promise<Record<Rarity, number>> {
+  const rows = await prisma.rarityDuplicateXp.findMany();
+  const out: Record<Rarity, number> = {
+    COMMON: 0,
+    RARE: 0,
+    EPIC: 0,
+    LEGENDARY: 0,
+  };
+  for (const r of rows) out[r.rarity] = r.xp;
+  return out;
+}
+
+// Tier de baza dupa durata jucata. Itereaza prin configurile sortate
+// descrescator dupa minDurationMs si returneaza primul care e <= durata.
+// Daca nici unul nu e atins, returneaza null (nu se acorda cufar).
+//
+// CHAMPION e tier de upgrade (din DIAMOND) — nu e selectabil ca baza chiar daca
+// minDurationMs=0; il excludem explicit.
+function baseTierForDuration(
+  durationMs: number,
+  configs: Map<ChestTier, ChestTierConfig>,
+): ChestTier | null {
+  const candidates = Array.from(configs.values())
+    .filter((c) => c.tier !== ChestTier.CHAMPION && c.minDurationMs > 0)
+    .sort((a, b) => b.minDurationMs - a.minDurationMs);
+  for (const c of candidates) {
+    if (durationMs >= c.minDurationMs) return c.tier;
+  }
+  return null;
+}
+
 function rollItemsForTier(
-  tier: ChestTier,
+  config: ChestTierConfig,
   pool: DroppableItem[],
 ): DroppableItem[] {
-  if (tier === ChestTier.CHAMPION) {
-    // Loot garantat: 1 legendary (exclusive eligible) + 1 epic. Daca poolul
-    // nu are destui legendary, fallback la epic.
+  const out: DroppableItem[] = [];
+
+  // Loot garantat (pentru CHAMPION sau viitor). Selectam aleator din pool-ul
+  // de raritate; legendary-urile pot fi exclusive (cele rezervate pentru
+  // CHAMPION).
+  if (config.guaranteedLegendary > 0) {
     const legendaries = pool.filter((i) => i.rarity === Rarity.LEGENDARY);
+    for (let i = 0; i < config.guaranteedLegendary; i++) {
+      const pick = legendaries[Math.floor(Math.random() * legendaries.length)];
+      if (pick) out.push(pick);
+    }
+  }
+  if (config.guaranteedEpic > 0) {
     const epics = pool.filter((i) => i.rarity === Rarity.EPIC);
-    const out: DroppableItem[] = [];
-    const legendaryPick = legendaries[Math.floor(Math.random() * legendaries.length)];
-    if (legendaryPick) out.push(legendaryPick);
-    const epicPick = epics[Math.floor(Math.random() * epics.length)];
-    if (epicPick) out.push(epicPick);
-    return out;
+    for (let i = 0; i < config.guaranteedEpic; i++) {
+      const pick = epics[Math.floor(Math.random() * epics.length)];
+      if (pick) out.push(pick);
+    }
   }
 
-  const weights = WEIGHTS_BY_TIER[tier];
-  const count = ITEMS_PER_TIER[tier];
+  // Restul slotului umplut prin rolling weighted.
+  const remaining = config.itemCount - out.length;
+  if (remaining <= 0) return out;
+
   const byRarity = {
     COMMON: pool.filter((i) => i.rarity === Rarity.COMMON),
     RARE: pool.filter((i) => i.rarity === Rarity.RARE),
@@ -134,13 +107,12 @@ function rollItemsForTier(
     LEGENDARY: pool.filter((i) => i.rarity === Rarity.LEGENDARY && !i.exclusive),
   };
 
-  const out: DroppableItem[] = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < remaining; i++) {
     const rarity = pickWeighted<Rarity>([
-      { value: Rarity.COMMON, weight: weights.COMMON },
-      { value: Rarity.RARE, weight: weights.RARE },
-      { value: Rarity.EPIC, weight: weights.EPIC },
-      { value: Rarity.LEGENDARY, weight: weights.LEGENDARY },
+      { value: Rarity.COMMON, weight: config.weightCommon },
+      { value: Rarity.RARE, weight: config.weightRare },
+      { value: Rarity.EPIC, weight: config.weightEpic },
+      { value: Rarity.LEGENDARY, weight: config.weightLegendary },
     ]);
     if (!rarity) continue;
     const bucket = byRarity[rarity];
@@ -166,11 +138,23 @@ export async function awardChestForParticipant(args: {
   durationMs: number;
   isWinner: boolean;
 }): Promise<{ chestId: string; tier: ChestTier } | null> {
-  const baseTier = baseTierForDuration(args.durationMs);
+  const configs = await loadTierConfigs();
+  const baseTier = baseTierForDuration(args.durationMs, configs);
   if (!baseTier) return null;
-  const tier = args.isWinner ? upgradeTier(baseTier) : baseTier;
 
-  // Daca exista deja un cufar pentru participant, returnam fara duplicat.
+  const baseCfg = configs.get(baseTier);
+  if (!baseCfg) return null;
+
+  // Castigatorul primeste tier-ul de upgrade (daca exista). Pentru tier-uri
+  // fara upgrade (CHAMPION sau orice cu upgradeToTier=null), winner-ul ramane
+  // la acelasi tier.
+  const finalTier = args.isWinner && baseCfg.upgradeToTier
+    ? baseCfg.upgradeToTier
+    : baseTier;
+  const finalCfg = configs.get(finalTier);
+  if (!finalCfg) return null;
+
+  // Idempotent — daca exista deja un cufar pentru participant, returnam.
   const existing = await prisma.phoneDownParticipant.findUnique({
     where: { id: args.participantId },
     select: { chestId: true },
@@ -181,12 +165,9 @@ export async function awardChestForParticipant(args: {
   }
 
   const pool = await loadDroppableItems();
-  const rolled = rollItemsForTier(tier, pool);
+  const rolled = rollItemsForTier(finalCfg, pool);
 
-  // Detectie duplicate: care iteme are deja user-ul in inventar din cufere
-  // anterioare deschise sau in inventar curent. Pentru moment "owned" =
-  // itemul figureaza in loot-ul vreunui chest anterior deschis. Asta e
-  // aproximat — extindem cu tabela Inventory in viitor.
+  // Detectie duplicate.
   const userOpenedChests = await prisma.chest.findMany({
     where: { userId: args.userId, openedAt: { not: null } },
     select: { lootJson: true },
@@ -198,6 +179,8 @@ export async function awardChestForParticipant(args: {
     for (const it of loot.items ?? []) ownedSlugs.add(it.slug);
   }
 
+  const dupXp = await loadDuplicateXp();
+
   const items: ChestLoot['items'] = [];
   const duplicates: ChestLoot['duplicates'] = [];
   for (const it of rolled) {
@@ -205,7 +188,7 @@ export async function awardChestForParticipant(args: {
       duplicates.push({
         slug: it.slug,
         name: it.name,
-        shardsXp: DUPLICATE_XP_BY_RARITY[it.rarity],
+        shardsXp: dupXp[it.rarity],
       });
     } else {
       items.push({ itemId: it.id, slug: it.slug, name: it.name, rarity: it.rarity });
@@ -213,13 +196,13 @@ export async function awardChestForParticipant(args: {
     }
   }
 
-  const xp = XP_BY_TIER[tier] + duplicates.reduce((s, d) => s + d.shardsXp, 0);
+  const xp = finalCfg.xpBase + duplicates.reduce((s, d) => s + d.shardsXp, 0);
   const loot: ChestLoot = { xp, items, duplicates };
 
   const chest = await prisma.chest.create({
     data: {
       userId: args.userId,
-      tier,
+      tier: finalTier,
       sourceType: 'phone_down',
       sourceId: args.sessionId,
       lootJson: loot as unknown as Prisma.InputJsonValue,
@@ -231,7 +214,7 @@ export async function awardChestForParticipant(args: {
     data: { chestId: chest.id },
   });
 
-  return { chestId: chest.id, tier };
+  return { chestId: chest.id, tier: finalTier };
 }
 
 // Aplicare loot la deschiderea cufarului — apelat din routes/chests.ts.
@@ -244,8 +227,6 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
   if (chest.openedAt) return chest.lootJson as unknown as ChestLoot;
 
   const loot = chest.lootJson as unknown as ChestLoot;
-  // XP-ul total (de baza + shards din duplicate) e acordat la deschidere
-  // pentru pacing-ul UX — momentul de "feedback" e tap-ul pe cufar.
   if (loot.xp > 0) {
     await awardXp(
       userId,

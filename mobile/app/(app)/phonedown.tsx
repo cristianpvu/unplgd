@@ -147,7 +147,7 @@ function PreLobby() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Stack.Screen options={{ headerShown: false }} />
-      <Header title="Phone Down" onBack={() => router.back()} />
+      <Header title="Last Phone Standing" onBack={() => router.back()} />
 
       <View style={styles.hero}>
         <View style={styles.heroIcon}>

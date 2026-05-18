@@ -829,3 +829,38 @@ model Chest {
 
   @@index([userId, openedAt])
 }
+
+// Configurari per ChestTier — pragul minim de durata, cate iteme pica, XP de
+// baza, ponderi pentru drop weighted, si tier-ul de upgrade pentru castigator.
+// Editat doar din seed (sau direct in DB). Permite ajustari de game balance
+// fara redeploy.
+model ChestTierConfig {
+  tier                ChestTier  @id
+  // Durata minima (ms) jucat efectiv pentru a primi acest tier. Tier-ul atribuit
+  // = cel mai mare cu minDurationMs <= durationMs.
+  minDurationMs       Int
+  // Cate iteme pica in cufar (in afara de XP).
+  itemCount           Int
+  xpBase              Int
+  // Ponderi pentru rolling rarity (suma > 0 daca tier-ul e dropable; toate 0 +
+  // guaranteed*>0 → loot complet deterministic, ca CHAMPION).
+  weightCommon        Int        @default(0)
+  weightRare          Int        @default(0)
+  weightEpic          Int        @default(0)
+  weightLegendary     Int        @default(0)
+  // Daca user-ul a castigat (#1) cu acest tier de baza, primeste in schimb
+  // tier-ul de upgrade. NULL = nu se upgradeaza (CHAMPION e top).
+  upgradeToTier       ChestTier?
+  // Loot garantat (in afara rolling-ului). Pentru CHAMPION: 1 legendary + 1 epic.
+  // Daca >0, primele N iteme sunt selectate direct din pool-ul de raritatea
+  // respectiva; restul (itemCount - guaranteed) sunt rolled prin weights.
+  guaranteedLegendary Int        @default(0)
+  guaranteedEpic      Int        @default(0)
+}
+
+// XP bonus la deschidere pentru fiecare item duplicat (shards). Mai rar = mai
+// dureros sa-l vezi duplicat → bonus mai mare.
+model RarityDuplicateXp {
+  rarity Rarity @id
+  xp     Int
+}

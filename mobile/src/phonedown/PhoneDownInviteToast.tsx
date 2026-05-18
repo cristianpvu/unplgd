@@ -61,7 +61,7 @@ export function PhoneDownInviteToast() {
           ? e.code === 'lobby_closed'
             ? 'Lobby-ul nu mai e disponibil — host-ul a pornit deja runda sau a iesit.'
             : e.code === 'already_in_session'
-              ? 'Esti deja intr-o sesiune Phone Down. Iesi din ea intai.'
+              ? 'Esti deja intr-o sesiune Last Phone Standing. Iesi din ea intai.'
               : e.message
           : 'Nu pot intra in lobby acum.';
       Alert.alert('Nu pot intra', msg);
@@ -82,7 +82,7 @@ export function PhoneDownInviteToast() {
           <Text style={styles.title} numberOfLines={1}>
             {invite.hostName} te-a invitat
           </Text>
-          <Text style={styles.subtitle}>Phone Down — cine sta mai mult fara telefon</Text>
+          <Text style={styles.subtitle}>Last Phone Standing — cine rezista mai mult</Text>
         </View>
         <Pressable
           onPress={handleJoin}

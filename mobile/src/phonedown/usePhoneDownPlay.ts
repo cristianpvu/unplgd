@@ -43,6 +43,11 @@ export type PhoneDownPlayState = {
   surrender: () => Promise<void>;
 };
 
+// Limita maxima cat poti sta in background DURING an in-call. Peste 10 min
+// in background + in apel = nesimtire (apel facut intentionat ca scuza),
+// surrender automat.
+const MAX_CALL_BG_MS = 10 * 60 * 1000;
+
 // Calcul live al duratei unui participant fara request la server.
 export function computeLiveDuration(
   participant: { status: string; durationMs: number },
@@ -158,7 +163,7 @@ export function usePhoneDownPlay(opts: Options): PhoneDownPlayState {
     return () => sub.remove();
   }, []);
 
-  // Regula unica: daca app-ul e in background si NU sunt in apel, surrender.
+  // Regula 1: daca app-ul e in background si NU sunt in apel, surrender.
   // Acopera ambele cazuri:
   //  (1) user a iesit din app fara apel — surrender imediat
   //  (2) user a fost in apel (background OK), apelul s-a terminat, app inca
@@ -171,6 +176,31 @@ export function usePhoneDownPlay(opts: Options): PhoneDownPlayState {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appState, isInCall, playActive, sessionId, me?.status]);
+
+  // Regula 2: cap pe durata "background + in apel". Pornim timer-ul cand
+  // intram in (background + inCall), il anulam cand una se schimba.
+  const [callBgStartedAt, setCallBgStartedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (appState === 'background' && isInCall) {
+      setCallBgStartedAt((prev) => prev ?? Date.now());
+    } else {
+      setCallBgStartedAt(null);
+    }
+  }, [appState, isInCall]);
+
+  useEffect(() => {
+    if (callBgStartedAt === null) return;
+    if (!playActive || !sessionId || !me || me.status !== 'ACTIVE') return;
+    const elapsed = Date.now() - callBgStartedAt;
+    const remaining = MAX_CALL_BG_MS - elapsed;
+    if (remaining <= 0) {
+      surrenderMut.mutate();
+      return;
+    }
+    const t = setTimeout(() => surrenderMut.mutate(), remaining);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callBgStartedAt, playActive, sessionId, me?.status]);
 
   const phase: PhoneDownPhase = (() => {
     if (!session) return 'waiting';

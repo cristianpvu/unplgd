@@ -58,7 +58,7 @@ const GAMES: GameDef[] = [
   },
   {
     key: 'phonedown',
-    title: 'Phone Down',
+    title: 'Last Phone Standing',
     subtitle: 'Cine sta cel mai mult fara telefon castiga un cufar',
     route: '/(app)/phonedown',
     bg: '#0F1020',

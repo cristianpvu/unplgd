@@ -5,7 +5,7 @@
 // Datele de stil (fata) referentiaza DiceBear "Adventurer" by Lisa Wischofsky
 // (CC BY 4.0). Corpul, hainele si economia level-gated sunt originale.
 
-import { AttachmentPoint, PrismaClient, Rarity } from '@prisma/client';
+import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
@@ -453,7 +453,134 @@ const CARDS: SeedCard[] = [
   { uid: '1D:5E:16:AE:01:10:80', speciesSlug: 'baby-yoda' },
 ];
 
+// Configuratie tier cufere — mutat din cod (lib/phonedown/award.ts) in DB
+// pentru ajustare de game balance fara redeploy. Praguri ales pentru o curba
+// motivanta: 5-14 min → Bronze, 15-29 → Silver, 30-59 → Gold, 60-119 → Platinum,
+// 120+ → Diamond. Champion = upgrade din Diamond pentru castigator (#1).
+type ChestTierSeed = {
+  tier: ChestTier;
+  minDurationMs: number;
+  itemCount: number;
+  xpBase: number;
+  weightCommon: number;
+  weightRare: number;
+  weightEpic: number;
+  weightLegendary: number;
+  upgradeToTier: ChestTier | null;
+  guaranteedLegendary?: number;
+  guaranteedEpic?: number;
+};
+
+const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
+  {
+    tier: 'BRONZE',
+    minDurationMs: 5 * 60_000,
+    itemCount: 1,
+    xpBase: 20,
+    weightCommon: 90,
+    weightRare: 10,
+    weightEpic: 0,
+    weightLegendary: 0,
+    upgradeToTier: 'SILVER',
+  },
+  {
+    tier: 'SILVER',
+    minDurationMs: 15 * 60_000,
+    itemCount: 1,
+    xpBase: 50,
+    weightCommon: 70,
+    weightRare: 25,
+    weightEpic: 5,
+    weightLegendary: 0,
+    upgradeToTier: 'GOLD',
+  },
+  {
+    tier: 'GOLD',
+    minDurationMs: 30 * 60_000,
+    itemCount: 2,
+    xpBase: 100,
+    weightCommon: 40,
+    weightRare: 45,
+    weightEpic: 14,
+    weightLegendary: 1,
+    upgradeToTier: 'PLATINUM',
+  },
+  {
+    tier: 'PLATINUM',
+    minDurationMs: 60 * 60_000,
+    itemCount: 2,
+    xpBase: 200,
+    weightCommon: 15,
+    weightRare: 45,
+    weightEpic: 35,
+    weightLegendary: 5,
+    upgradeToTier: 'DIAMOND',
+  },
+  {
+    tier: 'DIAMOND',
+    minDurationMs: 120 * 60_000,
+    itemCount: 3,
+    xpBase: 400,
+    weightCommon: 0,
+    weightRare: 30,
+    weightEpic: 50,
+    weightLegendary: 20,
+    upgradeToTier: 'CHAMPION',
+  },
+  {
+    // Special: loot deterministic (1 legendary garantat + 1 epic). Rolling-ul
+    // nu se aplica peste guarantee — toate weight-urile sunt 0.
+    tier: 'CHAMPION',
+    minDurationMs: 0, // nu se atribuie direct ca baza, doar prin upgrade
+    itemCount: 2,
+    xpBase: 600,
+    weightCommon: 0,
+    weightRare: 0,
+    weightEpic: 0,
+    weightLegendary: 0,
+    upgradeToTier: null,
+    guaranteedLegendary: 1,
+    guaranteedEpic: 1,
+  },
+];
+
+const RARITY_DUPLICATE_XP: { rarity: Rarity; xp: number }[] = [
+  { rarity: 'COMMON', xp: 5 },
+  { rarity: 'RARE', xp: 15 },
+  { rarity: 'EPIC', xp: 40 },
+  { rarity: 'LEGENDARY', xp: 100 },
+];
+
+async function seedChestConfig() {
+  for (const cfg of CHEST_TIER_CONFIGS) {
+    await prisma.chestTierConfig.upsert({
+      where: { tier: cfg.tier },
+      create: {
+        ...cfg,
+        guaranteedLegendary: cfg.guaranteedLegendary ?? 0,
+        guaranteedEpic: cfg.guaranteedEpic ?? 0,
+      },
+      update: {
+        ...cfg,
+        guaranteedLegendary: cfg.guaranteedLegendary ?? 0,
+        guaranteedEpic: cfg.guaranteedEpic ?? 0,
+      },
+    });
+  }
+  for (const dup of RARITY_DUPLICATE_XP) {
+    await prisma.rarityDuplicateXp.upsert({
+      where: { rarity: dup.rarity },
+      create: dup,
+      update: dup,
+    });
+  }
+}
+
 async function main() {
+  // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
+  // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
+  await seedChestConfig();
+
   // Skip seed cand DB e deja populata — evita 100+ upsert-uri la fiecare
   // container restart. Cand adaugi item-uri/carduri/challenges noi in seed,
   // ruleaza cu FORCE_SEED=1 pentru o aplicare unica si dupa scoate flagul.
