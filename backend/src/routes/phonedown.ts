@@ -305,6 +305,13 @@ phoneDownRouter.post('/sessions/:id/surrender', requireAuth, async (req, res, ne
     }
 
     const now = new Date();
+    // Anti-bug: nu acceptam surrender in countdown (inainte ca phoneDownAt sa
+    // se intample). In cazul asta, duration ar fi negativa → clamp la 0 →
+    // assignRanks vede tie pe 0 si declara toti WINNER cu 00:00. Mai bine
+    // returnam no-op si lasam client-ul sa reincerce dupa countdown.
+    if (me.phoneDownAt && me.phoneDownAt > now) {
+      return res.json(serializeSession(session, now));
+    }
     // Daca era in pauza, finalizam si pauza curenta in accumulator inainte
     // sa calculam durata, ca durata sa nu includa fragmentul de apel.
     const extraPause = me.pausedAt
