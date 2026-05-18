@@ -28,7 +28,7 @@ import {
   type PhoneDownSessionDto,
 } from '../../src/api/phonedown';
 import { usePresence } from '../../src/ble/usePresence';
-import { usePhoneDownPlay } from '../../src/phonedown/usePhoneDownPlay';
+import { usePhoneDownPlay, computeLiveDuration } from '../../src/phonedown/usePhoneDownPlay';
 import { colors } from '../../src/theme/colors';
 import {
   IconAlert,
@@ -39,7 +39,6 @@ import {
   IconFlag,
   IconLock,
   IconPause,
-  IconPhoneCall,
   IconPlay,
   IconTrophy,
   IconUsers,
@@ -491,12 +490,10 @@ function Playing({
     return <SurrenderedView session={session} myUserId={myUserId} />;
   }
 
-  if (play.phase === 'paused') {
-    return <PausedView duration={play.myDurationMs} />;
-  }
-
-  // Faza activa — lockscreen.
-  const sorted = [...session.participants].sort(
+  // Calcul live al duratelor — fara polling. Folosim serverNow ca anchor
+  // pentru snapshot-ul curent, apoi extrapolam local la fiecare tick.
+  const serverNowMs = new Date(session.serverNow).getTime();
+  const sortedRaw = [...session.participants].sort(
     (a, b) => (b.durationMs ?? 0) - (a.durationMs ?? 0),
   );
 
@@ -518,6 +515,12 @@ function Playing({
             <IconLock size={12} color={PD.lockTextMuted} />
             <Text style={styles.lockChipText}>BLOCAT</Text>
           </View>
+          {play.isInCall && (
+            <View style={[styles.lockChip, { marginLeft: 8 }]}>
+              <View style={styles.lockMeDot} />
+              <Text style={styles.lockChipText}>IN APEL</Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.lockCenter}>
@@ -542,19 +545,11 @@ function Playing({
         </View>
 
         {!dimmed && (
-          <View style={styles.lockLeaderboard}>
-            {sorted.slice(0, 4).map((p, idx) => (
-              <LockLeaderboardRow
-                key={p.id}
-                participant={p}
-                index={idx}
-                isMe={p.userId === myUserId}
-              />
-            ))}
-            {sorted.length > 4 && (
-              <Text style={styles.lockMoreText}>+ {sorted.length - 4} jucatori</Text>
-            )}
-          </View>
+          <LiveLeaderboard
+            participants={sortedRaw}
+            serverNowMs={serverNowMs}
+            myUserId={myUserId}
+          />
         )}
 
         {dimmed && <View style={{ flex: 1 }} />}
@@ -591,6 +586,50 @@ function Playing({
   );
 }
 
+// Leaderboard izolat — re-render la 1s din clock local, fara polling REST.
+// Durations live ale celorlalti participanti se calculeaza din serverNow +
+// status-ul lor (ACTIVE → cresc, PAUSED/SURRENDERED → freeze).
+function LiveLeaderboard({
+  participants,
+  serverNowMs,
+  myUserId,
+}: {
+  participants: PhoneDownParticipantDto[];
+  serverNowMs: number;
+  myUserId: string;
+}) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const nowMs = Date.now();
+  const enriched = participants
+    .map((p) => ({
+      p,
+      live: computeLiveDuration(p, serverNowMs, nowMs),
+    }))
+    .sort((a, b) => b.live - a.live);
+
+  return (
+    <View style={styles.lockLeaderboard}>
+      {enriched.slice(0, 4).map(({ p, live }, idx) => (
+        <LockLeaderboardRow
+          key={p.id}
+          participant={p}
+          liveDurationMs={live}
+          index={idx}
+          isMe={p.userId === myUserId}
+        />
+      ))}
+      {enriched.length > 4 && (
+        <Text style={styles.lockMoreText}>+ {enriched.length - 4} jucatori</Text>
+      )}
+    </View>
+  );
+}
+
 // Timer izolat — singurul componenta care re-randa la 1s. Restul ecranului
 // nu se atinge → minim de munca pentru GPU. In modul dimmed, refresh-ul scade
 // la 5s (suficient pentru valoarea aproximativa, fara consum vizual).
@@ -623,10 +662,12 @@ function LiveTimer({
 
 function LockLeaderboardRow({
   participant,
+  liveDurationMs,
   index,
   isMe,
 }: {
   participant: PhoneDownParticipantDto;
+  liveDurationMs: number;
   index: number;
   isMe: boolean;
 }) {
@@ -640,7 +681,7 @@ function LockLeaderboardRow({
         {isMe ? ' · tu' : ''}
       </Text>
       <Text style={[styles.lockLbDur, isMe && { color: '#FFFFFF' }]}>
-        {formatDuration(participant.durationMs ?? 0)}
+        {formatDuration(liveDurationMs)}
       </Text>
       {participant.status === 'PAUSED' && (
         <IconPause size={12} color={PD.lockTextMuted} />
@@ -648,29 +689,6 @@ function LockLeaderboardRow({
       {participant.status === 'SURRENDERED' && (
         <IconClose size={12} color={PD.lockTextMuted} />
       )}
-    </View>
-  );
-}
-
-function PausedView({ duration }: { duration: number }) {
-  return (
-    <View style={[styles.lockWrap, { backgroundColor: '#1A1730' }]}>
-      <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-      <StatusBar hidden />
-      <SafeAreaView style={styles.lockSafe} edges={['top', 'bottom']}>
-        <View style={styles.lockCenter}>
-          <View style={[styles.heroIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
-            <IconPhoneCall size={26} color="#FFFFFF" />
-          </View>
-          <Text style={[styles.lockTimer, { fontSize: 56, marginTop: 16 }]}>
-            {formatDuration(duration)}
-          </Text>
-          <Text style={[styles.lockHint, { marginTop: 6 }]}>Pauza apel — ceasul s-a oprit</Text>
-          <Text style={[styles.lockHint, { opacity: 0.45, marginTop: 4 }]}>
-            Va reporni automat cand termini apelul
-          </Text>
-        </View>
-      </SafeAreaView>
     </View>
   );
 }
@@ -1081,7 +1099,12 @@ const styles = StyleSheet.create({
   // Lock screen
   lockWrap: { flex: 1, backgroundColor: PD.lockBg },
   lockSafe: { flex: 1, paddingHorizontal: 20 },
-  lockTopRow: { alignItems: 'center', paddingTop: 6 },
+  lockTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 6,
+  },
   lockChip: {
     flexDirection: 'row',
     alignItems: 'center',
