@@ -130,16 +130,18 @@ export const BODY_PARTS = {
 //   - gat = banda intre y=540 si y=660, centrata pe x=381
 //   - cap = chin la ~y=540, varf cap la ~y=80 (head wrapeaza la y=-8)
 export const ACCESSORY_PARTS: Record<string, string> = {
-  // HAND - balon mare, sus deasupra capului, in dreapta. Ata vizibila clar
-  // de la mana (541, 995) curbata in sus pana la nodul balonului — trece peste
-  // trunchi, dar asa pare ca il tine in mana cu adevarat.
-  "balloon-blue": `<path d="M 541 995 Q 560 720 595 460 Q 620 350 640 285" fill="none" stroke="#555" stroke-width="4"/>
-<polygon points="630,283 650,283 640,303" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
-<ellipse cx="640" cy="170" rx="95" ry="115" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="6"/>
-<ellipse cx="610" cy="135" rx="22" ry="32" fill="#ffffff" opacity="0.5"/>`,
-  // HAND - zmeu mare ridicat sus in dreapta, ata curbata din mana pana la
-  // colt zmeului, coada cu fundite atarna sub el.
-  "kite": `<path d="M 541 995 Q 575 750 610 540 Q 635 440 655 410" fill="none" stroke="#555" stroke-width="3"/>
+  // HAND - balon mare deasupra capului, in dreapta. Ata porneste din pumn:
+  // segment vertical scurt (sa fie clar ca iese din mana, NU din umar), apoi
+  // curba spre balon. Nod inchis la pumn pt anchor vizual.
+  "balloon-blue": `<circle cx="541" cy="990" r="5" fill="#333"/>
+<path d="M 541 990 L 543 760 Q 555 560 590 400 Q 615 320 640 290" fill="none" stroke="#333" stroke-width="5"/>
+<polygon points="630,288 650,288 640,308" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<ellipse cx="640" cy="175" rx="95" ry="115" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="6"/>
+<ellipse cx="610" cy="140" rx="22" ry="32" fill="#ffffff" opacity="0.5"/>`,
+  // HAND - zmeu mare ridicat sus in dreapta, ata porneste din pumn (vertical
+  // scurt + curba), coada cu fundite atarna sub el.
+  "kite": `<circle cx="541" cy="990" r="5" fill="#333"/>
+<path d="M 541 990 L 545 770 Q 570 600 605 480 Q 630 430 650 415" fill="none" stroke="#333" stroke-width="4"/>
 <polygon points="655,180 750,300 655,420 560,300" fill="var(--acc, #5db3e8)" stroke="#000" stroke-width="6" stroke-linejoin="round"/>
 <line x1="655" y1="180" x2="655" y2="420" stroke="#000" stroke-width="3" opacity="0.4"/>
 <line x1="560" y1="300" x2="750" y2="300" stroke="#000" stroke-width="3" opacity="0.4"/>
