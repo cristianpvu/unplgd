@@ -157,6 +157,28 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
     const lockedReason = validateLevels(items, user.level);
     if (lockedReason) throw badRequest('locked', lockedReason);
 
+    // Ownership check: pentru accesorii (attachmentPoint != null) care NU sunt
+    // default-ul slot-ului (ex. hd-00 "fara"), user-ul trebuie sa le detina via
+    // UserItem. Default-urile + iteme face sunt mereu permise.
+    const accessoriesToCheck = SLOTS.filter((s) => {
+      const item = items[s];
+      return item.attachmentPoint !== null && item.slug !== DEFAULT_SLUGS[s];
+    }).map((s) => items[s].id);
+
+    if (accessoriesToCheck.length > 0) {
+      const owned = await prisma.userItem.findMany({
+        where: { userId: user.id, itemId: { in: accessoriesToCheck } },
+        select: { itemId: true },
+      });
+      const ownedSet = new Set(owned.map((o) => o.itemId));
+      for (const slot of SLOTS) {
+        const item = items[slot];
+        if (item.attachmentPoint !== null && item.slug !== DEFAULT_SLUGS[slot] && !ownedSet.has(item.id)) {
+          throw badRequest('not_owned', `${slot}:${item.slug}`);
+        }
+      }
+    }
+
     const svg = renderAvatarSvg(items);
     const svgBlink = renderAvatarBlinkSvg(items);
     const fkData = itemsToFkData(items);
@@ -168,19 +190,23 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
       include: AVATAR_INCLUDE,
     });
 
-    // Marcheaza item-urile echipate ca detinute. Idempotent via unique
-    // (userId,itemId) cu skipDuplicates. Sursa 'default_avatar' pt prima
-    // creare; pe update-uri ulterioare doar adauga item-urile noi (cele
-    // existente raman cu source-ul lor original — nu suprascriem).
-    const equippedIds = new Set<string>(SLOTS.map((s) => items[s].id));
-    await prisma.userItem.createMany({
-      data: Array.from(equippedIds).map((itemId) => ({
-        userId: user.id,
-        itemId,
-        source: 'default_avatar',
-      })),
-      skipDuplicates: true,
-    });
+    // Marcheaza ca detinute doar face items + default-uri (NU acordam ownership
+    // pe accesorii la echipare — accesoriile vin EXCLUSIV din cufere). Asta
+    // permite catalogului sa filtreze corect ce poate fi echipat.
+    const grantedIds = SLOTS.filter((s) => {
+      const item = items[s];
+      return item.attachmentPoint === null || item.slug === DEFAULT_SLUGS[s];
+    }).map((s) => items[s].id);
+    if (grantedIds.length > 0) {
+      await prisma.userItem.createMany({
+        data: grantedIds.map((itemId) => ({
+          userId: user.id,
+          itemId,
+          source: 'default_avatar',
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     res.json(serializeAvatar(avatar, user.level));
   } catch (e) {
@@ -209,8 +235,15 @@ avatarRouter.post('/avatar/preview', requireAuth, async (req, res, next) => {
   }
 });
 
-// Catalog public cu locked/unlocked. Mobile fetch-uieste o data la app start
-// si cache-uieste local; sortarea respecta sortOrder din DB.
+// Catalog public cu locked/unlocked + owned. Mobile fetch-uieste o data la app
+// start si cache-uieste local; sortarea respecta sortOrder din DB.
+//
+// `locked` = restrictie de nivel (item.level > user.level).
+// `owned`  = user-ul a obtinut item-ul. True automat pentru:
+//            - iteme "face" (attachmentPoint == null) — variante vizuale, nu loot
+//            - default-uri per slot (DEFAULT_SLUGS, ex. hd-00 "fara holding")
+//            False pentru accesorii pe care user-ul nu le-a primit din cufere.
+// Mobile combina ambele: item.locked || !item.owned → nu poate fi echipat.
 avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId! }, select: { level: true } });
@@ -221,20 +254,33 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
       include: { items: { orderBy: { sortOrder: 'asc' } } },
     });
 
-    // Returnam un array de tipuri (cu label, grup, sortOrder) — mobile
-    // randeaza tab-urile direct din asta, fara metadata hardcodata local.
-    const responseTypes = types.map((type) => ({
-      slug: type.slug,
-      name: type.name,
-      group: type.group,
-      items: type.items.map((item) => ({
-        slug: item.slug,
-        name: item.name,
-        feature: item.feature,
-        level: item.level,
-        locked: item.level > user.level,
-      })),
-    }));
+    const ownedRows = await prisma.userItem.findMany({
+      where: { userId: req.userId! },
+      select: { itemId: true },
+    });
+    const ownedSet = new Set(ownedRows.map((o) => o.itemId));
+
+    const responseTypes = types.map((type) => {
+      const defaultSlug = DEFAULT_SLUGS[type.slug as Slot];
+      return {
+        slug: type.slug,
+        name: type.name,
+        group: type.group,
+        items: type.items.map((item) => {
+          const requiresOwnership =
+            item.attachmentPoint !== null && item.slug !== defaultSlug;
+          const owned = !requiresOwnership || ownedSet.has(item.id);
+          return {
+            slug: item.slug,
+            name: item.name,
+            feature: item.feature,
+            level: item.level,
+            locked: item.level > user.level,
+            owned,
+          };
+        }),
+      };
+    });
 
     // defaultPicks e starting state pt editorul de creare (cand user-ul inca
     // nu are avatar in DB) — mobile foloseste asta pe flow-ul de onboarding.
