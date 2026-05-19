@@ -35,6 +35,7 @@ import {
   type ChestDto,
   type ChestLoot,
   type ChestTier,
+  type Rarity,
 } from '../../src/api/chests';
 import { listFriends } from '../../src/api/friends';
 import { getMyPet, petImageUrl } from '../../src/api/pets';
@@ -344,6 +345,15 @@ const TIER_LABEL: Record<ChestTier, string> = {
   CHAMPION: 'Campion',
 };
 
+// Culori per raritate pentru pastila/border-ul tile-ului de item in loot reveal.
+// Mai rar = mai cald.
+const RARITY_COLOR: Record<Rarity, string> = {
+  COMMON: '#A8B4BD',
+  RARE: '#5DA9FF',
+  EPIC: '#B86AE0',
+  LEGENDARY: '#FFB347',
+};
+
 type TierStyle = {
   bg: string;
   dark: string;
@@ -514,8 +524,7 @@ function ChestsSideButton() {
                   accessibilityLabel={`Cufar ${TIER_LABEL[s.tier]}`}
                   style={({ pressed }) => [
                     styles.miniStack,
-                    { backgroundColor: c.bg, borderColor: c.dark },
-                    (pressed || openMut.isPending) && { opacity: 0.75 },
+                    (pressed || openMut.isPending) && { opacity: 0.6 },
                   ]}
                 >
                   <MiniChestSvg tier={s.tier} />
@@ -561,7 +570,7 @@ function MiniChestSvg({ tier }: { tier: ChestTier }) {
   const c = TIER_COLORS[tier];
   const gid = `mini-${tier}`;
   return (
-    <Svg width={26} height={24} viewBox="0 0 26 24" fill="none">
+    <Svg width={34} height={32} viewBox="0 0 26 24" fill="none">
       <Defs>
         <LinearGradient id={`${gid}-body`} x1="0" y1="0" x2="0" y2="1">
           <Stop offset="0" stopColor={c.bodyTop} />
@@ -985,19 +994,59 @@ function LootRevealInline({
       >
         <Text style={[styles.lootTier, { color: c.fg }]}>{TIER_LABEL[tier]}</Text>
         <Text style={[styles.lootXp, { color: c.fg }]}>+{loot.xp} XP</Text>
+
         {loot.items.length > 0 && (
-          <View style={styles.lootSection}>
+          <View style={styles.lootGrid}>
             {loot.items.map((it) => (
-              <Text key={it.itemId} style={[styles.lootItem, { color: c.fg }]} numberOfLines={1}>
-                + {it.name}
-              </Text>
+              <View
+                key={it.itemId}
+                style={[styles.lootTile, { backgroundColor: '#FFFFFF22', borderColor: c.dark }]}
+              >
+                <View style={styles.lootTileArt}>
+                  {it.svg ? (
+                    <SvgXml xml={it.svg} width={64} height={64} />
+                  ) : (
+                    <Text style={[styles.lootItem, { color: c.fg }]}>?</Text>
+                  )}
+                </View>
+                <Text
+                  style={[styles.lootTileName, { color: c.fg }]}
+                  numberOfLines={1}
+                >
+                  {it.name}
+                </Text>
+                <View style={[styles.rarityDot, { backgroundColor: RARITY_COLOR[it.rarity] }]} />
+              </View>
             ))}
           </View>
         )}
+
         {loot.duplicates.length > 0 && (
-          <Text style={[styles.lootDup, { color: c.fg }]} numberOfLines={2}>
-            {loot.duplicates.length} duplicat{loot.duplicates.length === 1 ? '' : 'e'} → XP shards
-          </Text>
+          <View style={styles.lootGrid}>
+            {loot.duplicates.map((d, idx) => (
+              <View
+                key={`${d.slug}-${idx}`}
+                style={[styles.lootTile, styles.lootTileDup, { borderColor: c.dark }]}
+              >
+                <View style={[styles.lootTileArt, { opacity: 0.5 }]}>
+                  {d.svg ? (
+                    <SvgXml xml={d.svg} width={64} height={64} />
+                  ) : (
+                    <Text style={[styles.lootItem, { color: c.fg }]}>?</Text>
+                  )}
+                </View>
+                <Text
+                  style={[styles.lootTileName, { color: c.fg, opacity: 0.65 }]}
+                  numberOfLines={1}
+                >
+                  {d.name}
+                </Text>
+                <Text style={[styles.lootTileShards, { color: c.fg }]}>
+                  +{d.shardsXp} XP
+                </Text>
+              </View>
+            ))}
+          </View>
         )}
       </Animated.View>
 
@@ -1299,15 +1348,8 @@ const styles = StyleSheet.create({
   miniStack: {
     width: 36,
     height: 36,
-    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.8,
-    shadowRadius: 3,
-    elevation: 1,
   },
   miniStackBadge: {
     position: 'absolute',
@@ -1379,6 +1421,55 @@ const styles = StyleSheet.create({
   lootSection: { width: '100%', gap: 4, marginTop: 4 },
   lootItem: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
   lootDup: { fontSize: 12, fontWeight: '600', marginTop: 4, opacity: 0.85 },
+  // Grid de tile-uri cu items / duplicates din loot reveal.
+  lootGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+    marginTop: 8,
+    width: '100%',
+  },
+  lootTile: {
+    width: 92,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF22',
+  },
+  lootTileDup: {
+    backgroundColor: '#00000022',
+  },
+  lootTileArt: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lootTileName: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  lootTileShards: {
+    fontSize: 11,
+    fontWeight: '900',
+    marginTop: 2,
+    opacity: 0.9,
+  },
+  rarityDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
   lootDismiss: {
     paddingHorizontal: 32,
     paddingVertical: 12,

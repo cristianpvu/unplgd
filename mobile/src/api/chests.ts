@@ -15,12 +15,20 @@ export type ChestLootItem = {
   slug: string;
   name: string;
   rarity: Rarity;
+  // SVG + viewBox sunt enriched de backend la POST /open (vezi
+  // backend/src/lib/phonedown/award.ts). Pot lipsi pentru itemele vechi
+  // care nu au feature/attachmentPoint setate.
+  svg?: string;
+  viewBox?: string;
 };
 
 export type ChestLootDuplicate = {
   slug: string;
   name: string;
+  rarity?: Rarity;
   shardsXp: number;
+  svg?: string;
+  viewBox?: string;
 };
 
 export type ChestLoot = {

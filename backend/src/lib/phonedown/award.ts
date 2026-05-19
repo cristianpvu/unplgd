@@ -7,6 +7,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { awardXp } from '../xp.js';
+import { renderItemPreviewSvg } from '../avatar/itemPreview.js';
 
 // Toata configuratia de game balance (praguri, weights, XP) sta in DB —
 // modelele ChestTierConfig + RarityDuplicateXp. Vezi prisma/seed.ts pentru
@@ -122,10 +123,31 @@ function rollItemsForTier(
   return out;
 }
 
+export type ChestLootItem = {
+  itemId: string;
+  slug: string;
+  name: string;
+  rarity: Rarity;
+  // SVG + viewBox sunt enrichuite la deschidere din DB pe baza de feature/
+  // attachmentPoint. NU se persista in lootJson (ramane source-of-truth doar
+  // ce e necesar pt game logic) — clientul primeste preview-ul la POST /open.
+  svg?: string;
+  viewBox?: string;
+};
+
+export type ChestLootDuplicate = {
+  slug: string;
+  name: string;
+  rarity?: Rarity;
+  shardsXp: number;
+  svg?: string;
+  viewBox?: string;
+};
+
 export type ChestLoot = {
   xp: number;
-  items: { itemId: string; slug: string; name: string; rarity: Rarity }[];
-  duplicates: { slug: string; name: string; shardsXp: number }[];
+  items: ChestLootItem[];
+  duplicates: ChestLootDuplicate[];
 };
 
 // Acorda cufar unui participant la sfarsitul sesiunii. Idempotent prin
@@ -217,6 +239,40 @@ export async function awardChestForParticipant(args: {
   return { chestId: chest.id, tier: finalTier };
 }
 
+// Imbogateste itemele din loot cu SVG preview + rarity (pentru duplicates) prin
+// lookup in DB dupa slug. Lasa loot-ul intact daca itemele nu se gasesc.
+async function enrichLootWithSvg(loot: ChestLoot): Promise<ChestLoot> {
+  const slugs = new Set<string>([
+    ...loot.items.map((i) => i.slug),
+    ...loot.duplicates.map((d) => d.slug),
+  ]);
+  if (slugs.size === 0) return loot;
+  const items = await prisma.item.findMany({
+    where: { slug: { in: Array.from(slugs) } },
+    select: { slug: true, feature: true, attachmentPoint: true, rarity: true },
+  });
+  const bySlug = new Map(items.map((i) => [i.slug, i]));
+  return {
+    xp: loot.xp,
+    items: loot.items.map((it) => {
+      const dbItem = bySlug.get(it.slug);
+      if (!dbItem) return it;
+      const preview = renderItemPreviewSvg(dbItem);
+      return preview ? { ...it, ...preview } : it;
+    }),
+    duplicates: loot.duplicates.map((d) => {
+      const dbItem = bySlug.get(d.slug);
+      if (!dbItem) return d;
+      const preview = renderItemPreviewSvg(dbItem);
+      return {
+        ...d,
+        rarity: dbItem.rarity,
+        ...(preview ?? {}),
+      };
+    }),
+  };
+}
+
 // Aplicare loot la deschiderea cufarului — apelat din routes/chests.ts.
 // Returneaza loot-ul pentru a fi servit clientului (cu animatie).
 export async function openChest(chestId: string, userId: string): Promise<ChestLoot | null> {
@@ -224,7 +280,9 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
     where: { id: chestId, userId },
   });
   if (!chest) return null;
-  if (chest.openedAt) return chest.lootJson as unknown as ChestLoot;
+  if (chest.openedAt) {
+    return enrichLootWithSvg(chest.lootJson as unknown as ChestLoot);
+  }
 
   const loot = chest.lootJson as unknown as ChestLoot;
   if (loot.xp > 0) {
@@ -240,5 +298,5 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
     where: { id: chest.id },
     data: { openedAt: new Date() },
   });
-  return loot;
+  return enrichLootWithSvg(loot);
 }
