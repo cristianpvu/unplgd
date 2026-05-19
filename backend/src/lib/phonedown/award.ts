@@ -189,34 +189,20 @@ export async function awardChestForParticipant(args: {
   const pool = await loadDroppableItems();
   const rolled = rollItemsForTier(finalCfg, pool);
 
-  // Detectie duplicate — ownership sursa de adevar e UserItem (incl. items
-  // primite din avatar default + chesturi deschise + viitor). Join cu Item.slug
-  // pt ca rolled items au slug, nu id.
-  const owned = await prisma.userItem.findMany({
-    where: { userId: args.userId },
-    select: { item: { select: { slug: true } } },
-  });
-  const ownedSlugs = new Set<string>(owned.map((o) => o.item.slug));
-
-  const dupXp = await loadDuplicateXp();
-
+  // Dedup intern in cadrul aceluiasi chest (un chest nu poate da acelasi slug
+  // de doua ori — al doilea ar trebui re-rolat sau scapat). Pentru simplitate
+  // doar deduplicam aici; restul (duplicate fata de UserItem) se face la
+  // openChest, ca acordarea sa fie snapshot brut iar deschiderea sa decida
+  // ce e duplicate la moment.
   const items: ChestLoot['items'] = [];
-  const duplicates: ChestLoot['duplicates'] = [];
+  const seen = new Set<string>();
   for (const it of rolled) {
-    if (ownedSlugs.has(it.slug)) {
-      duplicates.push({
-        slug: it.slug,
-        name: it.name,
-        shardsXp: dupXp[it.rarity],
-      });
-    } else {
-      items.push({ itemId: it.id, slug: it.slug, name: it.name, rarity: it.rarity });
-      ownedSlugs.add(it.slug);
-    }
+    if (seen.has(it.slug)) continue;
+    seen.add(it.slug);
+    items.push({ itemId: it.id, slug: it.slug, name: it.name, rarity: it.rarity });
   }
 
-  const xp = finalCfg.xpBase + duplicates.reduce((s, d) => s + d.shardsXp, 0);
-  const loot: ChestLoot = { xp, items, duplicates };
+  const loot: ChestLoot = { xp: finalCfg.xpBase, items, duplicates: [] };
 
   const chest = await prisma.chest.create({
     data: {
@@ -271,32 +257,42 @@ async function enrichLootWithSvg(loot: ChestLoot): Promise<ChestLoot> {
 }
 
 // Aplicare loot la deschiderea cufarului — apelat din routes/chests.ts.
-// Returneaza loot-ul pentru a fi servit clientului (cu animatie).
+// Duplicate detection se face AICI (la deschidere), nu la acordare, pentru ca
+// daca user-ul are mai multe chesturi neopen, fiecare a fost rolat fara sa
+// stie ce contin celelalte. La momentul deschiderii verificam UserItem si
+// re-clasificam ce e duplicate.
 export async function openChest(chestId: string, userId: string): Promise<ChestLoot | null> {
   const chest = await prisma.chest.findFirst({
     where: { id: chestId, userId },
   });
   if (!chest) return null;
+
+  // Daca a fost deja deschis, re-clasificam dupa UserItem curent si returnam
+  // snapshot-ul echivalent. NU re-acordam XP (idempotent via awardXp source).
   if (chest.openedAt) {
-    return enrichLootWithSvg(chest.lootJson as unknown as ChestLoot);
+    const raw = chest.lootJson as unknown as ChestLoot;
+    const reclassified = await reclassifyLoot(raw, userId);
+    return enrichLootWithSvg(reclassified);
   }
 
-  const loot = chest.lootJson as unknown as ChestLoot;
-  if (loot.xp > 0) {
+  const raw = chest.lootJson as unknown as ChestLoot;
+  const reclassified = await reclassifyLoot(raw, userId);
+
+  if (reclassified.xp > 0) {
     await awardXp(
       userId,
-      loot.xp,
+      reclassified.xp,
       'chest_open',
       chest.id,
       `Cufar ${chest.tier.toLowerCase()}`,
     );
   }
-  // Insereaza ownership pentru itemele non-duplicate. `itemId` pe loot vine
-  // pre-rolat. `skipDuplicates` previne crash la deschideri concurente sau
-  // re-deschideri (idempotent prin unique index).
-  if (loot.items.length > 0) {
+  // Inseram ownership pentru iteme RAMASE in `items` dupa reclassify (cele
+  // care nu erau detinute la momentul deschiderii). skipDuplicates previne
+  // crash la deschideri concurente.
+  if (reclassified.items.length > 0) {
     await prisma.userItem.createMany({
-      data: loot.items.map((it) => ({
+      data: reclassified.items.map((it) => ({
         userId,
         itemId: it.itemId,
         source: 'chest',
@@ -308,5 +304,68 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
     where: { id: chest.id },
     data: { openedAt: new Date() },
   });
-  return enrichLootWithSvg(loot);
+  return enrichLootWithSvg(reclassified);
+}
+
+// Re-clasifica loot-ul fata de UserItem curent. Itemele pe care user-ul deja
+// le detine (sau le-a detinut anterior) se muta in `duplicates` cu shardsXp
+// din RarityDuplicateXp. xp se re-calculeaza ca xpBase (din lootJson original,
+// inferat ca xp - shards-uri vechi) + shards-uri noi.
+async function reclassifyLoot(raw: ChestLoot, userId: string): Promise<ChestLoot> {
+  const allSlugs = [
+    ...raw.items.map((i) => i.slug),
+    ...raw.duplicates.map((d) => d.slug),
+  ];
+  if (allSlugs.length === 0) return raw;
+
+  const dbItems = await prisma.item.findMany({
+    where: { slug: { in: allSlugs } },
+    select: { id: true, slug: true, name: true, rarity: true },
+  });
+  const bySlug = new Map(dbItems.map((i) => [i.slug, i]));
+
+  const owned = await prisma.userItem.findMany({
+    where: { userId, item: { slug: { in: allSlugs } } },
+    select: { item: { select: { slug: true } } },
+  });
+  const ownedSlugs = new Set<string>(owned.map((o) => o.item.slug));
+
+  const dupXp = await loadDuplicateXp();
+  // xpBase = xp - shards-urile deja in raw.duplicates (daca exista de la
+  // acordari vechi). xp final = xpBase + shards-urile noi calculate.
+  const oldShards = raw.duplicates.reduce((s, d) => s + d.shardsXp, 0);
+  const xpBase = raw.xp - oldShards;
+
+  const items: ChestLoot['items'] = [];
+  const duplicates: ChestLoot['duplicates'] = [];
+  // Iteme deja in raw.items
+  for (const it of raw.items) {
+    if (ownedSlugs.has(it.slug)) {
+      const db = bySlug.get(it.slug);
+      duplicates.push({
+        slug: it.slug,
+        name: it.name,
+        rarity: db?.rarity ?? it.rarity,
+        shardsXp: dupXp[db?.rarity ?? it.rarity],
+      });
+    } else {
+      items.push(it);
+      ownedSlugs.add(it.slug); // intercept duplicates intra-chest
+    }
+  }
+  // Iteme deja in raw.duplicates (acordari vechi) — raman duplicate (XP shards
+  // recalculate). Daca cumva n-au fost contate ca duplicate atunci (bug vechi),
+  // raman duplicate acum.
+  for (const d of raw.duplicates) {
+    const db = bySlug.get(d.slug);
+    duplicates.push({
+      slug: d.slug,
+      name: d.name,
+      rarity: db?.rarity ?? d.rarity,
+      shardsXp: dupXp[db?.rarity ?? d.rarity ?? 'COMMON'],
+    });
+  }
+
+  const newShards = duplicates.reduce((s, d) => s + d.shardsXp, 0);
+  return { xp: xpBase + newShards, items, duplicates };
 }

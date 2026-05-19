@@ -714,18 +714,49 @@ async function cleanupOrphanUserItems() {
       attachmentPoint: { not: null },
       slug: { notIn: defaultSlugs },
     },
-    select: { id: true },
+    select: { id: true, slug: true },
   });
   if (accessoryItems.length === 0) return;
   const accessoryIds = accessoryItems.map((i) => i.id);
-  const del = await prisma.userItem.deleteMany({
+
+  // Step 1: sterge ownership pe accesorii cu source != 'chest' (echipari
+  // accidentale, backfill vechi). 'chest' ramane — alea sunt achizitii reale.
+  const delSpurious = await prisma.userItem.deleteMany({
     where: {
-      source: 'default_avatar',
       itemId: { in: accessoryIds },
+      source: { not: 'chest' },
     },
   });
-  if (del.count > 0) {
-    console.log(`cleanupOrphanUserItems: sters ${del.count} ownership-uri accesorii acordate prin echipare (acum drop-only)`);
+  if (delSpurious.count > 0) {
+    console.log(`cleanupOrphanUserItems: sters ${delSpurious.count} ownership-uri non-chest pe accesorii`);
+  }
+
+  // Step 2: pt fiecare UserItem cu source='chest', verifica ca exista intr-un
+  // chest deschis al user-ului. Daca nu, sterge (probably backfill stricat).
+  const chestOwnership = await prisma.userItem.findMany({
+    where: { itemId: { in: accessoryIds }, source: 'chest' },
+    select: { id: true, userId: true, itemId: true, item: { select: { slug: true } } },
+  });
+  let invalidated = 0;
+  for (const ui of chestOwnership) {
+    const chests = await prisma.chest.findMany({
+      where: { userId: ui.userId, openedAt: { not: null } },
+      select: { lootJson: true },
+    });
+    const ownedFromOpenedChest = chests.some((c) => {
+      const loot = c.lootJson as { items?: { itemId?: string; slug?: string }[] } | null;
+      if (!loot?.items) return false;
+      return loot.items.some(
+        (it) => it.itemId === ui.itemId || it.slug === ui.item.slug,
+      );
+    });
+    if (!ownedFromOpenedChest) {
+      await prisma.userItem.delete({ where: { id: ui.id } });
+      invalidated++;
+    }
+  }
+  if (invalidated > 0) {
+    console.log(`cleanupOrphanUserItems: sters ${invalidated} ownership-uri pe accesorii care NU sunt confirmate intr-un chest deschis`);
   }
 }
 
