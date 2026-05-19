@@ -43,6 +43,7 @@ model User {
   phoneDownSessionsHosted PhoneDownSession[]     @relation("PhoneDownHost")
   phoneDownParticipations PhoneDownParticipant[]
   chests                  Chest[]
+  ownedItems              UserItem[]
 
   @@index([email])
 }
@@ -136,7 +137,31 @@ model Item {
   equippedAsFootwear  Avatar[] @relation("AvatarFootwear")
   equippedAsHolding   Avatar[] @relation("AvatarHolding")
 
+  owners UserItem[]
+
   @@index([typeId, sortOrder])
+}
+
+// Ownership pe iteme — proprietate persistata, separat de echipare. User-ul
+// "detine" un item daca a fost (a) inserat la creare avatar default, (b)
+// echipat manual la editorul de avatar, (c) primit ca non-duplicate dintr-un
+// cufar deschis. Folosit pentru detectia duplicate la deschidere de cufar:
+// daca item-ul rolat e deja in UserItem, devine "shards XP" in loc de drop.
+model UserItem {
+  id         String   @id @default(cuid())
+  userId     String
+  itemId     String
+  acquiredAt DateTime @default(now())
+  // 'default_avatar' (din PATCH /me/avatar), 'chest' (din openChest),
+  // 'phone_down_winner' (viitor), 'seed' (backfill seed). String pt
+  // flexibilitate; nu enum ca sa adaugam surse noi fara migrare.
+  source     String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@index([userId])
 }
 
 // Avatarul user-ului. Sursa de adevar = FK-urile per slot catre Item. `svg` e
@@ -856,6 +881,26 @@ model ChestTierConfig {
   // respectiva; restul (itemCount - guaranteed) sunt rolled prin weights.
   guaranteedLegendary Int        @default(0)
   guaranteedEpic      Int        @default(0)
+
+  // Vizual config — alimenteaza UI-ul de pe mobil fara hardcoded TIER_COLORS.
+  // Adaugare tier nou = INSERT row aici + 3 SVG-uri in assets/chests/.
+  label               String?    // ex. "Bronz", "Argint" (RO, afisat in card)
+  sortOrder           Int        @default(0)
+  bgColor             String?    // backgroundul tile-ului de loot
+  darkColor           String?    // border/shadow
+  fgColor             String?    // text color pe bg
+  glowColor           String?    // burst ring + light rays
+  // Path-uri relative din backend/assets/chests/ — seed citeste fisierele si
+  // copiaza continutul SVG inline in mobile response (la endpoint
+  // GET /chests/tiers). User-ul poate edita fisierele si re-rula seed.
+  miniSvgPath         String?
+  bodySvgPath         String?
+  lidSvgPath          String?
+  // Continutul SVG cache-uit dupa citirea fisierelor (sursa de adevar runtime).
+  // NULL pana la prima rulare a seed-ului dupa migratia visuals.
+  miniSvg             String?
+  bodySvg             String?
+  lidSvg              String?
 }
 
 // XP bonus la deschidere pentru fiecare item duplicat (shards). Mai rar = mai

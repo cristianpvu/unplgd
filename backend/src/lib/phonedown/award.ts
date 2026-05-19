@@ -189,17 +189,14 @@ export async function awardChestForParticipant(args: {
   const pool = await loadDroppableItems();
   const rolled = rollItemsForTier(finalCfg, pool);
 
-  // Detectie duplicate.
-  const userOpenedChests = await prisma.chest.findMany({
-    where: { userId: args.userId, openedAt: { not: null } },
-    select: { lootJson: true },
+  // Detectie duplicate — ownership sursa de adevar e UserItem (incl. items
+  // primite din avatar default + chesturi deschise + viitor). Join cu Item.slug
+  // pt ca rolled items au slug, nu id.
+  const owned = await prisma.userItem.findMany({
+    where: { userId: args.userId },
+    select: { item: { select: { slug: true } } },
   });
-  const ownedSlugs = new Set<string>();
-  for (const c of userOpenedChests) {
-    const loot = c.lootJson as unknown as ChestLoot | null;
-    if (!loot) continue;
-    for (const it of loot.items ?? []) ownedSlugs.add(it.slug);
-  }
+  const ownedSlugs = new Set<string>(owned.map((o) => o.item.slug));
 
   const dupXp = await loadDuplicateXp();
 
@@ -293,6 +290,19 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
       chest.id,
       `Cufar ${chest.tier.toLowerCase()}`,
     );
+  }
+  // Insereaza ownership pentru itemele non-duplicate. `itemId` pe loot vine
+  // pre-rolat. `skipDuplicates` previne crash la deschideri concurente sau
+  // re-deschideri (idempotent prin unique index).
+  if (loot.items.length > 0) {
+    await prisma.userItem.createMany({
+      data: loot.items.map((it) => ({
+        userId,
+        itemId: it.itemId,
+        source: 'chest',
+      })),
+      skipDuplicates: true,
+    });
   }
   await prisma.chest.update({
     where: { id: chest.id },

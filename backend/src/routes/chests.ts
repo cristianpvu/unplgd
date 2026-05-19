@@ -48,6 +48,33 @@ chestsRouter.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /chests/tiers — config vizual pentru toate tier-urile. Mobile fetch-uieste
+// o data la app start (cache 1h via TanStack Query) si randeaza chesturile cu
+// SVG-uri citite din DB. Adaugare tier nou = INSERT in ChestTierConfig +
+// 3 fisiere SVG noi in assets/chests/ + re-seed → zero modificari de cod mobil.
+chestsRouter.get('/tiers', requireAuth, async (_req, res, next) => {
+  try {
+    const tiers = await prisma.chestTierConfig.findMany({
+      orderBy: { sortOrder: 'asc' },
+      select: {
+        tier: true,
+        label: true,
+        sortOrder: true,
+        bgColor: true,
+        darkColor: true,
+        fgColor: true,
+        glowColor: true,
+        miniSvg: true,
+        bodySvg: true,
+        lidSvg: true,
+      },
+    });
+    res.json({ tiers });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /chests/:id/open — deschide cufar (idempotent — re-apel returneaza
 // acelasi loot fara dublare XP, deoarece openedAt e setat la primul open
 // si awardXp e idempotent prin source (chest_open, chestId)).

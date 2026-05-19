@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 70" width="160" height="112" fill="none">
+  <defs>
+    <linearGradient id="body-DIAMOND-body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#C7D5FF"/>
+      <stop offset="0.5" stop-color="#9AB3FF"/>
+      <stop offset="1" stop-color="#5A77D4"/>
+    </linearGradient>
+    <linearGradient id="body-DIAMOND-metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#A8BAFF"/>
+      <stop offset="0.5" stop-color="#5A77D4"/>
+      <stop offset="1" stop-color="#2B3F8E"/>
+    </linearGradient>
+    <radialGradient id="body-DIAMOND-keyhole" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#2B3F8E"/>
+      <stop offset="1" stop-color="#000000"/>
+    </radialGradient>
+  </defs>
+  <path d="M4 4 H96 V60 a6 6 0 0 1 -6 6 H10 a6 6 0 0 1 -6 -6 Z" fill="url(#body-DIAMOND-body)" stroke="#2B3F8E" stroke-width="2.2" stroke-linejoin="round"/>
+  <rect x="2" y="56" width="96" height="9" rx="2" fill="url(#body-DIAMOND-metal)" stroke="#2B3F8E" stroke-width="1.6"/>
+  <circle cx="10" cy="60.5" r="1.6" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.8"/>
+  <circle cx="50" cy="60.5" r="1.6" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.8"/>
+  <circle cx="90" cy="60.5" r="1.6" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.8"/>
+  <rect x="6" y="4" width="8" height="56" fill="url(#body-DIAMOND-metal)" stroke="#2B3F8E" stroke-width="1.4"/>
+  <rect x="86" y="4" width="8" height="56" fill="url(#body-DIAMOND-metal)" stroke="#2B3F8E" stroke-width="1.4"/>
+  <circle cx="10" cy="10" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <circle cx="10" cy="30" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <circle cx="10" cy="50" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <circle cx="90" cy="10" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <circle cx="90" cy="30" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <circle cx="90" cy="50" r="1.4" fill="#A8BAFF" stroke="#2B3F8E" stroke-width="0.7"/>
+  <rect x="42" y="20" width="16" height="22" rx="2" fill="url(#body-DIAMOND-metal)" stroke="#2B3F8E" stroke-width="1.6"/>
+  <circle cx="50" cy="28" r="2.4" fill="url(#body-DIAMOND-keyhole)" stroke="#2B3F8E" stroke-width="0.8"/>
+  <path d="M50 30 L48.5 36 H51.5 Z" fill="#2B3F8E"/>
+  <rect x="17" y="6" width="2.5" height="48" fill="#E2EAFF" opacity="0.25" rx="1"/>
+</svg>

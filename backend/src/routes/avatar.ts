@@ -168,6 +168,20 @@ avatarRouter.patch('/me/avatar', requireAuth, async (req, res, next) => {
       include: AVATAR_INCLUDE,
     });
 
+    // Marcheaza item-urile echipate ca detinute. Idempotent via unique
+    // (userId,itemId) cu skipDuplicates. Sursa 'default_avatar' pt prima
+    // creare; pe update-uri ulterioare doar adauga item-urile noi (cele
+    // existente raman cu source-ul lor original — nu suprascriem).
+    const equippedIds = new Set<string>(SLOTS.map((s) => items[s].id));
+    await prisma.userItem.createMany({
+      data: Array.from(equippedIds).map((itemId) => ({
+        userId: user.id,
+        itemId,
+        source: 'default_avatar',
+      })),
+      skipDuplicates: true,
+    });
+
     res.json(serializeAvatar(avatar, user.level));
   } catch (e) {
     next(e);

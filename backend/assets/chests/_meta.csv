@@ -1,0 +1,7 @@
+tier,label,sortOrder,bgColor,darkColor,fgColor,glowColor,miniSvgPath,bodySvgPath,lidSvgPath
+BRONZE,Bronz,10,#C68B59,#6B3F1A,#FFF6E8,#FFD7A8,bronze-mini.svg,bronze-body.svg,bronze-lid.svg
+SILVER,Argint,20,#C0CBD4,#5F6F7B,#1F3344,#F0F5F9,silver-mini.svg,silver-body.svg,silver-lid.svg
+GOLD,Aur,30,#F2C744,#7A5A0E,#5B3F00,#FFEFA8,gold-mini.svg,gold-body.svg,gold-lid.svg
+PLATINUM,Platina,40,#7FE0D0,#1F6358,#0C3F38,#C2FFF4,platinum-mini.svg,platinum-body.svg,platinum-lid.svg
+DIAMOND,Diamant,50,#9AB3FF,#2B3F8E,#1B2870,#E2EAFF,diamond-mini.svg,diamond-body.svg,diamond-lid.svg
+CHAMPION,Campion,60,#FF7A59,#7A2812,#FFFFFF,#FFD9C2,champion-mini.svg,champion-body.svg,champion-lid.svg

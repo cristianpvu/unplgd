@@ -18,6 +18,9 @@ COPY prisma ./prisma
 RUN npm ci && npm cache clean --force
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
+# Asseturi statice citite de seed (chest visual SVG-uri). Editand fisierele si
+# re-deploy → seed-ul detecteaza schimbarea si re-scrie continutul in DB.
+COPY assets ./assets
 EXPOSE 4000
 # Seed-ul are guard intern: pe DB deja populata se opreste imediat (1 query).
 # Pe DB virgina populeaza catalogul. Pentru re-aplicare seed (dupa adaugare

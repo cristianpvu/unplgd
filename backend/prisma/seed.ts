@@ -6,8 +6,44 @@
 // (CC BY 4.0). Corpul, hainele si economia level-gated sunt originale.
 
 import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const prisma = new PrismaClient();
+
+// Vizual config per tier — culorile sunt sursa de adevar in DB; SVG-urile sunt
+// citite din assets/chests/<slug>-{mini|body|lid}.svg si scrise in coloane
+// TEXT. Adauga tier nou: extinde acest map + ruleaza scripts/generate-chest-svgs
+// (sau pune fisierele manual) + ruleaza seed.
+const CHEST_TIER_VISUALS: Record<ChestTier, {
+  label: string;
+  sortOrder: number;
+  bgColor: string;
+  darkColor: string;
+  fgColor: string;
+  glowColor: string;
+  miniSvgPath: string;
+  bodySvgPath: string;
+  lidSvgPath: string;
+}> = {
+  BRONZE:   { label: 'Bronz',   sortOrder: 10, bgColor: '#C68B59', darkColor: '#6B3F1A', fgColor: '#FFF6E8', glowColor: '#FFD7A8', miniSvgPath: 'bronze-mini.svg',   bodySvgPath: 'bronze-body.svg',   lidSvgPath: 'bronze-lid.svg' },
+  SILVER:   { label: 'Argint',  sortOrder: 20, bgColor: '#C0CBD4', darkColor: '#5F6F7B', fgColor: '#1F3344', glowColor: '#F0F5F9', miniSvgPath: 'silver-mini.svg',   bodySvgPath: 'silver-body.svg',   lidSvgPath: 'silver-lid.svg' },
+  GOLD:     { label: 'Aur',     sortOrder: 30, bgColor: '#F2C744', darkColor: '#7A5A0E', fgColor: '#5B3F00', glowColor: '#FFEFA8', miniSvgPath: 'gold-mini.svg',     bodySvgPath: 'gold-body.svg',     lidSvgPath: 'gold-lid.svg' },
+  PLATINUM: { label: 'Platina', sortOrder: 40, bgColor: '#7FE0D0', darkColor: '#1F6358', fgColor: '#0C3F38', glowColor: '#C2FFF4', miniSvgPath: 'platinum-mini.svg', bodySvgPath: 'platinum-body.svg', lidSvgPath: 'platinum-lid.svg' },
+  DIAMOND:  { label: 'Diamant', sortOrder: 50, bgColor: '#9AB3FF', darkColor: '#2B3F8E', fgColor: '#1B2870', glowColor: '#E2EAFF', miniSvgPath: 'diamond-mini.svg',  bodySvgPath: 'diamond-body.svg',  lidSvgPath: 'diamond-lid.svg' },
+  CHAMPION: { label: 'Campion', sortOrder: 60, bgColor: '#FF7A59', darkColor: '#7A2812', fgColor: '#FFFFFF', glowColor: '#FFD9C2', miniSvgPath: 'champion-mini.svg', bodySvgPath: 'champion-body.svg', lidSvgPath: 'champion-lid.svg' },
+};
+
+// Rezolvat relativ la cwd. In dev: cwd=backend/, deci assets/chests/. In Docker:
+// cwd=/app, dist deja are assets/ copiat de Dockerfile.
+function readChestSvg(relPath: string): string | null {
+  try {
+    return readFileSync(join(process.cwd(), 'assets', 'chests', relPath), 'utf8');
+  } catch (e) {
+    console.warn(`readChestSvg(${relPath}) failed: ${(e as Error).message}`);
+    return null;
+  }
+}
 
 type SeedItem = {
   slug: string;
@@ -542,17 +578,29 @@ const RARITY_DUPLICATE_XP: { rarity: Rarity; xp: number }[] = [
 
 async function seedChestConfig() {
   for (const cfg of CHEST_TIER_CONFIGS) {
+    const visual = CHEST_TIER_VISUALS[cfg.tier];
+    const miniSvg = readChestSvg(visual.miniSvgPath);
+    const bodySvg = readChestSvg(visual.bodySvgPath);
+    const lidSvg = readChestSvg(visual.lidSvgPath);
     await prisma.chestTierConfig.upsert({
       where: { tier: cfg.tier },
       create: {
         ...cfg,
         guaranteedLegendary: cfg.guaranteedLegendary ?? 0,
         guaranteedEpic: cfg.guaranteedEpic ?? 0,
+        ...visual,
+        miniSvg,
+        bodySvg,
+        lidSvg,
       },
       update: {
         ...cfg,
         guaranteedLegendary: cfg.guaranteedLegendary ?? 0,
         guaranteedEpic: cfg.guaranteedEpic ?? 0,
+        ...visual,
+        miniSvg,
+        bodySvg,
+        lidSvg,
       },
     });
   }
@@ -637,6 +685,68 @@ async function cleanupOrphanHolding() {
   );
 }
 
+// Backfill UserItem din avataruri existente si chesturi deschise. Ruleaza
+// intotdeauna (idempotent via @@unique pe (userId, itemId) + skipDuplicates).
+// Necesar dupa migratia user_item ca user-ii existenti sa-si detina item-urile
+// echipate, altfel detectia duplicate la chest open i-ar reseta progress-ul.
+async function backfillUserItems() {
+  // 1. Iteme din avataruri echipate.
+  const avatars = await prisma.avatar.findMany({
+    select: {
+      userId: true,
+      skinItemId: true,
+      hairColorItemId: true,
+      hairItemId: true,
+      eyesItemId: true,
+      mouthItemId: true,
+      eyebrowsItemId: true,
+      glassesItemId: true,
+      earringsItemId: true,
+      featuresItemId: true,
+      bodyShapeItemId: true,
+      topItemId: true,
+      outerwearItemId: true,
+      bottomItemId: true,
+      footwearItemId: true,
+      holdingItemId: true,
+    },
+  });
+  const avatarRows: { userId: string; itemId: string; source: string }[] = [];
+  for (const a of avatars) {
+    const ids = new Set<string>([
+      a.skinItemId, a.hairColorItemId, a.hairItemId, a.eyesItemId,
+      a.mouthItemId, a.eyebrowsItemId, a.glassesItemId, a.earringsItemId,
+      a.featuresItemId, a.bodyShapeItemId, a.topItemId, a.outerwearItemId,
+      a.bottomItemId, a.footwearItemId, a.holdingItemId,
+    ]);
+    for (const itemId of ids) {
+      avatarRows.push({ userId: a.userId, itemId, source: 'default_avatar' });
+    }
+  }
+  if (avatarRows.length > 0) {
+    const r1 = await prisma.userItem.createMany({ data: avatarRows, skipDuplicates: true });
+    console.log(`backfillUserItems: ${r1.count} randuri din avataruri`);
+  }
+
+  // 2. Iteme din chesturi deschise (loot.items[].itemId).
+  const openedChests = await prisma.chest.findMany({
+    where: { openedAt: { not: null } },
+    select: { userId: true, lootJson: true },
+  });
+  const chestRows: { userId: string; itemId: string; source: string }[] = [];
+  for (const c of openedChests) {
+    const loot = c.lootJson as { items?: { itemId?: string }[] } | null;
+    if (!loot?.items) continue;
+    for (const it of loot.items) {
+      if (it.itemId) chestRows.push({ userId: c.userId, itemId: it.itemId, source: 'chest' });
+    }
+  }
+  if (chestRows.length > 0) {
+    const r2 = await prisma.userItem.createMany({ data: chestRows, skipDuplicates: true });
+    console.log(`backfillUserItems: ${r2.count} randuri din chesturi deschise`);
+  }
+}
+
 async function main() {
   // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
   // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
@@ -645,6 +755,9 @@ async function main() {
   // Slot "holding" se evolueaza des — upsert mereu + cleanup orphan items.
   await seedHoldingAlways();
   await cleanupOrphanHolding();
+
+  // Backfill UserItem mereu (idempotent) — pt useri existenti pre-migratie.
+  await backfillUserItems();
 
   // Skip seed cand DB e deja populata — evita 100+ upsert-uri la fiecare
   // container restart. Cand adaugi item-uri/carduri/challenges noi in seed,

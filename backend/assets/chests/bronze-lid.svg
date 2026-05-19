@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="160" height="80" fill="none">
+  <defs>
+    <linearGradient id="lid-BRONZE-lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E4A974"/>
+      <stop offset="0.65" stop-color="#C68B59"/>
+      <stop offset="1" stop-color="#8E5A2E"/>
+    </linearGradient>
+    <linearGradient id="lid-BRONZE-metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#D9A37A"/>
+      <stop offset="1" stop-color="#6B3F1A"/>
+    </linearGradient>
+  </defs>
+  <path d="M4 46 V22 a18 18 0 0 1 18 -18 h56 a18 18 0 0 1 18 18 v24 Z" fill="url(#lid-BRONZE-lid)" stroke="#6B3F1A" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M6 14 a16 16 0 0 1 8 -10 H14 V46 H6 Z" fill="url(#lid-BRONZE-metal)" stroke="#6B3F1A" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M94 14 a16 16 0 0 0 -8 -10 H86 V46 H94 Z" fill="url(#lid-BRONZE-metal)" stroke="#6B3F1A" stroke-width="1.4" stroke-linejoin="round"/>
+  <circle cx="10" cy="42" r="1.4" fill="#D9A37A" stroke="#6B3F1A" stroke-width="0.7"/>
+  <circle cx="90" cy="42" r="1.4" fill="#D9A37A" stroke="#6B3F1A" stroke-width="0.7"/>
+  <circle cx="10" cy="20" r="1.4" fill="#D9A37A" stroke="#6B3F1A" stroke-width="0.7"/>
+  <circle cx="90" cy="20" r="1.4" fill="#D9A37A" stroke="#6B3F1A" stroke-width="0.7"/>
+  <rect x="2" y="42" width="96" height="6" fill="url(#lid-BRONZE-metal)" stroke="#6B3F1A" stroke-width="1.4"/>
+  <path d="M18 16 a14 14 0 0 1 14 -10" stroke="#FFD7A8" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.85"/>
+
+
+</svg>

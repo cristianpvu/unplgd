@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="160" height="80" fill="none">
+  <defs>
+    <linearGradient id="lid-GOLD-lid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE070"/>
+      <stop offset="0.65" stop-color="#F2C744"/>
+      <stop offset="1" stop-color="#B58A14"/>
+    </linearGradient>
+    <linearGradient id="lid-GOLD-metal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD968"/>
+      <stop offset="1" stop-color="#7A5A0E"/>
+    </linearGradient>
+  </defs>
+  <path d="M4 46 V22 a18 18 0 0 1 18 -18 h56 a18 18 0 0 1 18 18 v24 Z" fill="url(#lid-GOLD-lid)" stroke="#7A5A0E" stroke-width="2.2" stroke-linejoin="round"/>
+  <path d="M6 14 a16 16 0 0 1 8 -10 H14 V46 H6 Z" fill="url(#lid-GOLD-metal)" stroke="#7A5A0E" stroke-width="1.4" stroke-linejoin="round"/>
+  <path d="M94 14 a16 16 0 0 0 -8 -10 H86 V46 H94 Z" fill="url(#lid-GOLD-metal)" stroke="#7A5A0E" stroke-width="1.4" stroke-linejoin="round"/>
+  <circle cx="10" cy="42" r="1.4" fill="#FFD968" stroke="#7A5A0E" stroke-width="0.7"/>
+  <circle cx="90" cy="42" r="1.4" fill="#FFD968" stroke="#7A5A0E" stroke-width="0.7"/>
+  <circle cx="10" cy="20" r="1.4" fill="#FFD968" stroke="#7A5A0E" stroke-width="0.7"/>
+  <circle cx="90" cy="20" r="1.4" fill="#FFD968" stroke="#7A5A0E" stroke-width="0.7"/>
+  <rect x="2" y="42" width="96" height="6" fill="url(#lid-GOLD-metal)" stroke="#7A5A0E" stroke-width="1.4"/>
+  <path d="M18 16 a14 14 0 0 1 14 -10" stroke="#FFEFA8" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.85"/>
+  <defs>
+    <radialGradient id="lid-GOLD-gem" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#FFD0D0"/>
+      <stop offset="0.5" stop-color="#FF6A6A"/>
+      <stop offset="1" stop-color="#7A5A0E"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="50" cy="22" rx="7" ry="9" fill="url(#lid-GOLD-gem)" stroke="#7A5A0E" stroke-width="1.4"/>
+  <ellipse cx="48" cy="19" rx="2" ry="3" fill="#FFD0D0" opacity="0.85"/>
+
+</svg>
