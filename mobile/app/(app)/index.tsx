@@ -1,19 +1,30 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Animated,
+  Easing,
   Image,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import Svg, { Circle, Path, SvgXml } from 'react-native-svg';
 import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
+import {
+  listChests,
+  openChest,
+  type ChestDto,
+  type ChestLoot,
+  type ChestTier,
+} from '../../src/api/chests';
 import { listFriends } from '../../src/api/friends';
 import { getMyPet, petImageUrl } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
@@ -97,6 +108,7 @@ export default function Home() {
             <FriendsIcon />
           </IconButton>
           <CoWalkButton />
+          <ChestsSideButton />
         </View>
 
         <Text style={styles.hello} numberOfLines={1}>
@@ -309,6 +321,271 @@ function BellIcon() {
   );
 }
 
+// Buton de cufere in side rail — expand-uri inline cu lista de stacks pe tier.
+// Tap pe stack → openChest pe primul cufar de acel tier, loot apare in panel.
+// Nu navigare la pagina noua — totul aici.
+const TIER_LABEL: Record<ChestTier, string> = {
+  BRONZE: 'Bronz',
+  SILVER: 'Argint',
+  GOLD: 'Aur',
+  PLATINUM: 'Platina',
+  DIAMOND: 'Diamant',
+  CHAMPION: 'Campion',
+};
+
+const TIER_COLORS: Record<ChestTier, { bg: string; fg: string }> = {
+  BRONZE:   { bg: '#C68B59', fg: '#FFFFFF' },
+  SILVER:   { bg: '#B8C3CC', fg: '#1F3344' },
+  GOLD:     { bg: '#F2C744', fg: '#5B3F00' },
+  PLATINUM: { bg: '#7FE0D0', fg: '#0C3F38' },
+  DIAMOND:  { bg: '#9AB3FF', fg: '#1B2870' },
+  CHAMPION: { bg: '#FF7A59', fg: '#FFFFFF' },
+};
+
+const TIER_ORDER: ChestTier[] = ['CHAMPION', 'DIAMOND', 'PLATINUM', 'GOLD', 'SILVER', 'BRONZE'];
+
+// Inaltimi precalculate pt animatia smooth de expand. Tinem 4 mini-stacks
+// vizibile (peste 4 → scroll), apoi capsule trebuie sa stie inaltimea exacta
+// ca sa animeze cu useNativeDriver:false (height anim NU suporta native).
+const STACK_H = 36;
+const STACK_GAP = 8;
+const PAD_TOP = 6;
+const PAD_BOTTOM = 8;
+const MAX_VISIBLE = 4;
+
+function stacksHeight(n: number) {
+  const visible = Math.min(Math.max(n, 1), MAX_VISIBLE);
+  return PAD_TOP + visible * STACK_H + (visible - 1) * STACK_GAP + PAD_BOTTOM;
+}
+
+function ChestsSideButton() {
+  const qc = useQueryClient();
+  const chestsQ = useQuery({ queryKey: ['chests'], queryFn: listChests });
+  const [open, setOpen] = useState(false);
+  const [loot, setLoot] = useState<{ tier: ChestTier; loot: ChestLoot } | null>(null);
+  const expand = useRef(new Animated.Value(0)).current;
+
+  const chests = chestsQ.data?.chests ?? [];
+  const unopened = useMemo(() => chests.filter((c) => !c.openedAt), [chests]);
+  const stacks = useMemo(() => {
+    const map = new Map<ChestTier, ChestDto[]>();
+    for (const c of unopened) {
+      const arr = map.get(c.tier) ?? [];
+      arr.push(c);
+      map.set(c.tier, arr);
+    }
+    return TIER_ORDER.filter((t) => map.has(t)).map((t) => ({
+      tier: t,
+      chests: map.get(t)!,
+    }));
+  }, [unopened]);
+
+  const openMut = useMutation({
+    mutationFn: (chestId: string) => openChest(chestId),
+    onSuccess: (data, chestId) => {
+      const chest = chests.find((c) => c.id === chestId);
+      if (chest) setLoot({ tier: chest.tier, loot: data.loot });
+      qc.invalidateQueries({ queryKey: ['chests'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
+    onError: (e: any) => Alert.alert('Eroare', e?.message ?? 'Nu am putut deschide cufarul'),
+  });
+
+  function handleOpen(tier: ChestTier) {
+    if (openMut.isPending) return;
+    const stack = stacks.find((s) => s.tier === tier);
+    if (!stack || stack.chests.length === 0) return;
+    openMut.mutate(stack.chests[0].id);
+  }
+
+  // Smooth expand/collapse: animam inaltimea sectiunii de stacks de la 0 la
+  // valoarea calculata pe baza de stacks (cu cap la MAX_VISIBLE × stack_h).
+  // useNativeDriver:false pentru ca animatia de height nu poate fi native.
+  useEffect(() => {
+    Animated.timing(expand, {
+      toValue: open ? 1 : 0,
+      duration: 260,
+      easing: Easing.bezier(0.22, 1, 0.36, 1), // out-quint, smooth modern
+      useNativeDriver: false,
+    }).start();
+  }, [open, expand]);
+
+  const targetHeight = stacksHeight(stacks.length);
+  const animHeight = expand.interpolate({ inputRange: [0, 1], outputRange: [0, targetHeight] });
+  const animOpacity = expand.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0.4, 1] });
+
+  return (
+    <View style={styles.chestsWrap}>
+      <View style={styles.chestsCapsule}>
+        <Pressable
+          onPress={() => {
+            if (loot) setLoot(null);
+            setOpen((v) => !v);
+          }}
+          accessibilityLabel="Cufere"
+          hitSlop={8}
+          style={({ pressed }) => [
+            styles.chestsTrigger,
+            pressed && styles.chestsTriggerPressed,
+          ]}
+        >
+          <ChestIcon />
+        </Pressable>
+      <Animated.View
+        pointerEvents={open ? 'auto' : 'none'}
+        style={[styles.stacksClip, { height: animHeight, opacity: animOpacity }]}
+      >
+        <ScrollView
+          contentContainerStyle={styles.stacksInside}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          nestedScrollEnabled
+        >
+          {stacks.length === 0 ? (
+            <Text style={styles.chestsEmptyText}>0</Text>
+          ) : (
+            stacks.map((s) => {
+              const c = TIER_COLORS[s.tier];
+              return (
+                <Pressable
+                  key={s.tier}
+                  onPress={() => handleOpen(s.tier)}
+                  disabled={openMut.isPending}
+                  accessibilityLabel={`Cufar ${TIER_LABEL[s.tier]}`}
+                  style={({ pressed }) => [
+                    styles.miniStack,
+                    { backgroundColor: c.bg },
+                    (pressed || openMut.isPending) && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={[styles.miniStackCount, { color: c.fg }]}>
+                    {s.chests.length}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
+        </ScrollView>
+      </Animated.View>
+      </View>
+      {!open && unopened.length > 0 && (
+        <View pointerEvents="none" style={styles.chestDotBadge}>
+          <Text style={styles.chestDotBadgeText}>
+            {unopened.length > 9 ? '9+' : unopened.length}
+          </Text>
+        </View>
+      )}
+      <Modal
+        visible={loot !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLoot(null)}
+      >
+        {loot && (
+          <LootRevealInline
+            loot={loot.loot}
+            tier={loot.tier}
+            onDismiss={() => setLoot(null)}
+          />
+        )}
+      </Modal>
+    </View>
+  );
+}
+
+function LootRevealInline({
+  loot,
+  tier,
+  onDismiss,
+}: {
+  loot: ChestLoot;
+  tier: ChestTier;
+  onDismiss: () => void;
+}) {
+  const fade = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(0.85)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fade, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.spring(scale, {
+        toValue: 1,
+        friction: 7,
+        tension: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fade, scale]);
+  const c = TIER_COLORS[tier];
+  return (
+    <Animated.View style={[styles.lootBackdrop, { opacity: fade }]}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
+      <Animated.View
+        style={[styles.lootCard, { backgroundColor: c.bg, transform: [{ scale }] }]}
+      >
+        <Text style={[styles.lootTier, { color: c.fg }]}>{TIER_LABEL[tier]}!</Text>
+        <Text style={[styles.lootXp, { color: c.fg }]}>+{loot.xp} XP</Text>
+        {loot.items.length > 0 && (
+          <View style={styles.lootSection}>
+            {loot.items.map((it) => (
+              <Text key={it.itemId} style={[styles.lootItem, { color: c.fg }]} numberOfLines={1}>
+                + {it.name}
+              </Text>
+            ))}
+          </View>
+        )}
+        {loot.duplicates.length > 0 && (
+          <Text style={[styles.lootDup, { color: c.fg }]} numberOfLines={2}>
+            {loot.duplicates.length} duplicat{loot.duplicates.length === 1 ? '' : 'e'} → XP shards
+          </Text>
+        )}
+        <Pressable
+          onPress={onDismiss}
+          style={({ pressed }) => [
+            styles.lootDismiss,
+            { borderColor: c.fg },
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Text style={[styles.lootDismissText, { color: c.fg }]}>OK</Text>
+        </Pressable>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+function ChestIcon({ color = colors.text }: { color?: string }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M4 11V8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v3"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M4 13h16" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Path
+        d="M11 13v3h2v-3"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 function GearIcon() {
   return (
     <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
@@ -493,6 +770,127 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  // Cufere - badge mic pe iconita din side rail (numar de cufere nedeschise)
+  chestDotBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  chestDotBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  // Wrap exterior fara overflow — permite badge-ului sa iasa peste marginea
+  // capsulei (capsula are overflow:hidden pt clip scroll, deci badge-ul nu
+  // poate sta inauntru daca vrem sa iasa). Position relative ca badge-ul cu
+  // position:absolute sa se ancoreze fata de wrap.
+  chestsWrap: { position: 'relative' },
+  // Capsula are aceeasi forma vizuala ca iconButton cand e inchisa (44×44).
+  // Cand se extinde, se lungeste in jos cu o sectiune animata (height anim).
+  // overflow:'hidden' clip-eaza scroll-ul in interiorul borderRadius-ului ca
+  // sa nu iasa din capatul de jos al pill-ului.
+  chestsCapsule: {
+    width: 44,
+    backgroundColor: colors.card,
+    borderRadius: 22,
+    alignItems: 'center',
+    overflow: 'hidden',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  // Trigger-ul ramane vizual identic cu IconButton (Friends/CoWalk): cerc
+  // perfect 44×44, transparent (capsula da fundalul). La press → tint cenusiu
+  // subtil ca semnal vizual.
+  chestsTrigger: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chestsTriggerPressed: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  // Sectiunea animata cu stacks — incepe la 0 height si creste pe interpolate.
+  // overflow:'hidden' pe parinte (chestsCapsule) e ce previne content sa iasa
+  // afara din pill in timpul scrollului.
+  stacksClip: {
+    width: '100%',
+    overflow: 'hidden',
+  },
+  stacksInside: {
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 8,
+    alignItems: 'center',
+  },
+  miniStack: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  miniStackCount: { fontSize: 14, fontWeight: '900' },
+  chestsEmptyText: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '900',
+    paddingVertical: 8,
+  },
+  // Loot reveal overlay (Modal) — apare peste tot cand deschizi un cufar.
+  lootBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  lootCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 22,
+    padding: 22,
+    gap: 8,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  lootTier: { fontSize: 18, fontWeight: '900', letterSpacing: 0.3 },
+  lootXp: { fontSize: 32, fontWeight: '900' },
+  lootSection: { width: '100%', gap: 4, marginTop: 6 },
+  lootItem: { fontSize: 15, fontWeight: '700', textAlign: 'center' },
+  lootDup: { fontSize: 12, fontWeight: '600', marginTop: 6, opacity: 0.85 },
+  lootDismiss: {
+    marginTop: 14,
+    paddingHorizontal: 28,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 2,
+  },
+  lootDismissText: { fontSize: 14, fontWeight: '900' },
+
   playButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -509,6 +907,7 @@ const styles = StyleSheet.create({
   },
   playButtonPressed: { transform: [{ scale: 0.97 }], opacity: 0.92 },
   playButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.3 },
+
 
   errorText: { color: colors.danger, textAlign: 'center', fontWeight: '600' },
 
