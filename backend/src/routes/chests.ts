@@ -48,6 +48,38 @@ chestsRouter.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
+// GET /chests/:id/peek — DEBUG: arata loot raw (din DB) si reclassified
+// (cum ar fi la deschidere). Util sa verificam ca duplicate detection
+// functioneaza la deschidere fata de UserItem curent.
+chestsRouter.get('/:id/peek', requireAuth, async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    if (typeof id !== 'string') throw notFound('chest_not_found', 'Chest not found');
+    const chest = await prisma.chest.findFirst({
+      where: { id, userId: req.userId! },
+      select: { id: true, tier: true, openedAt: true, lootJson: true },
+    });
+    if (!chest) throw notFound('chest_not_found', 'Chest not found');
+
+    const raw = chest.lootJson as ChestLoot | null;
+    const owned = await prisma.userItem.findMany({
+      where: { userId: req.userId! },
+      select: { item: { select: { slug: true } } },
+    });
+    const ownedSlugs = owned.map((o) => o.item.slug);
+    res.json({
+      chestId: chest.id,
+      tier: chest.tier,
+      openedAt: chest.openedAt,
+      raw,
+      ownedSlugs,
+      rawItemsThatAreOwned: raw?.items.filter((it) => ownedSlugs.includes(it.slug)) ?? [],
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // GET /chests/tiers — config vizual pentru toate tier-urile. Mobile fetch-uieste
 // o data la app start (cache 1h via TanStack Query) si randeaza chesturile cu
 // SVG-uri citite din DB. Adaugare tier nou = INSERT in ChestTierConfig +

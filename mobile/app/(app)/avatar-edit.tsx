@@ -169,14 +169,19 @@ export default function AvatarEdit() {
               // Body item features encode colors as 'type:fill:shadow:...';
               // pull the fill hex for a quick swatch.
               const bodyColor = !isFaceSlot && item.feature ? item.feature.split(':')[1] : null;
+              // `owned` lipseste pe backend-uri vechi → default true (back-compat).
+              const owned = item.owned !== false;
+              const blockedByLevel = item.locked;
+              const blockedByOwnership = !owned && !blockedByLevel;
+              const disabled = blockedByLevel || blockedByOwnership;
               return (
                 <Pressable
                   key={item.slug}
-                  onPress={() => !item.locked && setSlot(activeType.slug, item.slug)}
+                  onPress={() => !disabled && setSlot(activeType.slug, item.slug)}
                   style={[
                     styles.optionCard,
                     selected && styles.optionSelected,
-                    item.locked && styles.optionLocked,
+                    disabled && styles.optionLocked,
                   ]}
                 >
                   {isColor && item.feature ? (
@@ -197,9 +202,14 @@ export default function AvatarEdit() {
                   <Text style={styles.optionName} numberOfLines={1}>
                     {item.name}
                   </Text>
-                  {item.locked && (
+                  {blockedByLevel && (
                     <View style={styles.lockBadge}>
                       <Text style={styles.lockText}>Lvl {item.level}</Text>
+                    </View>
+                  )}
+                  {blockedByOwnership && (
+                    <View style={[styles.lockBadge, styles.chestBadge]}>
+                      <Text style={styles.lockText}>Cufar</Text>
                     </View>
                   )}
                 </Pressable>
@@ -318,6 +328,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   lockText: { color: '#FFFFFF', fontSize: 9, fontWeight: '700' },
+  chestBadge: { backgroundColor: '#B58A14' },
   footer: {
     padding: 16,
     paddingTop: 8,

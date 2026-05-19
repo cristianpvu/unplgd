@@ -31,10 +31,12 @@ import { getMe } from '../../src/api/me';
 import { getMyAvatar } from '../../src/api/avatar';
 import {
   listChests,
+  listChestTiers,
   openChest,
   type ChestDto,
   type ChestLoot,
   type ChestTier,
+  type ChestTierVisual,
   type Rarity,
 } from '../../src/api/chests';
 import { listFriends } from '../../src/api/friends';
@@ -373,6 +375,8 @@ type TierStyle = {
   crown: boolean;
 };
 
+// Fallback hardcoded — folosit doar daca /chests/tiers nu a raspuns inca.
+// DB e sursa de adevar in productie; valorile aici match-uiesc seed.ts.
 const TIER_COLORS: Record<ChestTier, TierStyle> = {
   BRONZE: {
     bg: '#C68B59', dark: '#6B3F1A', fg: '#FFF6E8', glow: '#FFD7A8',
@@ -414,6 +418,35 @@ const TIER_COLORS: Record<ChestTier, TierStyle> = {
 
 const TIER_ORDER: ChestTier[] = ['CHAMPION', 'DIAMOND', 'PLATINUM', 'GOLD', 'SILVER', 'BRONZE'];
 
+// Tipul rezolvat al unui tier — culori + SVG strings (cu fallback hardcoded
+// pentru culori, fara fallback pentru SVG: daca DB nu a raspuns, randam local).
+type ResolvedTier = {
+  bg: string;
+  dark: string;
+  fg: string;
+  glow: string;
+  miniSvg: string | null;
+  bodySvg: string | null;
+  lidSvg: string | null;
+};
+
+function resolveTier(
+  tier: ChestTier,
+  byTier: Partial<Record<ChestTier, ChestTierVisual>>,
+): ResolvedTier {
+  const fb = TIER_COLORS[tier];
+  const db = byTier[tier];
+  return {
+    bg: db?.bgColor ?? fb.bg,
+    dark: db?.darkColor ?? fb.dark,
+    fg: db?.fgColor ?? fb.fg,
+    glow: db?.glowColor ?? fb.glow,
+    miniSvg: db?.miniSvg ?? null,
+    bodySvg: db?.bodySvg ?? null,
+    lidSvg: db?.lidSvg ?? null,
+  };
+}
+
 // Inaltimi precalculate pt animatia smooth de expand. Tinem 4 mini-stacks
 // vizibile (peste 4 → scroll), apoi capsule trebuie sa stie inaltimea exacta
 // ca sa animeze cu useNativeDriver:false (height anim NU suporta native).
@@ -431,6 +464,20 @@ function stacksHeight(n: number) {
 function ChestsSideButton() {
   const qc = useQueryClient();
   const chestsQ = useQuery({ queryKey: ['chests'], queryFn: listChests });
+  // Visual config — cache lung; modificarea SVG-urilor in DB necesita
+  // refetch manual (logout/login sau forceRefresh).
+  const tiersQ = useQuery({
+    queryKey: ['chestTiers'],
+    queryFn: listChestTiers,
+    staleTime: 60 * 60 * 1000, // 1h
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+  const tierByTier = useMemo<Partial<Record<ChestTier, ChestTierVisual>>>(() => {
+    const out: Partial<Record<ChestTier, ChestTierVisual>> = {};
+    for (const t of tiersQ.data?.tiers ?? []) out[t.tier] = t;
+    return out;
+  }, [tiersQ.data]);
+
   const [open, setOpen] = useState(false);
   const [loot, setLoot] = useState<{ tier: ChestTier; loot: ChestLoot } | null>(null);
   const expand = useRef(new Animated.Value(0)).current;
@@ -515,7 +562,7 @@ function ChestsSideButton() {
             <Text style={styles.chestsEmptyText}>0</Text>
           ) : (
             stacks.map((s) => {
-              const c = TIER_COLORS[s.tier];
+              const c = resolveTier(s.tier, tierByTier);
               return (
                 <Pressable
                   key={s.tier}
@@ -527,7 +574,11 @@ function ChestsSideButton() {
                     (pressed || openMut.isPending) && { opacity: 0.6 },
                   ]}
                 >
-                  <MiniChestSvg tier={s.tier} />
+                  {c.miniSvg ? (
+                    <SvgXml xml={c.miniSvg} width={34} height={32} />
+                  ) : (
+                    <MiniChestSvg tier={s.tier} />
+                  )}
                   <View style={[styles.miniStackBadge, { backgroundColor: c.dark }]}>
                     <Text style={styles.miniStackBadgeText}>{s.chests.length}</Text>
                   </View>
@@ -555,6 +606,7 @@ function ChestsSideButton() {
           <LootRevealInline
             loot={loot.loot}
             tier={loot.tier}
+            visual={resolveTier(loot.tier, tierByTier)}
             onDismiss={() => setLoot(null)}
           />
         )}
@@ -849,15 +901,174 @@ function LightRays({ progress, tier }: { progress: Animated.Value; tier: ChestTi
   );
 }
 
+// Tile pt un duplicate item — animatie smechera in 4 acte:
+//   1. Drop-in (0-300ms): translateY + opacity + scale spring
+//   2. Idle (300-650ms): vizibil normal
+//   3. Flash + pulse (650-850ms): bg flash spre glow, scale 1.0→1.12
+//   4. Shatter + shards (850-1400ms): tile-ul fade-uieste + scale + rotate,
+//      6 shards burst radial apoi se duc in sus catre XP counter, parintele
+//      seteaza displayedXp += shardsXp cand shards "aterizeaza"
+function DuplicateTile({
+  duplicate,
+  color,
+  startDelay,
+  onShardsLanded,
+}: {
+  duplicate: ChestLoot['duplicates'][number];
+  color: ResolvedTier;
+  startDelay: number;
+  onShardsLanded: (shardsXp: number) => void;
+}) {
+  const drop = useRef(new Animated.Value(0)).current;
+  const pulse = useRef(new Animated.Value(0)).current;
+  const shatter = useRef(new Animated.Value(0)).current;
+  const shards = useRef(new Animated.Value(0)).current;
+  const [phase, setPhase] = useState<'hidden' | 'dropped' | 'shattering' | 'gone'>('hidden');
+
+  useEffect(() => {
+    const seq = Animated.sequence([
+      Animated.delay(startDelay),
+      // 1. Drop in
+      Animated.parallel([
+        Animated.spring(drop, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }),
+      ]),
+      Animated.delay(350),
+      // 2. Pulse + flash
+      Animated.timing(pulse, { toValue: 1, duration: 220, useNativeDriver: true }),
+      // 3. Shatter + shards burst (paralel)
+      Animated.parallel([
+        Animated.timing(shatter, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.timing(shards, { toValue: 1, duration: 620, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      ]),
+    ]);
+    seq.start(({ finished }) => {
+      if (finished) {
+        onShardsLanded(duplicate.shardsXp);
+        setPhase('gone');
+      }
+    });
+    // Phase markers pt rendering conditional (asteptam startul);
+    const t1 = setTimeout(() => setPhase('dropped'), startDelay + 300);
+    const t2 = setTimeout(() => setPhase('shattering'), startDelay + 350 + 300 + 220);
+    return () => {
+      seq.stop();
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const tileScale = Animated.add(
+    Animated.add(
+      drop.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+      pulse.interpolate({ inputRange: [0, 1], outputRange: [0, 0.12] }),
+    ),
+    shatter.interpolate({ inputRange: [0, 1], outputRange: [0, 0.35] }),
+  );
+  const tileY = drop.interpolate({ inputRange: [0, 1], outputRange: [30, 0] });
+  const tileOpacity = Animated.subtract(
+    drop, // 0→1 in
+    shatter.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.4, 1] }),
+  );
+  const tileRotate = shatter.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '14deg'] });
+  const bgInterp = pulse.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#00000022', color.glow],
+  });
+
+  // Shards: 6 puncte mici care explodeaza din centrul tile-ului si urca radial
+  // catre apex (XP counter sus), cu fade la final.
+  const shardsCount = 6;
+
+  return (
+    <View style={styles.lootTileWrap} pointerEvents="none">
+      <Animated.View
+        style={[
+          styles.lootTile,
+          {
+            backgroundColor: bgInterp,
+            borderColor: color.dark,
+            opacity: tileOpacity,
+            transform: [
+              { translateY: tileY },
+              { scale: tileScale },
+              { rotate: tileRotate },
+            ],
+          },
+        ]}
+      >
+        <View style={styles.lootTileArt}>
+          {duplicate.svg ? (
+            <SvgXml xml={duplicate.svg} width={64} height={64} />
+          ) : (
+            <Text style={[styles.lootItem, { color: color.fg }]}>?</Text>
+          )}
+        </View>
+        <Text
+          style={[styles.lootTileName, { color: color.fg }]}
+          numberOfLines={1}
+        >
+          {duplicate.name}
+        </Text>
+        <Text style={[styles.lootTileShards, { color: color.fg }]}>
+          +{duplicate.shardsXp} XP
+        </Text>
+      </Animated.View>
+
+      {/* Shards — apar in faza 4 (shatter), 6 cristale mici care zboara radial
+          apoi se ridica spre counter. Pozitionate absolut peste tile. */}
+      {phase === 'shattering' &&
+        Array.from({ length: shardsCount }, (_, i) => {
+          const angle = (i / shardsCount) * Math.PI * 2 - Math.PI / 2;
+          const radialR = 28;
+          // Faza 1 (0-0.3): explode radial. Faza 2 (0.3-1): converge upward
+          // si fade out.
+          const tx = shards.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0, Math.cos(angle) * radialR, Math.cos(angle) * radialR * 0.3],
+          });
+          const ty = shards.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0, Math.sin(angle) * radialR, -120],
+          });
+          const op = shards.interpolate({
+            inputRange: [0, 0.15, 0.7, 1],
+            outputRange: [0, 1, 1, 0],
+          });
+          const sc = shards.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0.2, 1.1, 0.5],
+          });
+          return (
+            <Animated.View
+              key={i}
+              style={[
+                styles.shard,
+                {
+                  backgroundColor: color.glow,
+                  shadowColor: color.glow,
+                  opacity: op,
+                  transform: [{ translateX: tx }, { translateY: ty }, { scale: sc }],
+                },
+              ]}
+            />
+          );
+        })}
+    </View>
+  );
+}
+
 // Reveal stil Clash Royale: chest aterizeaza cu spring → shake → flash + burst
 // → lid sare in sus + roteste → loot apare cu pop sequential → XP big
 function LootRevealInline({
   loot,
   tier,
+  visual,
   onDismiss,
 }: {
   loot: ChestLoot;
   tier: ChestTier;
+  visual: ResolvedTier;
   onDismiss: () => void;
 }) {
   const enter = useRef(new Animated.Value(0)).current;
@@ -867,6 +1078,17 @@ function LootRevealInline({
   const reveal = useRef(new Animated.Value(0)).current;
   const backdrop = useRef(new Animated.Value(0)).current;
   const [showOk, setShowOk] = useState(false);
+
+  // XP afisat porneste de la xpBase (loot.xp minus shards-urile din duplicate)
+  // si se incrementeaza pe masura ce fiecare duplicate "se sparge" si shards
+  // ajung la counter. Daca nu sunt duplicate, e direct loot.xp.
+  const dupShardsTotal = useMemo(
+    () => loot.duplicates.reduce((s, d) => s + d.shardsXp, 0),
+    [loot.duplicates],
+  );
+  const [displayedXp, setDisplayedXp] = useState(loot.xp - dupShardsTotal);
+  const handleShardsLanded = (delta: number) =>
+    setDisplayedXp((prev) => Math.min(loot.xp, prev + delta));
 
   useEffect(() => {
     Animated.timing(backdrop, {
@@ -916,7 +1138,7 @@ function LootRevealInline({
     ]).start(() => setShowOk(true));
   }, [enter, shake, burst, lid, reveal, backdrop]);
 
-  const c = TIER_COLORS[tier];
+  const c = visual;
 
   const enterScale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
   const enterY = enter.interpolate({ inputRange: [0, 1], outputRange: [80, 0] });
@@ -970,11 +1192,19 @@ function LootRevealInline({
             transformOrigin: 'bottom left',
           }}
         >
-          <BigChestLid tier={tier} size={160} />
+          {visual.lidSvg ? (
+            <SvgXml xml={visual.lidSvg} width={160} height={80} />
+          ) : (
+            <BigChestLid tier={tier} size={160} />
+          )}
         </Animated.View>
         {/* Body */}
         <View style={{ marginTop: -4 }}>
-          <BigChestBody tier={tier} size={160} />
+          {visual.bodySvg ? (
+            <SvgXml xml={visual.bodySvg} width={160} height={112} />
+          ) : (
+            <BigChestBody tier={tier} size={160} />
+          )}
         </View>
         {/* Monede + sparks care explodeaza din lid */}
         <ParticleBurst progress={burst} fadeOut={burst} tier={tier} />
@@ -993,7 +1223,7 @@ function LootRevealInline({
         ]}
       >
         <Text style={[styles.lootTier, { color: c.fg }]}>{TIER_LABEL[tier]}</Text>
-        <Text style={[styles.lootXp, { color: c.fg }]}>+{loot.xp} XP</Text>
+        <Text style={[styles.lootXp, { color: c.fg }]}>+{displayedXp} XP</Text>
 
         {loot.items.length > 0 && (
           <View style={styles.lootGrid}>
@@ -1024,27 +1254,15 @@ function LootRevealInline({
         {loot.duplicates.length > 0 && (
           <View style={styles.lootGrid}>
             {loot.duplicates.map((d, idx) => (
-              <View
+              <DuplicateTile
                 key={`${d.slug}-${idx}`}
-                style={[styles.lootTile, styles.lootTileDup, { borderColor: c.dark }]}
-              >
-                <View style={[styles.lootTileArt, { opacity: 0.5 }]}>
-                  {d.svg ? (
-                    <SvgXml xml={d.svg} width={64} height={64} />
-                  ) : (
-                    <Text style={[styles.lootItem, { color: c.fg }]}>?</Text>
-                  )}
-                </View>
-                <Text
-                  style={[styles.lootTileName, { color: c.fg, opacity: 0.65 }]}
-                  numberOfLines={1}
-                >
-                  {d.name}
-                </Text>
-                <Text style={[styles.lootTileShards, { color: c.fg }]}>
-                  +{d.shardsXp} XP
-                </Text>
-              </View>
+                duplicate={d}
+                color={c}
+                // Start dupa ce reveal-ul itemelor normale s-a asezat
+                // (reveal spring + buffer ~1500ms), stagger intre duplicate.
+                startDelay={1500 + idx * 320}
+                onShardsLanded={handleShardsLanded}
+              />
             ))}
           </View>
         )}
@@ -1430,6 +1648,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     width: '100%',
   },
+  lootTileWrap: {
+    width: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
   lootTile: {
     width: 92,
     paddingVertical: 8,
@@ -1441,6 +1665,21 @@ const styles = StyleSheet.create({
   },
   lootTileDup: {
     backgroundColor: '#00000022',
+  },
+  // Shard (cristal mic) — pozitionat absolut peste tile, urca radial spre apex.
+  shard: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: 10,
+    height: 10,
+    marginLeft: -5,
+    marginTop: -5,
+    borderRadius: 2,
+    transform: [{ rotate: '45deg' }],
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 0 },
   },
   lootTileArt: {
     width: 64,

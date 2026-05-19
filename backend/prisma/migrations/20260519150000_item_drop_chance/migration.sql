@@ -1,0 +1,1 @@
+ALTER TABLE "ChestTierConfig" ADD COLUMN "itemDropChance" INTEGER NOT NULL DEFAULT 100;

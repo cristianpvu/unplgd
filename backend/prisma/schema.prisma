@@ -881,6 +881,11 @@ model ChestTierConfig {
   // respectiva; restul (itemCount - guaranteed) sunt rolled prin weights.
   guaranteedLegendary Int        @default(0)
   guaranteedEpic      Int        @default(0)
+  // Sansa (0-100) ca un slot ne-garantat sa scoata efectiv un item. La 100
+  // (default) primesti garantat `itemCount` iteme. La 30 doar ~30% din
+  // sloturi vor avea item. Slot-urile garantate (guaranteed*) NU sunt
+  // supuse acestei sanse — ele pica mereu.
+  itemDropChance      Int        @default(100)
 
   // Vizual config — alimenteaza UI-ul de pe mobil fara hardcoded TIER_COLORS.
   // Adaugare tier nou = INSERT row aici + 3 SVG-uri in assets/chests/.

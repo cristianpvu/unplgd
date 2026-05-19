@@ -15,6 +15,10 @@ export type CatalogItem = {
   feature: string | null;
   level: number;
   locked: boolean;
+  // True daca user-ul a obtinut item-ul (auto pentru face items + default-uri
+  // per slot; restul accesoriilor — false pana sunt picate dintr-un cufar).
+  // Default true daca nu vine in payload (backend vechi) pt back-compat.
+  owned?: boolean;
 };
 
 export type CatalogType = {

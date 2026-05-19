@@ -97,7 +97,10 @@ function rollItemsForTier(
     }
   }
 
-  // Restul slotului umplut prin rolling weighted.
+  // Restul slotului umplut prin rolling weighted. Pentru fiecare slot
+  // ne-garantat, verificam intai `itemDropChance` (0-100); daca random > prag,
+  // slot-ul ramane gol (user-ul primeste doar XP pe acea pozitie). Asta face
+  // tier-urile mici sa pice rar item — restul e XP-only.
   const remaining = config.itemCount - out.length;
   if (remaining <= 0) return out;
 
@@ -109,6 +112,8 @@ function rollItemsForTier(
   };
 
   for (let i = 0; i < remaining; i++) {
+    // Dice roll pe drop chance — daca esueaza, slot-ul nu produce nimic.
+    if (Math.random() * 100 >= config.itemDropChance) continue;
     const rarity = pickWeighted<Rarity>([
       { value: Rarity.COMMON, weight: config.weightCommon },
       { value: Rarity.RARE, weight: config.weightRare },

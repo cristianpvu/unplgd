@@ -494,8 +494,19 @@ type ChestTierSeed = {
   upgradeToTier: ChestTier | null;
   guaranteedLegendary?: number;
   guaranteedEpic?: number;
+  // 0-100; sansa pe slot ne-garantat sa pice item (vs XP-only). Slot-urile
+  // garantate (guaranteed*) NU sunt supuse acestei sanse. Default in DB e 100.
+  itemDropChance?: number;
 };
 
+// Logica progresiei:
+// - BRONZE: 25% sansa pe singurul slot → ~25% chesturi dau un item, restul XP
+// - SILVER: 45% sansa → mai bine, dar mereu doar common/rare
+// - GOLD: 65% sansa pe ambele sloturi → de regula ~1 item, ocazional 2
+// - PLATINUM: 85% sansa pe ambele → aproape mereu 1-2 iteme
+// - DIAMOND: 100% pe 2 sloturi + 100% pe al 3-lea (deci 3 iteme garantat) +
+//            distributie shifted spre epic/legendary
+// - CHAMPION: 1 legendary + 1 epic garantati (in afara rolling-ului)
 const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
   {
     tier: 'BRONZE',
@@ -506,6 +517,7 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     weightRare: 10,
     weightEpic: 0,
     weightLegendary: 0,
+    itemDropChance: 25,
     upgradeToTier: 'SILVER',
   },
   {
@@ -513,10 +525,11 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     minDurationMs: 15 * 60_000,
     itemCount: 1,
     xpBase: 50,
-    weightCommon: 70,
-    weightRare: 25,
+    weightCommon: 65,
+    weightRare: 30,
     weightEpic: 5,
     weightLegendary: 0,
+    itemDropChance: 45,
     upgradeToTier: 'GOLD',
   },
   {
@@ -528,6 +541,7 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     weightRare: 45,
     weightEpic: 14,
     weightLegendary: 1,
+    itemDropChance: 65,
     upgradeToTier: 'PLATINUM',
   },
   {
@@ -539,6 +553,7 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     weightRare: 45,
     weightEpic: 35,
     weightLegendary: 5,
+    itemDropChance: 85,
     upgradeToTier: 'DIAMOND',
   },
   {
@@ -550,6 +565,10 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     weightRare: 30,
     weightEpic: 50,
     weightLegendary: 20,
+    // Cu 1 epic garantat + drop chance 100 pe restul de 2 sloturi → mereu 3
+    // iteme. Plus distributia shifted spre epic/legendary.
+    guaranteedEpic: 1,
+    itemDropChance: 100,
     upgradeToTier: 'CHAMPION',
   },
   {
@@ -566,6 +585,7 @@ const CHEST_TIER_CONFIGS: ChestTierSeed[] = [
     upgradeToTier: null,
     guaranteedLegendary: 1,
     guaranteedEpic: 1,
+    itemDropChance: 100,
   },
 ];
 

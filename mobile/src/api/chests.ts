@@ -53,3 +53,24 @@ export function listChests() {
 export function openChest(chestId: string) {
   return api<{ loot: ChestLoot }>(`/chests/${chestId}/open`, { method: 'POST' });
 }
+
+// Vizual config per tier — culorile + SVG-urile (mini/body/lid) sunt sursa de
+// adevar in DB. Mobile fetch-uieste o data si cache-uieste lung; modificarea
+// SVG-urilor in DB / fisierelor + re-seed → toti userii vad noile vizualuri
+// fara redeploy mobile.
+export type ChestTierVisual = {
+  tier: ChestTier;
+  label: string | null;
+  sortOrder: number;
+  bgColor: string | null;
+  darkColor: string | null;
+  fgColor: string | null;
+  glowColor: string | null;
+  miniSvg: string | null;
+  bodySvg: string | null;
+  lidSvg: string | null;
+};
+
+export function listChestTiers() {
+  return api<{ tiers: ChestTierVisual[] }>('/chests/tiers');
+}
