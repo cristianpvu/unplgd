@@ -21,6 +21,12 @@ COPY --from=builder /app/dist ./dist
 # Asseturi statice citite de seed (chest visual SVG-uri). Editand fisierele si
 # re-deploy → seed-ul detecteaza schimbarea si re-scrie continutul in DB.
 COPY assets ./assets
+# Scripts de QA/admin — ruleaza ad-hoc cu `docker compose exec backend npx tsx
+# scripts/<name>.ts ...`. Include si src/ pentru ca scripturile importa din
+# `../src/...`.
+COPY src ./src
+COPY tsconfig.json ./
+COPY scripts ./scripts
 EXPOSE 4000
 # Seed-ul are guard intern: pe DB deja populata se opreste imediat (1 query).
 # Pe DB virgina populeaza catalogul. Pentru re-aplicare seed (dupa adaugare

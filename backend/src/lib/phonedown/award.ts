@@ -27,7 +27,7 @@ function pickWeighted<T>(entries: { value: T; weight: number }[]): T | null {
 
 type DroppableItem = Pick<Item, 'id' | 'slug' | 'name' | 'rarity' | 'exclusive'>;
 
-async function loadDroppableItems(): Promise<DroppableItem[]> {
+export async function loadDroppableItems(): Promise<DroppableItem[]> {
   return prisma.item.findMany({
     where: {
       attachmentPoint: { not: null },
@@ -37,7 +37,7 @@ async function loadDroppableItems(): Promise<DroppableItem[]> {
   });
 }
 
-async function loadTierConfigs(): Promise<Map<ChestTier, ChestTierConfig>> {
+export async function loadTierConfigs(): Promise<Map<ChestTier, ChestTierConfig>> {
   const rows = await prisma.chestTierConfig.findMany();
   return new Map(rows.map((r) => [r.tier, r]));
 }
@@ -73,7 +73,7 @@ function baseTierForDuration(
   return null;
 }
 
-function rollItemsForTier(
+export function rollItemsForTier(
   config: ChestTierConfig,
   pool: DroppableItem[],
 ): DroppableItem[] {
