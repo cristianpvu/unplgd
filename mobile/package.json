@@ -12,6 +12,8 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.99.2",
+    "ble-presence": "file:./modules/ble-presence",
+    "call-detector": "file:./modules/call-detector",
     "expo": "~54.0.33",
     "expo-asset": "~12.0.13",
     "expo-audio": "^55.0.14",
@@ -33,8 +35,6 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-ble-plx": "^3.5.1",
-    "ble-presence": "file:./modules/ble-presence",
-    "call-detector": "file:./modules/call-detector",
     "react-native-maps": "1.20.1",
     "react-native-nfc-manager": "^3.17.2",
     "react-native-safe-area-context": "~5.6.0",
