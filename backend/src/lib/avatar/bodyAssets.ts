@@ -119,142 +119,42 @@ export const BODY_PARTS = {
 } as const;
 
 // Asseturi SVG pentru accesorii. Cheia = Item.feature, valoarea = fragment
-// SVG inner. Variabilele (--acc, --acc2) sunt patch-uite la randare cu
-// feature-parts (vezi body.ts: featureParts(holding) → primul = ID-ul piesei
-// din mapping, restul = parametri optionali tip culoare).
+// SVG inner. Toate desenate DIRECT in body coords (762×1400) cu primitive
+// simple (path, circle, ellipse, polygon, line, rect) — fara matrix/transform.
+// SvgXml din react-native-svg are bug-uri silentioase la <g transform> si
+// nested <svg x y> deci evitam complet.
 //
 // Pozitii hardcodate raportate la coordonatele BODY_VIEWBOX (762×1400):
 //   - mana dreapta = cerc la (541, 995), raza 30
 //   - mana stanga = cerc la (221, 995)
 //   - gat = banda intre y=540 si y=660, centrata pe x=381
-//   - picior dreapta = papuc la cy=1370, cx=429
 //   - cap = chin la ~y=540, varf cap la ~y=80 (head wrapeaza la y=-8)
-//   - spate = corpul (umeri ~y=640, sold ~y=920)
 export const ACCESSORY_PARTS: Record<string, string> = {
-  // HAND - tinut in mana dreapta (x≈541, y≈995)
-  "ball-red": `<circle cx="568" cy="998" r="40" fill="var(--acc, #d94545)" stroke="#000" stroke-width="6"/>
-<path d="M 528 998 Q 568 1018 608 998" fill="none" stroke="#000" stroke-width="4" opacity="0.6"/>
-<path d="M 568 958 Q 588 998 568 1038" fill="none" stroke="#000" stroke-width="4" opacity="0.6"/>`,
-  "ball-soccer": `<circle cx="568" cy="998" r="40" fill="#ffffff" stroke="#000" stroke-width="6"/>
-<polygon points="568,970 587,985 581,1008 555,1008 549,985" fill="#000" opacity="0.85"/>
-<line x1="568" y1="970" x2="568" y2="960" stroke="#000" stroke-width="3"/>`,
-  "balloon-blue": `<ellipse cx="568" cy="855" rx="45" ry="55" fill="var(--acc, #4aa6e8)" stroke="#000" stroke-width="6"/>
-<polygon points="563,910 573,910 568,925" fill="var(--acc, #4aa6e8)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<path d="M 568 925 Q 555 960 565 990 Q 575 1010 545 998" fill="none" stroke="#000" stroke-width="3"/>`,
-  "plushie-bear": `<circle cx="568" cy="990" r="44" fill="var(--acc, #b58b5a)" stroke="#000" stroke-width="6"/>
-<circle cx="540" cy="958" r="14" fill="var(--acc, #b58b5a)" stroke="#000" stroke-width="5"/>
-<circle cx="596" cy="958" r="14" fill="var(--acc, #b58b5a)" stroke="#000" stroke-width="5"/>
-<circle cx="555" cy="985" r="4" fill="#000"/>
-<circle cx="581" cy="985" r="4" fill="#000"/>
-<ellipse cx="568" cy="1005" rx="8" ry="5" fill="#1f1611"/>`,
-  "book": `<rect x="528" y="970" width="80" height="55" rx="4" fill="var(--acc, #b04f3e)" stroke="#000" stroke-width="5"/>
-<line x1="568" y1="970" x2="568" y2="1025" stroke="#000" stroke-width="3" opacity="0.5"/>
-<rect x="534" y="975" width="68" height="6" fill="#f0e6cf" opacity="0.7"/>`,
-  "star-wand": `<line x1="535" y1="1018" x2="600" y2="950" stroke="var(--acc2, #6b3a1e)" stroke-width="8" stroke-linecap="round"/>
-<polygon points="600,925 608,945 630,945 612,960 620,982 600,968 580,982 588,960 570,945 592,945" fill="var(--acc, #f4c842)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>`,
-  // NECK - lantisor / fular pe gat (x=381, y=620-670)
+  // HAND - balon legat cu ata pana in mana (541, 995). Balon mare deasupra
+  // capului, ata curbata coboara prin lateralul corpului spre mana.
+  "balloon-blue": `<path d="M 541 995 Q 510 800 480 600 Q 460 470 460 390" fill="none" stroke="#7a7a7a" stroke-width="3"/>
+<polygon points="453,387 467,387 460,402" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<ellipse cx="460" cy="320" rx="60" ry="72" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="5"/>
+<ellipse cx="438" cy="290" rx="14" ry="22" fill="#ffffff" opacity="0.45"/>`,
+  // HAND - zmeu (kite) cu ata pana in mana, coada cu fundite colorate
+  "kite": `<path d="M 541 995 Q 510 770 488 540 Q 478 420 488 340" fill="none" stroke="#7a7a7a" stroke-width="2"/>
+<polygon points="488,200 565,340 488,480 411,340" fill="var(--acc, #5db3e8)" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+<line x1="488" y1="200" x2="488" y2="480" stroke="#000" stroke-width="3" opacity="0.4"/>
+<line x1="411" y1="340" x2="565" y2="340" stroke="#000" stroke-width="3" opacity="0.4"/>
+<polygon points="488,260 535,340 488,420 441,340" fill="var(--acc2, #ffce54)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<path d="M 488 480 Q 498 525 488 570 Q 478 615 490 660" fill="none" stroke="#7a7a7a" stroke-width="2"/>
+<rect x="476" y="500" width="24" height="8" fill="#ed5564" stroke="#000" stroke-width="1.5"/>
+<rect x="472" y="555" width="32" height="8" fill="#5dc56a" stroke="#000" stroke-width="1.5"/>
+<rect x="478" y="615" width="22" height="8" fill="#9b59b6" stroke="#000" stroke-width="1.5"/>`,
+  // NECK - 3 variante de coliere pe gat (x=381, y=620-670)
   "necklace-gold": `<path d="M 335 660 Q 381 690 427 660" fill="none" stroke="var(--acc, #ddb436)" stroke-width="6" stroke-linecap="round"/>
 <circle cx="381" cy="685" r="9" fill="var(--acc, #ddb436)" stroke="#000" stroke-width="3"/>`,
   "necklace-heart": `<path d="M 335 660 Q 381 695 427 660" fill="none" stroke="var(--acc, #c44a6e)" stroke-width="5" stroke-linecap="round"/>
 <path d="M 381 685 L 373 695 Q 365 703 369 712 Q 374 720 381 715 Q 388 720 393 712 Q 397 703 389 695 Z" fill="var(--acc, #c44a6e)" stroke="#000" stroke-width="3"/>`,
-  "scarf-stripe": `<path d="M 318 640 Q 318 695 340 705 L 422 705 Q 444 695 444 640 Q 408 660 381 660 Q 354 660 318 640 Z" fill="var(--acc, #8b3a55)" stroke="#000" stroke-width="6" stroke-linejoin="round"/>
-<line x1="320" y1="665" x2="442" y2="665" stroke="#000" stroke-width="3" opacity="0.4"/>
-<line x1="322" y1="685" x2="440" y2="685" stroke="#000" stroke-width="3" opacity="0.4"/>
-<path d="M 320 695 L 305 760 L 335 768 L 348 705 Z" fill="var(--acc, #8b3a55)" stroke="#000" stroke-width="5" stroke-linejoin="round"/>`,
-  "bowtie": `<polygon points="345,665 365,650 365,690 345,675" fill="var(--acc, #2a3756)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<polygon points="417,665 397,650 397,690 417,675" fill="var(--acc, #2a3756)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<rect x="375" y="657" width="12" height="26" rx="2" fill="var(--acc, #2a3756)" stroke="#000" stroke-width="3"/>`,
-  // FEET - jucarie / animal de companie pe podea, langa picioare
-  "ball-at-foot": `<circle cx="540" cy="1370" r="32" fill="var(--acc, #5dc56a)" stroke="#000" stroke-width="6"/>
-<path d="M 510 1370 Q 540 1385 570 1370" fill="none" stroke="#000" stroke-width="3" opacity="0.6"/>`,
-  "puppy": `<ellipse cx="565" cy="1370" rx="45" ry="22" fill="var(--acc, #d9b87f)" stroke="#000" stroke-width="5"/>
-<circle cx="535" cy="1355" r="18" fill="var(--acc, #d9b87f)" stroke="#000" stroke-width="5"/>
-<polygon points="522,1345 528,1330 538,1348" fill="var(--acc, #d9b87f)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<circle cx="530" cy="1356" r="2.5" fill="#000"/>
-<ellipse cx="528" cy="1364" rx="3" ry="2" fill="#1f1611"/>
-<path d="M 605 1360 Q 622 1355 618 1372" fill="none" stroke="#000" stroke-width="5" stroke-linecap="round"/>`,
-  "kitten": `<ellipse cx="565" cy="1370" rx="42" ry="20" fill="var(--acc, #d9d2c4)" stroke="#000" stroke-width="5"/>
-<circle cx="540" cy="1355" r="16" fill="var(--acc, #d9d2c4)" stroke="#000" stroke-width="5"/>
-<polygon points="528,1342 532,1330 540,1346" fill="var(--acc, #d9d2c4)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<polygon points="548,1342 552,1330 560,1346" fill="var(--acc, #d9d2c4)" stroke="#000" stroke-width="4" stroke-linejoin="round"/>
-<circle cx="534" cy="1357" r="2" fill="#000"/>
-<circle cx="546" cy="1357" r="2" fill="#000"/>
-<path d="M 605 1370 Q 625 1360 625 1380" fill="none" stroke="#000" stroke-width="5" stroke-linecap="round"/>`,
-  // BACK - rucsac / aripi (peste body, layer "before head")
-  "backpack": `<rect x="295" y="685" width="172" height="220" rx="20" fill="var(--acc, #2f5f8f)" stroke="#000" stroke-width="6"/>
-<rect x="320" y="720" width="122" height="60" rx="6" fill="var(--acc2, #1d3f5e)" stroke="#000" stroke-width="4"/>
-<path d="M 295 700 Q 280 710 280 730 L 285 800" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/>
-<path d="M 467 700 Q 482 710 482 730 L 477 800" fill="none" stroke="#000" stroke-width="6" stroke-linecap="round"/>`,
-  "wings-fairy": `<path d="M 250 700 Q 170 680 145 760 Q 130 840 200 870 Q 260 855 270 800 Q 275 745 250 700 Z" fill="var(--acc, #c5e7ff)" stroke="#000" stroke-width="5" opacity="0.85"/>
-<path d="M 512 700 Q 592 680 617 760 Q 632 840 562 870 Q 502 855 492 800 Q 487 745 512 700 Z" fill="var(--acc, #c5e7ff)" stroke="#000" stroke-width="5" opacity="0.85"/>
-<path d="M 200 720 Q 200 800 245 850" fill="none" stroke="#000" stroke-width="3" opacity="0.5"/>
-<path d="M 562 720 Q 562 800 517 850" fill="none" stroke="#000" stroke-width="3" opacity="0.5"/>`,
-  // HEAD - sapca / palarie / coronita (peste head)
-  "cap-baseball": `<ellipse cx="381" cy="180" rx="135" ry="55" fill="var(--acc, #1f5cb8)" stroke="#000" stroke-width="6"/>
-<ellipse cx="381" cy="225" rx="170" ry="22" fill="var(--acc, #1f5cb8)" stroke="#000" stroke-width="6"/>
-<circle cx="381" cy="125" r="8" fill="var(--acc, #1f5cb8)" stroke="#000" stroke-width="4"/>`,
-  "crown": `<polygon points="246,225 280,140 320,200 381,110 442,200 482,140 516,225" fill="var(--acc, #ddb436)" stroke="#000" stroke-width="6" stroke-linejoin="round"/>
-<rect x="246" y="225" width="270" height="20" fill="var(--acc, #ddb436)" stroke="#000" stroke-width="5"/>
-<circle cx="280" cy="155" r="8" fill="var(--acc2, #c44a6e)" stroke="#000" stroke-width="3"/>
-<circle cx="381" cy="125" r="9" fill="var(--acc2, #c44a6e)" stroke="#000" stroke-width="3"/>
-<circle cx="482" cy="155" r="8" fill="var(--acc2, #c44a6e)" stroke="#000" stroke-width="3"/>`,
+  "necklace-blue-drop": `<path d="M 318 660 Q 381 705 444 660" fill="none" stroke="var(--acc, #bdc3c7)" stroke-width="5" stroke-linecap="round"/>
+<path d="M 381 705 L 368 728 Q 360 752 381 765 Q 402 752 394 728 Z" fill="var(--acc2, #3498db)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<line x1="374" y1="722" x2="380" y2="738" stroke="#fff" stroke-width="2" opacity="0.85"/>`,
+  // HEAD - aureola plutind deasupra capului
   "halo": `<ellipse cx="381" cy="80" rx="85" ry="18" fill="none" stroke="var(--acc, #ddb436)" stroke-width="10"/>
 <ellipse cx="381" cy="80" rx="85" ry="18" fill="none" stroke="#fff8c4" stroke-width="3" opacity="0.7"/>`,
-  // SVG-urile externe (sword/guitar/roses/chocolate/necklace-pendant) au viewBox
-  // propriu — folosim <g transform="matrix(a b c d e f)"> care e cea mai
-  // robusta forma de transform (react-native-svg ignora x/y pe nested <svg>).
-  // matrix(scale 0 0 scale translateX translateY) = scale uniform + translate.
-  "sword": `<g transform="matrix(0.28 0 0 0.28 502 872)">
-<path fill="#ED5564" d="M168.385,382.567l-11.04,1.187c-1.085,0.125-27.014,2.967-58.689,13.366c-43.269,14.179-75.038,34.774-94.432,61.227c-3.755,5.106-4.192,11.727-1.171,17.677c4.302,8.494,14.865,14.662,25.117,14.662l0,0c5.941,0,11.282-2.046,15.443-5.902c28.403-26.296,75.639-45.253,117.534-47.173l10.868-0.5L168.385,382.567z"/>
-<path fill="#CCD1D9" d="M510.111,128.496c-2.671-51.342-14.882-88.209-15.396-89.74L481.691,0l-7.558,40.161c-7.245,38.444-24.968,68.8-52.653,90.208c-20.862,16.13-39.943,20.94-40.1,20.971l-7.995,1.92l-0.172,8.229c-0.702,31.948-12.258,63.381-34.368,93.424c-18.098,24.578-43.223,48.282-74.664,70.47c-54.183,38.226-108.867,58.775-109.405,58.963l6.371,53.263c146.781-6.73,249.168-50.937,304.273-131.4c18.332-26.765,31.277-57.557,38.461-91.504C509.58,187.723,511.672,158.726,510.111,128.496z"/>
-<path opacity="0.3" fill="#FFFFFF" d="M510.111,128.496c-2.671-51.342-14.882-88.209-15.396-89.74L481.691,0l-7.558,40.161c-0.031,0.188-0.078,0.375-0.125,0.562c2.624,8.401,12.43,42.441,14.772,87.772c1.576,30.23-0.531,59.228-6.215,86.21c-7.184,33.947-20.129,64.739-38.477,91.504c-52.401,76.546-147.59,120.268-283.097,130.137l0.156,1.265c146.781-6.73,249.168-50.937,304.273-131.4c18.332-26.765,31.277-57.557,38.461-91.504C509.58,187.723,511.672,158.726,510.111,128.496z"/>
-<path fill="#DA4453" d="M67.122,467.185c5.941-3.653,12.227-7.058,18.769-10.134l-22.743-45.596c-6.605,3.248-12.82,6.714-18.637,10.399L67.122,467.185z"/>
-<path fill="#DA4453" d="M94.963,398.338l9.533,50.999c6.73-2.436,13.601-4.528,20.518-6.262l-9.525-50.982c-5.34,1.437-10.985,3.092-16.833,5.027C97.415,397.526,96.189,397.933,94.963,398.338z"/>
-<path fill="#FFCE54" d="M159.711,357.974l-0.047,0.016c-1.483-4.06-5.379-6.979-9.97-6.979c-5.855,0-10.61,4.762-10.61,10.603c0,1.28,0.234,2.498,0.648,3.638l-0.047,0.016c12.875,35.353,16.021,64.084,9.337,85.383c-5.2,16.614-16.364,28.232-33.189,34.572c-16.778,6.308-38.913,6.776-59.205,1.249c-3.802-1.031-7.44-2.265-10.836-3.654c-0.734,0.656-1.468,1.312-2.178,1.968c-4.162,3.856-9.502,5.902-15.443,5.902l0,0c-6.988,0-14.116-2.873-19.316-7.386c8.893,10.228,23.743,18.722,42.161,23.75c11.344,3.092,23.001,4.622,34.337,4.622c13.483,0,26.514-2.186,37.991-6.496c22.946-8.65,38.866-25.296,46.025-48.156C177.481,431.146,174.233,397.823,159.711,357.974z"/>
-</g>`,
-  // Chitara: mult mai mare (scale 0.35 → 358x358) si pozitionata sa para tinuta
-  // in mana, cu gat-ul iesind in dreapta-sus peste umar.
-  "electric-guitar": `<g transform="matrix(0.35 0 0 0.35 400 750)">
-<path d="M469.184 814.464c0.64-26.432-10.752-88.832 32.96-132.928 44.992-45.504 137.024-58.624 143.04-63.68 16.256-14.784 22.848-33.728 27.584-53.12-45.504 15.04-110.528-34.176-148.48-114.24-23.936-50.56-10.304-123.264-2.56-160.576-26.88-6.848-53.248-4.608-80.064 17.984-21.696 18.368-40.64 78.272-86.208 124.224-64 64.64-153.92 65.664-190.336 86.464-13.696 6.272-31.04 18.88-47.808 35.776a229.76 229.76 0 0 0-24 28.672 171.2 171.2 0 0 0 15.488 225.856l69.312 68.608a171.52 171.52 0 0 0 220.096 17.728c9.984-6.016 21.888-14.976 33.856-26.176 24.32-22.72 40.064-46.208 37.12-54.592z" fill="#D94437"/>
-<path d="M454.464 694.336c3.648-6.912 13.888-23.296 38.016-47.616 21.056-21.44 79.168-36.352 81.984-38.72 7.744-6.976 5.632-17.728 7.808-26.944-21.504 7.104-75.648-43.264-93.568-81.024-11.264-23.808-16.704-37.952-12.992-55.552-12.608-3.2-12.416 1.024-25.024 11.712-10.24 8.64-19.136 36.864-40.64 58.56-31.04 31.36-79.616 37.76-89.152 43.968l-26.24 16.448c-32.512 32.32-32.512 85.824-0.832 117.12l32.64 32.384a80.832 80.832 0 0 0 114.176-0.64l13.824-29.696z" fill="#FBE9EB"/>
-<path d="M455.616 635.2l-48.384-47.808 432.384-426.112 37.632 37.248z" fill="#5B4037"/>
-<path d="M846.592 256.512l-78.784-43.968 124.8-115.648 73.344 38.784z" fill="#5A4035"/>
-<path d="M278.912 647.488l101.312 100.288-28.416 28.8-101.312-100.352z" fill="#4B5359"/>
-<path d="M332.992 592.832l101.312 100.224-30.848 31.168L302.08 624z" fill="#4B5359"/>
-</g>`,
-  // Trandafirii: scale 0.25 (era 0.2), pozitionati sa para tinuti in mana cu
-  // florile iesind in sus pe langa trunchi.
-  "roses": `<g transform="matrix(0.25 0 0 0.25 413 742)">
-<path d="M511.15 1010.1c-12.2576 0-22.2094-9.95177-22.2094-22.2094V443.821c0-12.2576 9.95177-22.2094 22.2094-22.2094c12.2576 0 22.2094 9.95177 22.2094 22.2094v544.07c0 12.2576-9.95177 22.2094-22.2094 22.2094Z" fill="#1daa6a"/>
-<path d="M346.097 26.0897l-67.5991 267.12c0 25.0007 4.00498 49.0306 11.2867 71.6042c9.8304-27.5493 34.9525-48.5452 60.6815-75.245c43.5693-45.0256 199.763-86.1677 262.751-123.426c-30.3408-105.586-267.12-140.052-267.12-140.052Z" fill="#dd6472"/>
-<path d="M512.971 158.254c-62.9874 37.2585-124.518 79.9781-168.087 125.004c-25.729 26.6998-45.2684 54.1279-55.0988 81.6773c11.7723 36.5302 32.4039 69.1769 59.2251 95.5126c42.3557 41.5061 100.124 67.1137 163.718 67.1137c128.887 0 234.23-105.464 234.23-234.23l-66.8709-264.571c0.242725-0.121363-37.2585 52.7929-167.117 129.494Z" fill="#d1525c"/>
-<path d="M513.578 712.155c-4.49043-11.4081 29.1271-79.8568 79.8568-115.902c37.7439-26.8212 122.576-36.4089 126.339-26.6998s-47.4529 74.881-86.6531 99.1536c-49.5161 30.8261-114.93 54.856-119.542 43.448Z" fill="#1daa6a"/>
-<path d="M295.973 685.454c8.61677-8.8595 84.8327-6.06815 138.354 25.4862c39.9284 23.5444 83.3763 96.9691 76.0946 104.372s-87.7454-12.6218-125.974-38.472c-48.3024-32.768-97.0903-82.6482-88.4736-91.3863Z" fill="#1daa6a"/>
-</g>`,
-  // Ciocolata: scale 0.18 (era 0.13) — vizibila ca un baton tinut in mana.
-  "chocolate": `<g transform="matrix(0.18 0 0 0.18 448 905)">
-<path d="M224.855 0h582.656v655.474H224.855Z" fill="#704f53"/>
-<path d="M458.442 51.434h115.712V195.589H458.442Z" fill="#9e6161"/>
-<path d="M632.293 51.434h115.712V195.589H632.293Z" fill="#9e6161"/>
-<path d="M284.589 51.434h115.712V195.589H284.589Z" fill="#9e6161"/>
-<path d="M458.442 247.813h115.712v144.157H458.442Z" fill="#9e6161"/>
-<path d="M632.293 247.813h115.712v144.157H632.293Z" fill="#9e6161"/>
-<path d="M284.589 247.813h115.712v144.157H284.589Z" fill="#9e6161"/>
-<path d="M458.442 444.194h115.712v144.157H458.442Z" fill="#9e6161"/>
-<path d="M632.293 444.194h115.712v144.157H632.293Z" fill="#9e6161"/>
-<path d="M284.589 444.194h115.712v144.157H284.589Z" fill="#9e6161"/>
-<path d="M807.511 1015.7H224.855v-362.951l582.656-126.521Z" fill="#f7c194"/>
-</g>`,
-  // NECK - lant heart-shape + pendant inima, mai elaborat decat necklace-gold
-  "necklace-pendant": `<g transform="matrix(0.08 0 0 0.08 340 618)">
-<path d="M510.786 887.011l-6.79632-6.5536c-0.849541-0.849541-85.8036-83.7405-169.665-188.477c-49.3947-61.6524-88.7163-118.815-116.994-169.787c-35.8021-64.5651-54.0065-119.786-54.0065-164.082c0-92.9641 36.1662-180.466 101.945-246.245c65.7787-65.7787 153.281-101.945 246.245-101.945s180.466 36.1662 246.245 101.945c65.7787 65.7787 101.945 153.281 101.945 246.245c0 44.2975-18.2045 99.5177-54.2493 164.082c-28.3989 50.9725-67.9632 108.134-117.601 169.787c-84.2259 104.736-169.665 187.628-170.515 188.477L510.786 887.011Zm0.849541-857.793c-181.316 0-328.772 147.456-328.772 328.772c0 74.1527 57.6475 185.443 166.631 321.612c69.541 86.7745 139.81 158.5 161.413 180.102c21.7239-21.6027 92.3572-93.3281 162.262-180.102C782.64 543.434 840.53 432.264 840.53 358.112c-0.121363-181.316-147.578-328.894-328.894-328.894Z" fill="#ffd366"/>
-<path d="M610.182 897.206c0-30.4621-24.6367-55.0988-55.0988-55.0988c-16.7481 0-31.7971 7.5245-41.8702 19.4181c-10.0731-11.8935-25.1221-19.4181-41.8702-19.4181c-30.4621 0-55.0988 24.6367-55.0988 55.0988c0 16.0199 7.28178 29.2485 17.5977 40.4139l79.6141 76.4587l78.1578-75.6091c9.95177-10.4372 18.5685-24.8795 18.5685-41.2635Z" fill="#ff6b6a"/>
-</g>`,
-  // HEAD/face - eye patch tip pirat. Pozitionat peste ochi pe la jumatatea fetei
-  // (chin la body_y≈540, deci centru fata ~y=420). Petic mare ca sa acopere
-  // ochiul DiceBear (care e proeminent). cx=400 il pune mai aproape de centru.
-  "eye-patch": `<path d="M 190 400 Q 320 370 470 372 Q 590 384 650 470" fill="none" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
-<ellipse cx="400" cy="430" rx="92" ry="72" fill="#1a1a1a" stroke="#000" stroke-width="6"/>
-<line x1="358" y1="405" x2="442" y2="455" stroke="#3a3a3a" stroke-width="4" stroke-linecap="round"/>
-<line x1="358" y1="455" x2="442" y2="405" stroke="#3a3a3a" stroke-width="4" stroke-linecap="round"/>`,
 };

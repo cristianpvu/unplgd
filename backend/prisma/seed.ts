@@ -6,6 +6,8 @@
 // (CC BY 4.0). Corpul, hainele si economia level-gated sunt originale.
 
 import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client';
+import { renderAvatarSvg, renderAvatarBlinkSvg } from '../src/lib/avatar/render.js';
+import { AVATAR_INCLUDE, equippedBySlot } from '../src/lib/avatar/catalog.js';
 
 const prisma = new PrismaClient();
 
@@ -232,36 +234,19 @@ const TYPES: SeedType[] = [
     name: 'Accesoriu',
     group: 'body',
     items: [
-      // HAND
+      // Setul minimal — doar accesoriile care se randeaza curat. Toate sunt SVG
+      // simple in body coords (fara matrix/transform pentru ca SvgXml RN are
+      // bug-uri silentioase pe transformuri compuse).
       { slug: 'hd-00', feature: null, name: 'Fara accesoriu', level: 1, rarity: 'COMMON', attachmentPoint: null },
-      { slug: 'hd-01', feature: 'book', name: 'Carte', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
-      { slug: 'hd-02', feature: 'ball-red', name: 'Minge rosie', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
-      { slug: 'hd-03', feature: 'ball-soccer', name: 'Minge fotbal', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      // HAND
       { slug: 'hd-04', feature: 'balloon-blue', name: 'Balon', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
-      { slug: 'hd-05', feature: 'plushie-bear', name: 'Ursulet de plus', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
-      { slug: 'hd-06', feature: 'star-wand:f4c842:6b3a1e', name: 'Bagheta stea', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
-      { slug: 'hd-07', feature: 'sword', name: 'Sabie de cavaler', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
-      { slug: 'hd-08', feature: 'electric-guitar', name: 'Chitara electrica', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
-      { slug: 'hd-09', feature: 'roses', name: 'Buchet de trandafiri', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
-      { slug: 'hd-50', feature: 'chocolate', name: 'Ciocolata', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
+      { slug: 'hd-15', feature: 'kite', name: 'Zmeu', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
       // NECK
-      { slug: 'hd-10', feature: 'scarf-stripe', name: 'Fular', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
-      { slug: 'hd-11', feature: 'bowtie', name: 'Papion', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
       { slug: 'hd-12', feature: 'necklace-gold', name: 'Lantisor de aur', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
       { slug: 'hd-13', feature: 'necklace-heart', name: 'Pandant inima', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
-      { slug: 'hd-14', feature: 'necklace-pendant', name: 'Colier cu inima', level: 1, rarity: 'EPIC', attachmentPoint: 'NECK' },
-      // FEET
-      { slug: 'hd-20', feature: 'ball-at-foot', name: 'Minge la picior', level: 1, rarity: 'COMMON', attachmentPoint: 'FEET' },
-      { slug: 'hd-21', feature: 'puppy', name: 'Catelus prieten', level: 1, rarity: 'EPIC', attachmentPoint: 'FEET' },
-      { slug: 'hd-22', feature: 'kitten', name: 'Pisicuta', level: 1, rarity: 'EPIC', attachmentPoint: 'FEET' },
-      // BACK
-      { slug: 'hd-30', feature: 'backpack', name: 'Ghiozdan', level: 1, rarity: 'COMMON', attachmentPoint: 'BACK' },
-      { slug: 'hd-31', feature: 'wings-fairy', name: 'Aripi de zana', level: 1, rarity: 'LEGENDARY', exclusive: true, attachmentPoint: 'BACK' },
+      { slug: 'hd-14', feature: 'necklace-blue-drop', name: 'Pandant safir', level: 1, rarity: 'EPIC', attachmentPoint: 'NECK' },
       // HEAD
-      { slug: 'hd-40', feature: 'cap-baseball', name: 'Sapca', level: 1, rarity: 'COMMON', attachmentPoint: 'HEAD' },
       { slug: 'hd-41', feature: 'halo', name: 'Aureola', level: 1, rarity: 'EPIC', attachmentPoint: 'HEAD' },
-      { slug: 'hd-42', feature: 'crown', name: 'Coroana de rege', level: 1, rarity: 'LEGENDARY', exclusive: true, attachmentPoint: 'HEAD' },
-      { slug: 'hd-43', feature: 'eye-patch', name: 'Petic de pirat', level: 1, rarity: 'RARE', attachmentPoint: 'HEAD' },
     ],
   },
 ];
@@ -582,10 +567,95 @@ async function seedChestConfig() {
   }
 }
 
+// Upsert pentru slotul "holding" + cleanup orphan, intotdeauna (idempotent).
+// Setul de accesorii se schimba mai des decat restul catalogului si vrem ca
+// modificarile sa se reflecte fara FORCE_SEED. Cleanup-ul rezolva cazul cand
+// am scos un accesoriu din seed — avatarurile care il aveau echipat sunt
+// resetate la default (hd-00) si SVG-urile re-randate.
+async function seedHoldingAlways() {
+  const holdingType = TYPES.find((t) => t.slug === 'holding');
+  if (!holdingType) return;
+
+  const typeRow = await prisma.itemType.upsert({
+    where: { slug: 'holding' },
+    create: { slug: 'holding', name: holdingType.name, group: holdingType.group, sortOrder: 99 },
+    update: { name: holdingType.name, group: holdingType.group },
+  });
+
+  for (const [itemIdx, item] of holdingType.items.entries()) {
+    const extras = {
+      rarity: item.rarity ?? 'COMMON',
+      exclusive: item.exclusive ?? false,
+      attachmentPoint: item.attachmentPoint ?? null,
+    } as const;
+    await prisma.item.upsert({
+      where: { slug: item.slug },
+      create: {
+        slug: item.slug, name: item.name, feature: item.feature,
+        level: item.level, sortOrder: itemIdx, typeId: typeRow.id, ...extras,
+      },
+      update: {
+        name: item.name, feature: item.feature,
+        level: item.level, sortOrder: itemIdx, typeId: typeRow.id, ...extras,
+      },
+    });
+  }
+}
+
+async function cleanupOrphanHolding() {
+  const holdingType = await prisma.itemType.findUnique({
+    where: { slug: 'holding' },
+    include: { items: { select: { id: true, slug: true } } },
+  });
+  if (!holdingType) return;
+
+  const seedHolding = TYPES.find((t) => t.slug === 'holding');
+  if (!seedHolding) return;
+  const allowedSlugs = new Set(seedHolding.items.map((i) => i.slug));
+
+  const orphans = holdingType.items.filter((i) => !allowedSlugs.has(i.slug));
+  if (orphans.length === 0) return;
+
+  const defaultHolding = holdingType.items.find((i) => i.slug === 'hd-00');
+  if (!defaultHolding) {
+    console.warn('cleanupOrphanHolding: hd-00 lipseste, sar peste cleanup');
+    return;
+  }
+
+  const orphanIds = orphans.map((o) => o.id);
+  const affected = await prisma.avatar.findMany({
+    where: { holdingItemId: { in: orphanIds } },
+    include: AVATAR_INCLUDE,
+  });
+
+  const defaultItem = await prisma.item.findUnique({ where: { id: defaultHolding.id } });
+  if (!defaultItem) return;
+
+  for (const av of affected) {
+    const items = equippedBySlot(av);
+    items.holding = defaultItem;
+    const svg = renderAvatarSvg(items);
+    const svgBlink = renderAvatarBlinkSvg(items);
+    await prisma.avatar.update({
+      where: { userId: av.userId },
+      data: { holdingItemId: defaultHolding.id, svg, svgBlink },
+    });
+  }
+
+  await prisma.item.deleteMany({ where: { id: { in: orphanIds } } });
+  console.log(
+    `cleanupOrphanHolding: sterse ${orphans.length} accesorii orphan (${orphans.map((o) => o.slug).join(', ')}), ${affected.length} avatare resetate la hd-00`,
+  );
+}
+
 async function main() {
   // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
   // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
   await seedChestConfig();
+
+  // Slot "holding" se evolueaza des — upsert mereu + cleanup orphan items.
+  await seedHoldingAlways();
+  await cleanupOrphanHolding();
 
   // Skip seed cand DB e deja populata — evita 100+ upsert-uri la fiecare
   // container restart. Cand adaugi item-uri/carduri/challenges noi in seed,
