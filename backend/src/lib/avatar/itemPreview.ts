@@ -11,10 +11,16 @@ import { ACCESSORY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
 
 // ViewBox per zona de atasare — decupaj strans in body coords pe ce conteaza
 // pentru fiecare slot. Folosit ca preview "card-size" in loot reveal.
+//
+// HAND-urile (balon, zmeu) sunt desenate sus, deasupra capului (cca y=50-310).
+// Decupajul HAND e ales sa cuprinda DOAR partea distinctiva (varful balonului/
+// zmeului), nu si sfoara care urca pana la pumn — altfel imaginea apare goala
+// cu o linie subtire in stanga. Sfoara ramane in avatarul mare (composer), aici
+// ne intereseaza doar "obiectul cucerit".
 const VIEWBOX_BY_ATTACHMENT: Record<AttachmentPoint, string> = {
   HEAD: '270 30 220 110',
-  NECK: '300 640 170 130',
-  HAND: '430 70 330 950',
+  NECK: '300 630 180 150',
+  HAND: '540 40 240 290',
   BACK: '180 540 410 420',
   FEET: '270 1240 220 170',
 };
@@ -36,6 +42,7 @@ export function renderItemPreviewSvg(item: {
   const fragment = ACCESSORY_PARTS[item.feature];
   if (!fragment) return null;
   const viewBox = VIEWBOX_BY_ATTACHMENT[item.attachmentPoint];
+  if (!viewBox) return null;
   const inner = inlineVars(fragment);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="100" height="100">${inner}</svg>`;
   return { svg, viewBox };

@@ -685,6 +685,50 @@ async function cleanupOrphanHolding() {
   );
 }
 
+// Sterge UserItem-uri inserate de iteratia initiala de backfill care a acordat
+// ownership pe accesorii din avataruri (vechiul cod nu distingea face/body de
+// accesorii). Cu noul cod, accesoriile (attachmentPoint != null, slug !=
+// default per slot) sunt drop-only — owner-ul lor trebuie sa vina exclusiv din
+// chesturi. Ruleaza intotdeauna; e idempotent (sterge doar randurile care
+// indeplinesc conditia).
+async function cleanupOrphanUserItems() {
+  const defaultSlugs = Object.values({
+    skin: 'skin-02',
+    hairColor: 'hc-02',
+    hair: 'h-02',
+    eyes: 'e-01',
+    mouth: 'm-01',
+    eyebrows: 'eb-03',
+    glasses: 'g-00',
+    earrings: 'a-00',
+    features: 'f-00',
+    bodyShape: 'bs-medium',
+    top: 't-01',
+    outerwear: 'ow-00',
+    bottom: 'b-01',
+    footwear: 'fw-01',
+    holding: 'hd-00',
+  });
+  const accessoryItems = await prisma.item.findMany({
+    where: {
+      attachmentPoint: { not: null },
+      slug: { notIn: defaultSlugs },
+    },
+    select: { id: true },
+  });
+  if (accessoryItems.length === 0) return;
+  const accessoryIds = accessoryItems.map((i) => i.id);
+  const del = await prisma.userItem.deleteMany({
+    where: {
+      source: 'default_avatar',
+      itemId: { in: accessoryIds },
+    },
+  });
+  if (del.count > 0) {
+    console.log(`cleanupOrphanUserItems: sters ${del.count} ownership-uri accesorii acordate prin echipare (acum drop-only)`);
+  }
+}
+
 // Backfill UserItem din avataruri existente si chesturi deschise. Ruleaza
 // intotdeauna (idempotent via @@unique pe (userId, itemId) + skipDuplicates).
 // Necesar dupa migratia user_item ca user-ii existenti sa-si detina item-urile
@@ -756,7 +800,8 @@ async function main() {
   await seedHoldingAlways();
   await cleanupOrphanHolding();
 
-  // Backfill UserItem mereu (idempotent) — pt useri existenti pre-migratie.
+  // Cleanup ownership orphan + Backfill UserItem (idempotent) — pt useri existenti.
+  await cleanupOrphanUserItems();
   await backfillUserItems();
 
   // Skip seed cand DB e deja populata — evita 100+ upsert-uri la fiecare
