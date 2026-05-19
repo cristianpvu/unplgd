@@ -6,8 +6,6 @@
 // (CC BY 4.0). Corpul, hainele si economia level-gated sunt originale.
 
 import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client';
-import { renderAvatarSvg, renderAvatarBlinkSvg } from '../src/lib/avatar/render.js';
-import { AVATAR_INCLUDE, equippedBySlot } from '../src/lib/avatar/catalog.js';
 
 const prisma = new PrismaClient();
 
@@ -623,28 +621,19 @@ async function cleanupOrphanHolding() {
   }
 
   const orphanIds = orphans.map((o) => o.id);
-  const affected = await prisma.avatar.findMany({
+  // Reseteaza holdingItemId la default + invalideaza svgBlink (nullable) pentru
+  // re-render lazy in GET /me/avatar. `svg` ramane pana la urmatorul PATCH din
+  // editor — coloana e NOT NULL si nu vrem dependinta de src/ in seed (runner
+  // Docker n-are src/, doar dist/). Vizual: avatarul poate ramane temporar cu
+  // accesoriul vechi randat in cache pana cand user-ul re-salveaza.
+  const reset = await prisma.avatar.updateMany({
     where: { holdingItemId: { in: orphanIds } },
-    include: AVATAR_INCLUDE,
+    data: { holdingItemId: defaultHolding.id, svgBlink: null },
   });
-
-  const defaultItem = await prisma.item.findUnique({ where: { id: defaultHolding.id } });
-  if (!defaultItem) return;
-
-  for (const av of affected) {
-    const items = equippedBySlot(av);
-    items.holding = defaultItem;
-    const svg = renderAvatarSvg(items);
-    const svgBlink = renderAvatarBlinkSvg(items);
-    await prisma.avatar.update({
-      where: { userId: av.userId },
-      data: { holdingItemId: defaultHolding.id, svg, svgBlink },
-    });
-  }
 
   await prisma.item.deleteMany({ where: { id: { in: orphanIds } } });
   console.log(
-    `cleanupOrphanHolding: sterse ${orphans.length} accesorii orphan (${orphans.map((o) => o.slug).join(', ')}), ${affected.length} avatare resetate la hd-00`,
+    `cleanupOrphanHolding: sterse ${orphans.length} accesorii orphan (${orphans.map((o) => o.slug).join(', ')}), ${reset.count} avatare resetate la hd-00`,
   );
 }
 
