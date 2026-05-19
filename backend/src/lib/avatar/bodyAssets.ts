@@ -130,22 +130,24 @@ export const BODY_PARTS = {
 //   - gat = banda intre y=540 si y=660, centrata pe x=381
 //   - cap = chin la ~y=540, varf cap la ~y=80 (head wrapeaza la y=-8)
 export const ACCESSORY_PARTS: Record<string, string> = {
-  // HAND - balon legat cu ata pana in mana (541, 995). Balon mare deasupra
-  // capului, ata curbata coboara prin lateralul corpului spre mana.
-  "balloon-blue": `<path d="M 541 995 Q 510 800 480 600 Q 460 470 460 390" fill="none" stroke="#7a7a7a" stroke-width="3"/>
-<polygon points="453,387 467,387 460,402" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
-<ellipse cx="460" cy="320" rx="60" ry="72" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="5"/>
-<ellipse cx="438" cy="290" rx="14" ry="22" fill="#ffffff" opacity="0.45"/>`,
-  // HAND - zmeu (kite) cu ata pana in mana, coada cu fundite colorate
-  "kite": `<path d="M 541 995 Q 510 770 488 540 Q 478 420 488 340" fill="none" stroke="#7a7a7a" stroke-width="2"/>
-<polygon points="488,200 565,340 488,480 411,340" fill="var(--acc, #5db3e8)" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
-<line x1="488" y1="200" x2="488" y2="480" stroke="#000" stroke-width="3" opacity="0.4"/>
-<line x1="411" y1="340" x2="565" y2="340" stroke="#000" stroke-width="3" opacity="0.4"/>
-<polygon points="488,260 535,340 488,420 441,340" fill="var(--acc2, #ffce54)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
-<path d="M 488 480 Q 498 525 488 570 Q 478 615 490 660" fill="none" stroke="#7a7a7a" stroke-width="2"/>
-<rect x="476" y="500" width="24" height="8" fill="#ed5564" stroke="#000" stroke-width="1.5"/>
-<rect x="472" y="555" width="32" height="8" fill="#5dc56a" stroke="#000" stroke-width="1.5"/>
-<rect x="478" y="615" width="22" height="8" fill="#9b59b6" stroke="#000" stroke-width="1.5"/>`,
+  // HAND - balon legat cu ata pana in mana (541, 995). Balon ridicat in
+  // dreapta-sus, in exteriorul corpului (x=640, in afara umarului) — ata
+  // curbata trece pe langa silueta avatarului, nu peste cap.
+  "balloon-blue": `<path d="M 541 995 Q 575 800 605 600 Q 630 470 640 380" fill="none" stroke="#7a7a7a" stroke-width="3"/>
+<polygon points="632,378 648,378 640,394" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<ellipse cx="640" cy="305" rx="55" ry="68" fill="var(--acc, #e85a4f)" stroke="#000" stroke-width="5"/>
+<ellipse cx="618" cy="278" rx="13" ry="20" fill="#ffffff" opacity="0.45"/>`,
+  // HAND - zmeu (kite) ridicat in dreapta-sus, in exterior; ata si coada
+  // vizibile pe langa silueta corpului.
+  "kite": `<path d="M 541 995 Q 585 800 620 600 Q 638 500 640 460" fill="none" stroke="#7a7a7a" stroke-width="2"/>
+<polygon points="640,230 700,345 640,460 580,345" fill="var(--acc, #5db3e8)" stroke="#000" stroke-width="5" stroke-linejoin="round"/>
+<line x1="640" y1="230" x2="640" y2="460" stroke="#000" stroke-width="3" opacity="0.4"/>
+<line x1="580" y1="345" x2="700" y2="345" stroke="#000" stroke-width="3" opacity="0.4"/>
+<polygon points="640,275 678,345 640,415 602,345" fill="var(--acc2, #ffce54)" stroke="#000" stroke-width="3" stroke-linejoin="round"/>
+<path d="M 640 460 Q 650 500 640 540 Q 630 580 644 620" fill="none" stroke="#7a7a7a" stroke-width="2"/>
+<rect x="628" y="480" width="24" height="8" fill="#ed5564" stroke="#000" stroke-width="1.5"/>
+<rect x="624" y="535" width="32" height="8" fill="#5dc56a" stroke="#000" stroke-width="1.5"/>
+<rect x="630" y="595" width="22" height="8" fill="#9b59b6" stroke="#000" stroke-width="1.5"/>`,
   // NECK - 3 variante de coliere pe gat (x=381, y=620-670)
   "necklace-gold": `<path d="M 335 660 Q 381 690 427 660" fill="none" stroke="var(--acc, #ddb436)" stroke-width="6" stroke-linecap="round"/>
 <circle cx="381" cy="685" r="9" fill="var(--acc, #ddb436)" stroke="#000" stroke-width="3"/>`,
