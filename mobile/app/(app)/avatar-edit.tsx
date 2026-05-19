@@ -39,11 +39,14 @@ export default function AvatarEdit() {
   });
   const noAvatarYet = error instanceof ApiError && error.status === 404;
   // Catalogul vine separat ca sa cache-uim aspectele pe termen lung — se
-  // schimba doar la deploy nou (seed), nu la fiecare salvare.
+  // schimba doar la deploy nou (seed). 5 min e suficient ca user-ul sa nu
+  // refetch-uiasca la fiecare deschidere a editorului, dar primeste itemele
+  // noi rezonabil de repede dupa un seed.
   const { data: catalog } = useQuery({
     queryKey: ['avatar', 'catalog'],
     queryFn: getAvatarCatalog,
-    staleTime: 1000 * 60 * 60, // 1h
+    staleTime: 1000 * 60 * 5, // 5 min
+    refetchOnMount: 'always', // force fresh la deschidere editor
   });
 
   const [picks, setPicks] = useState<AvatarPicks | null>(null);

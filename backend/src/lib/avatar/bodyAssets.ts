@@ -239,12 +239,11 @@ export const ACCESSORY_PARTS: Record<string, string> = {
 <path d="M 610.182 897.206 c 0 -30.4621 -24.6367 -55.0988 -55.0988 -55.0988 c -16.7481 0 -31.7971 7.5245 -41.8702 19.4181 c -10.0731 -11.8935 -25.1221 -19.4181 -41.8702 -19.4181 c -30.4621 0 -55.0988 24.6367 -55.0988 55.0988 c 0 16.0199 7.28178 29.2485 17.5977 40.4139 l 79.6141 76.4587 l 78.1578 -75.6091 c 9.95177 -10.4372 18.5685 -24.8795 18.5685 -41.2635 Z" fill="#ff6b6a"/>
 <path d="M 451.683 908.129 c -2.79135 0 -5.33997 -1.82045 -6.18951 -4.61179 c -0.242725 -0.606815 -4.61179 -16.2626 8.8595 -28.8844 c 5.21861 -4.85452 12.1363 -6.91769 20.0249 -5.94678 c 3.51952 0.485452 5.94678 3.64089 5.5827 7.16042 c -0.485452 3.51952 -3.64089 5.94678 -7.16042 5.5827 c -4.12635 -0.485452 -7.16042 0.364089 -9.58768 2.54862 c -7.76723 7.28178 -5.33997 15.8986 -5.33997 16.0199 c 0.970903 3.39817 -0.970903 6.91769 -4.36907 8.00995 c -0.606815 0 -1.21363 0.121363 -1.82045 0.121363 Z" fill="#ffffff"/>
 </g>`,
-  // HEAD/face - eye patch tip pirat, banda peste fata cu petic negru pe ochi stang
-  // Head wrap: x=21 y=-8 w=720 h=720, viewBox 762 → 720/762 scale.
-  // DiceBear Adventurer chin la svg_y=580 → body_y=540; ochii la svg_y≈400 →
-  // body_y = -8 + 400*0.945 ≈ 370. Ochiul stang (din POV avatar) e la x≈441.
-  "eye-patch": `<path d="M 240 340 Q 340 320 470 318 Q 570 326 610 388" fill="none" stroke="#1a1a1a" stroke-width="10" stroke-linecap="round"/>
-<ellipse cx="441" cy="370" rx="58" ry="44" fill="#1a1a1a" stroke="#000" stroke-width="5"/>
-<line x1="411" y1="354" x2="471" y2="386" stroke="#3a3a3a" stroke-width="3" stroke-linecap="round"/>
-<line x1="411" y1="386" x2="471" y2="354" stroke="#3a3a3a" stroke-width="3" stroke-linecap="round"/>`,
+  // HEAD/face - eye patch tip pirat. Pozitionat peste ochi pe la jumatatea fetei
+  // (chin la body_y≈540, deci centru fata ~y=420). Petic mare ca sa acopere
+  // ochiul DiceBear (care e proeminent). cx=400 il pune mai aproape de centru.
+  "eye-patch": `<path d="M 190 400 Q 320 370 470 372 Q 590 384 650 470" fill="none" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round"/>
+<ellipse cx="400" cy="430" rx="92" ry="72" fill="#1a1a1a" stroke="#000" stroke-width="6"/>
+<line x1="358" y1="405" x2="442" y2="455" stroke="#3a3a3a" stroke-width="4" stroke-linecap="round"/>
+<line x1="358" y1="455" x2="442" y2="405" stroke="#3a3a3a" stroke-width="4" stroke-linecap="round"/>`,
 };
