@@ -18,11 +18,13 @@ import { ApiError } from '../../src/api/client';
 import { Button } from '../../src/ui/Button';
 import { colors } from '../../src/theme/colors';
 
-// Sloturi care nu randeaza nimic pe corp inca (vezi CLAUDE.md known bugs:
-// bodyShape/outerwear/holding sunt no-op in body composer). Le ascundem din
-// editor pana cand vor avea asseturi reale; backend ramane sursa de adevar
-// (catalog API expune tot, FK-urile raman intacte).
-const HIDDEN_SLOTS: Slot[] = ['bodyShape', 'outerwear', 'holding'];
+// Sloturi care nu randeaza nimic pe corp inca (bodyShape, outerwear sunt
+// no-op in body composer — fara asseturi). Le ascundem din editor pana cand
+// vor avea SVG-uri. Backend ramane sursa de adevar (catalog API expune tot,
+// FK-urile raman intacte). Slotul `holding` ("Accesoriu") e activ — asseturile
+// pentru toate cele 5 puncte de atasare (HAND/NECK/FEET/BACK/HEAD) sunt
+// implementate in bodyAssets.ts.
+const HIDDEN_SLOTS: Slot[] = ['bodyShape', 'outerwear'];
 
 export default function AvatarEdit() {
   const qc = useQueryClient();

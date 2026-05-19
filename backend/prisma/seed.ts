@@ -240,11 +240,16 @@ const TYPES: SeedType[] = [
       { slug: 'hd-04', feature: 'balloon-blue', name: 'Balon', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
       { slug: 'hd-05', feature: 'plushie-bear', name: 'Ursulet de plus', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
       { slug: 'hd-06', feature: 'star-wand:f4c842:6b3a1e', name: 'Bagheta stea', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
+      { slug: 'hd-07', feature: 'sword', name: 'Sabie de cavaler', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
+      { slug: 'hd-08', feature: 'electric-guitar', name: 'Chitara electrica', level: 1, rarity: 'EPIC', attachmentPoint: 'HAND' },
+      { slug: 'hd-09', feature: 'roses', name: 'Buchet de trandafiri', level: 1, rarity: 'RARE', attachmentPoint: 'HAND' },
+      { slug: 'hd-50', feature: 'chocolate', name: 'Ciocolata', level: 1, rarity: 'COMMON', attachmentPoint: 'HAND' },
       // NECK
       { slug: 'hd-10', feature: 'scarf-stripe', name: 'Fular', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
       { slug: 'hd-11', feature: 'bowtie', name: 'Papion', level: 1, rarity: 'COMMON', attachmentPoint: 'NECK' },
       { slug: 'hd-12', feature: 'necklace-gold', name: 'Lantisor de aur', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
       { slug: 'hd-13', feature: 'necklace-heart', name: 'Pandant inima', level: 1, rarity: 'RARE', attachmentPoint: 'NECK' },
+      { slug: 'hd-14', feature: 'necklace-pendant', name: 'Colier cu inima', level: 1, rarity: 'EPIC', attachmentPoint: 'NECK' },
       // FEET
       { slug: 'hd-20', feature: 'ball-at-foot', name: 'Minge la picior', level: 1, rarity: 'COMMON', attachmentPoint: 'FEET' },
       { slug: 'hd-21', feature: 'puppy', name: 'Catelus prieten', level: 1, rarity: 'EPIC', attachmentPoint: 'FEET' },
@@ -256,6 +261,7 @@ const TYPES: SeedType[] = [
       { slug: 'hd-40', feature: 'cap-baseball', name: 'Sapca', level: 1, rarity: 'COMMON', attachmentPoint: 'HEAD' },
       { slug: 'hd-41', feature: 'halo', name: 'Aureola', level: 1, rarity: 'EPIC', attachmentPoint: 'HEAD' },
       { slug: 'hd-42', feature: 'crown', name: 'Coroana de rege', level: 1, rarity: 'LEGENDARY', exclusive: true, attachmentPoint: 'HEAD' },
+      { slug: 'hd-43', feature: 'eye-patch', name: 'Petic de pirat', level: 1, rarity: 'RARE', attachmentPoint: 'HEAD' },
     ],
   },
 ];
