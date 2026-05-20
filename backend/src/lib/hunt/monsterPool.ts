@@ -1,9 +1,6 @@
-// Pool de monstri generici — folosit cand parcul nu are ParkContent generat
-// inca de Claude (faza 3). Selectie suficient de variata ca o sesiune sa nu
-// apara repetitiva chiar si fara AI.
-//
-// themeTags ajuta selectorul de challenge-uri sa potriveasca tematici (un
-// monstru-pasare merge mai bine cu ghicitori despre cer/zbor).
+// Pool de monstri generici, hardcodat. DEPRECATED — sursa de adevar a devenit
+// MonsterTemplate (DB) cu domain canonic. Acest fisier va disparea cand
+// spawn.ts e refactorizat sa citeasca din DB (vezi Pas 4 din plan).
 
 export type GenericMonster = {
   slug: string;

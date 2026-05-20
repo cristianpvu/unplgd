@@ -268,32 +268,37 @@ model DailyInteraction {
 // in card-detail. `minAge` filtreaza speciile potrivite pt copilul curent;
 // `unlockLevel` permite carduri "rare" deblocate la level mare.
 model PetSpecies {
-  id            String   @id @default(cuid())
-  slug          String   @unique
-  name          String
-  voiceId       String
-  systemHint    String
-  isDefault     Boolean  @default(false)
-  imagePath     String?
-  shortLore     String   @default("")
-  tone          String   @default("prietenos")
-  catchphrases  String[] @default([])
-  interests     String[] @default([])
-  minAge        Int      @default(6)
-  unlockLevel   Int      @default(1)
+  id               String   @id @default(cuid())
+  slug             String   @unique
+  name             String
+  voiceId          String
+  systemHint       String
+  isDefault        Boolean  @default(false)
+  imagePath        String?
+  shortLore        String   @default("")
+  tone             String   @default("prietenos")
+  catchphrases     String[] @default([])
+  interests        String[] @default([])
+  // Domenii de cultura generala in care specia "se pricepe" — match exact
+  // pe HuntChallenge.domain. Cand un challenge are domain ∈ expertiseDomains
+  // si specia e prezenta in party, pet-ul ofera hint subtil. Lista libera —
+  // adaugare domeniu nou = UPDATE in DB.
+  expertiseDomains String[] @default([])
+  minAge           Int      @default(6)
+  unlockLevel      Int      @default(1)
   // RVC voice conversion: URL la .zip cu .pth + .index (HuggingFace, voice-models.com).
   // Daca null → TTS-ul se livreaza direct, fara conversie. Daca setat → backendul
   // ruleaza pipeline 2-pasi (TTS romana → Replicate RVC) si livreaza vocea
   // personajului. Vezi lib/ai/voiceConvert.ts.
-  rvcModelUrl   String?
+  rvcModelUrl      String?
   // Semitone shift aplicat in RVC. Pt voce grava (Vader) -3 / -4. Pt voce de
   // copil (Stitch) +2 / +3. 0 = fara shift.
-  rvcPitchShift Int      @default(0)
+  rvcPitchShift    Int      @default(0)
   // ElevenLabs voice id per specie (override la ELEVENLABS_VOICE_ID din env).
   // Cand setat, sintetiza folosind aceasta voce (chiar daca TTS_PROVIDER=edge
   // global). Util pt impersonari: Vader = voce dark masculine din Voice Library,
   // Stitch = voce expresiva, etc.
-  elevenVoiceId String?
+  elevenVoiceId    String?
 
   pets  Pet[]
   cards NfcPetCard[]
@@ -317,6 +322,8 @@ model Pet {
 
   user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   species PetSpecies @relation(fields: [speciesId], references: [id])
+
+  huntHints HuntChallengeRun[]
 }
 
 // Card NFC fizic colectabil. UID-ul e hardcodat de fabrica si unic global.
@@ -493,32 +500,40 @@ model Park {
   lastFetchedAt DateTime @default(now())
   createdAt     DateTime @default(now())
 
-  content  ParkContent?
   sessions HuntSession[]
 
   @@index([bboxMinLat, bboxMaxLat])
   @@index([bboxMinLng, bboxMaxLng])
 }
 
-// Continut tematic generat de Claude per parc, cache-uit. Refresh manual sau
-// la 30 zile. monsters[] e JSON cu schema:
-//   [{ slug, name, type: 'green'|'yellow'|'red'|'gold', loreShort, themeTags[] }]
-// challenges[] sunt referente la HuntChallenge.id-uri tematice (ex: parc cu
-// lac → ghicitori despre apa).
-model ParkContent {
-  id           String   @id @default(cuid())
-  parkId       String   @unique
-  monsters     Json
-  themeSummary String // ex: "parc urban cu lac mare, salcii, banci, rate"
-  generatedAt  DateTime @default(now())
-  refreshedAt  DateTime @default(now())
+// Bestiar static — sursa de adevar pentru ce monstri pot aparea in hunt.
+// Spawn-ul citeste din acest tabel filtrand pe tier (green/yellow/red/gold).
+// `domain` = axa de cultura generala (geografie, istorie, stiinte-naturii...)
+// si determina pool-ul de intrebari trase la engage + ce pet din party poate
+// soptesste hint (cel cu `domain` ∈ expertiseDomains).
+// `difficulty` 1-3 = dificultatea intrebarilor preferate; in general
+// corelata cu tier dar setabila separat.
+// Adaugare monstru nou = INSERT in DB, fara modificari de cod.
+model MonsterTemplate {
+  id         String      @id @default(cuid())
+  slug       String      @unique
+  name       String
+  domain     String
+  difficulty Int         @default(1)
+  tier       MonsterType
+  loreShort  String      @default("")
+  imagePath  String?
+  active     Boolean     @default(true)
+  createdAt  DateTime    @default(now())
 
-  park Park @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  @@index([active, tier])
+  @@index([domain])
 }
 
-// Bank global de challenge-uri. seed-uite initial cu ~50 ghicitori, ~10 photo
-// quests, ~10 counting quests. Tematice (themeTags[]) ca selectorul sa
-// gaseasca pe potriva contextului parcului.
+// Bank global de challenge-uri. `domain` = subiect canonic (geografie,
+// istorie, stiinte-naturii...) folosit pentru match pe MonsterTemplate.domain
+// si pentru hint-ul pet-ului. `themeTags` ramane aroma fina opt (ex: "apa",
+// "dinozauri") fara legatura cu tema parcului.
 enum ChallengeType {
   mcq // grila cu 4 variante, comparatie text exact
   riddle // text liber, deprecated — pastrat pt compat istoric
@@ -544,8 +559,14 @@ model HuntChallenge {
   // Praguri de varsta — selector ia dupa birthDate. Inclusiv-inclusiv.
   ageMin     Int
   ageMax     Int
-  // Tag-uri tematice (apa/padure/animale/...) pt potrivire cu themeTags-urile
-  // monstrului. Stocate ca CSV simplu pt query rapid.
+  // Subiect canonic (geografie, istorie, stiinte-naturii, fizica-chimie,
+  // spatiu, corp-uman, limba-romana, literatura, arta-muzica, matematica,
+  // tehnologie, viata-cotidiana). Match exact pe MonsterTemplate.domain la
+  // engage si pe PetSpecies.expertiseDomains la hint. Adaugare domeniu nou
+  // = doar INSERT cu domain="...", fara cod atins.
+  domain     String        @default("")
+  // Aroma fina optionala (ex: "apa", "dinozauri", "razboi-mondial"). Nu
+  // afecteaza matching-ul principal — folosit doar pt filtre fine la nevoie.
   themeTags  String        @default("")
   difficulty Int           @default(1) // 1=usor, 2=mediu, 3=greu
   active     Boolean       @default(true)
@@ -554,6 +575,7 @@ model HuntChallenge {
   runs HuntChallengeRun[]
 
   @@index([type, ageMin, ageMax, active])
+  @@index([domain, difficulty, active])
 }
 
 enum HuntStatus {
@@ -665,8 +687,8 @@ model HuntMonster {
   // — in practica setat la spawn.
   teamId    String?
   type      MonsterType
-  // Slug-ul si meta din ParkContent (e.g. "spirit-lac"). Cache local pe monster
-  // sa nu necesite join la fiecare query.
+  // Slug-ul si meta cache-uite din MonsterTemplate (e.g. "spirit-lac") la
+  // spawn — pastrate denormalizat pe monstru sa nu necesite join la query.
   slug      String
   name      String
   loreShort String
@@ -698,22 +720,30 @@ enum ChallengeOutcome {
 }
 
 model HuntChallengeRun {
-  id          String           @id @default(cuid())
-  monsterId   String
-  userId      String
-  challengeId String
-  outcome     ChallengeOutcome @default(PENDING)
+  id           String           @id @default(cuid())
+  monsterId    String
+  userId       String
+  challengeId  String
+  outcome      ChallengeOutcome @default(PENDING)
   // Raspunsul brut (text / photoKey GCS / numar). Salvat pentru audit + AI
   // scoring asincron.
-  answer      String?
+  answer       String?
   // Feedback scurt de la Claude pentru riddle/photo ("aproape, era X").
-  feedback    String?
-  startedAt   DateTime         @default(now())
-  finishedAt  DateTime?
+  feedback     String?
+  // Hint subtil generat la engage de pet-ul unui coleg din party care are
+  // domain-ul intrebarii in expertiseDomains. NULL daca niciun pet din echipa
+  // nu match-uieste. Idempotent — generat o singura data per run.
+  petHint      String?
+  // FK la Pet-ul care a "soptit" — pt UI ("Buddy al lui Maria iti spune..."
+  // si pt atribuirea avatarului in chenarul de hint).
+  petHintPetId String?
+  startedAt    DateTime         @default(now())
+  finishedAt   DateTime?
 
-  monster   HuntMonster   @relation(fields: [monsterId], references: [id], onDelete: Cascade)
-  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  challenge HuntChallenge @relation(fields: [challengeId], references: [id])
+  monster    HuntMonster   @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge  HuntChallenge @relation(fields: [challengeId], references: [id])
+  petHintPet Pet?          @relation(fields: [petHintPetId], references: [id], onDelete: SetNull)
 
   @@unique([monsterId, userId, challengeId])
   @@index([monsterId, outcome])
@@ -889,23 +919,23 @@ model ChestTierConfig {
 
   // Vizual config — alimenteaza UI-ul de pe mobil fara hardcoded TIER_COLORS.
   // Adaugare tier nou = INSERT row aici + 3 SVG-uri in assets/chests/.
-  label               String?    // ex. "Bronz", "Argint" (RO, afisat in card)
-  sortOrder           Int        @default(0)
-  bgColor             String?    // backgroundul tile-ului de loot
-  darkColor           String?    // border/shadow
-  fgColor             String?    // text color pe bg
-  glowColor           String?    // burst ring + light rays
+  label       String? // ex. "Bronz", "Argint" (RO, afisat in card)
+  sortOrder   Int     @default(0)
+  bgColor     String? // backgroundul tile-ului de loot
+  darkColor   String? // border/shadow
+  fgColor     String? // text color pe bg
+  glowColor   String? // burst ring + light rays
   // Path-uri relative din backend/assets/chests/ — seed citeste fisierele si
   // copiaza continutul SVG inline in mobile response (la endpoint
   // GET /chests/tiers). User-ul poate edita fisierele si re-rula seed.
-  miniSvgPath         String?
-  bodySvgPath         String?
-  lidSvgPath          String?
+  miniSvgPath String?
+  bodySvgPath String?
+  lidSvgPath  String?
   // Continutul SVG cache-uit dupa citirea fisierelor (sursa de adevar runtime).
   // NULL pana la prima rulare a seed-ului dupa migratia visuals.
-  miniSvg             String?
-  bodySvg             String?
-  lidSvg              String?
+  miniSvg     String?
+  bodySvg     String?
+  lidSvg      String?
 }
 
 // XP bonus la deschidere pentru fiecare item duplicat (shards). Mai rar = mai
