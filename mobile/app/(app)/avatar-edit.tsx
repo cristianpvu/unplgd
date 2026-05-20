@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Tex
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SvgXml } from 'react-native-svg';
 import { AvatarHead } from '../../src/avatar/AvatarHead';
 import type { AvatarPicks, Slot } from '../../src/avatar/catalog';
 import { thumbnailUri } from '../../src/avatar/thumbnails';
@@ -192,6 +193,8 @@ export default function AvatarEdit() {
                       style={styles.thumb}
                       resizeMode="contain"
                     />
+                  ) : item.previewSvg ? (
+                    <SvgXml xml={item.previewSvg} width={64} height={64} style={styles.thumb} />
                   ) : bodyColor ? (
                     <View style={[styles.swatch, { backgroundColor: `#${bodyColor}` }]} />
                   ) : (

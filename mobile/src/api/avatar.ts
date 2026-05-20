@@ -19,6 +19,10 @@ export type CatalogItem = {
   // per slot; restul accesoriilor — false pana sunt picate dintr-un cufar).
   // Default true daca nu vine in payload (backend vechi) pt back-compat.
   owned?: boolean;
+  // SVG mic cropat pe regiunea accesoriului (doar pentru iteme cu
+  // attachmentPoint). Lipseste pentru iteme face/body si pentru defaultul
+  // slot-ului (ex. "Fara accesoriu").
+  previewSvg?: string | null;
 };
 
 export type CatalogType = {
