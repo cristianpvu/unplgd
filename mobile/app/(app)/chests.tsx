@@ -13,56 +13,88 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
+import { SvgXml } from 'react-native-svg';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  listChestTiers,
   listChests,
   openChest,
   type ChestDto,
   type ChestLoot,
   type ChestTier,
-  type Rarity,
+  type ChestTierVisual,
 } from '../../src/api/chests';
+import {
+  LootRevealInline,
+  resolveTier,
+  TIER_LABEL,
+  type ResolvedTier,
+} from '../../src/chests/reveal';
 import { colors } from '../../src/theme/colors';
 
-// Cufere — lista cu neopenate primele si modal de unboxing cu reveal animat.
-// XP-ul se acorda la server side la deschidere (idempotent prin sourceId).
+// Cufere — lista cu neopenate primele si reveal animat (stil Clash Royale) la
+// deschidere. Vizualurile (SVG body/lid/mini + culori) vin din DB via
+// /chests/tiers; reveal-ul e partajat cu homepage (src/chests/reveal.tsx).
 
-const TIER_LABEL: Record<ChestTier, string> = {
-  BRONZE: 'Bronz',
-  SILVER: 'Argint',
-  GOLD: 'Aur',
-  PLATINUM: 'Platina',
-  DIAMOND: 'Diamant',
-  CHAMPION: 'Campion',
-};
+function formatDate(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / dayMs);
+  if (diffDays <= 0) return 'azi';
+  if (diffDays === 1) return 'ieri';
+  if (diffDays < 7) return `acum ${diffDays} zile`;
+  return d.toLocaleDateString('ro-RO', { day: 'numeric', month: 'short' });
+}
 
-const TIER_COLORS: Record<ChestTier, { bg: string; fg: string; glow: string }> = {
-  BRONZE:   { bg: '#C68B59', fg: '#4A2C12', glow: '#FFD7A8' },
-  SILVER:   { bg: '#B8C3CC', fg: '#1F3344', glow: '#E6EDF2' },
-  GOLD:     { bg: '#F2C744', fg: '#5B3F00', glow: '#FFE899' },
-  PLATINUM: { bg: '#7FE0D0', fg: '#0C3F38', glow: '#C2FFF4' },
-  DIAMOND:  { bg: '#9AB3FF', fg: '#1B2870', glow: '#D3DEFF' },
-  CHAMPION: { bg: '#FF7A59', fg: '#FFF7E0', glow: '#FFD9C2' },
-};
-
-const RARITY_COLORS: Record<Rarity, string> = {
-  COMMON: '#A6AAB8',
-  RARE: '#5BCEFA',
-  EPIC: '#B47EE7',
-  LEGENDARY: '#FFCC66',
-};
+// Glyph cufar randat din SVG-ul `mini` (cufar complet) — fallback la o pastila
+// colorata daca DB nu a livrat SVG-ul. Folosit in ambele liste.
+function ChestGlyph({ visual, size }: { visual: ResolvedTier; size: number }) {
+  if (visual.miniSvg) {
+    return <SvgXml xml={visual.miniSvg} width={size} height={Math.round(size * 0.92)} />;
+  }
+  return (
+    <View
+      style={{
+        width: size * 0.8,
+        height: size * 0.66,
+        borderRadius: size * 0.16,
+        backgroundColor: visual.bg,
+        borderWidth: 2,
+        borderColor: visual.dark,
+      }}
+    />
+  );
+}
 
 export default function ChestsScreen() {
   const qc = useQueryClient();
   const chestsQ = useQuery({ queryKey: ['chests'], queryFn: listChests });
-  const [opening, setOpening] = useState<{ chest: ChestDto; loot: ChestLoot } | null>(null);
+  const tiersQ = useQuery({
+    queryKey: ['chestTiers'],
+    queryFn: listChestTiers,
+    staleTime: 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
+  });
+  const tierByTier = useMemo<Partial<Record<ChestTier, ChestTierVisual>>>(() => {
+    const out: Partial<Record<ChestTier, ChestTierVisual>> = {};
+    for (const t of tiersQ.data?.tiers ?? []) out[t.tier] = t;
+    return out;
+  }, [tiersQ.data]);
+
+  const [reveal, setReveal] = useState<{
+    tier: ChestTier;
+    loot: ChestLoot;
+    visual: ResolvedTier;
+  } | null>(null);
 
   const openMut = useMutation({
     mutationFn: (chestId: string) => openChest(chestId),
     onSuccess: (data, chestId) => {
       const chest = chestsQ.data?.chests.find((c) => c.id === chestId);
       if (chest) {
-        setOpening({ chest, loot: data.loot });
+        setReveal({ tier: chest.tier, loot: data.loot, visual: resolveTier(chest.tier, tierByTier) });
       }
       qc.invalidateQueries({ queryKey: ['chests'] });
       qc.invalidateQueries({ queryKey: ['me'] });
@@ -91,7 +123,9 @@ export default function ChestsScreen() {
         </View>
       ) : chests.length === 0 ? (
         <View style={styles.center}>
-          <Text style={styles.bigEmoji}>📦</Text>
+          <View style={styles.emptyGlyph}>
+            <ChestGlyph visual={resolveTier('GOLD', tierByTier)} size={88} />
+          </View>
           <Text style={styles.emptyTitle}>Inca nu ai cufere</Text>
           <Text style={styles.emptySub}>
             Joaca Last Phone Standing ca sa primesti cufere cu accesorii si XP.
@@ -104,51 +138,90 @@ export default function ChestsScreen() {
           </Pressable>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollBody}>
+        <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
           {unopened.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>De deschis ({unopened.length})</Text>
+            <View style={styles.section}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>De deschis</Text>
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{unopened.length}</Text>
+                </View>
+              </View>
               {unopened.map((c) => (
                 <ChestRow
                   key={c.id}
                   chest={c}
+                  visual={resolveTier(c.tier, tierByTier)}
                   opening={openMut.isPending && openMut.variables === c.id}
                   onOpen={() => openMut.mutate(c.id)}
                 />
               ))}
-            </>
+            </View>
           )}
           {opened.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: unopened.length > 0 ? 18 : 0 }]}>
-                Istoric ({opened.length})
-              </Text>
-              {opened.map((c) => (
-                <OpenedRow key={c.id} chest={c} onPeek={() => c.loot && setOpening({ chest: c, loot: c.loot })} />
-              ))}
-            </>
+            <View style={styles.section}>
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Istoric</Text>
+                <View style={[styles.countPill, styles.countPillMuted]}>
+                  <Text style={[styles.countPillText, { color: colors.textMuted }]}>
+                    {opened.length}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.historyCard}>
+                {opened.map((c, i) => (
+                  <OpenedRow
+                    key={c.id}
+                    chest={c}
+                    visual={resolveTier(c.tier, tierByTier)}
+                    last={i === opened.length - 1}
+                    onPeek={() =>
+                      c.loot &&
+                      setReveal({
+                        tier: c.tier,
+                        loot: c.loot,
+                        visual: resolveTier(c.tier, tierByTier),
+                      })
+                    }
+                  />
+                ))}
+              </View>
+            </View>
           )}
         </ScrollView>
       )}
 
-      <UnboxingModal
-        opening={opening}
-        onClose={() => setOpening(null)}
-      />
+      <Modal
+        visible={reveal !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReveal(null)}
+      >
+        <Stack.Screen options={{ headerShown: false }} />
+        {reveal && (
+          <LootRevealInline
+            loot={reveal.loot}
+            tier={reveal.tier}
+            visual={reveal.visual}
+            onDismiss={() => setReveal(null)}
+          />
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
 
 function ChestRow({
   chest,
+  visual,
   opening,
   onOpen,
 }: {
   chest: ChestDto;
+  visual: ResolvedTier;
   opening: boolean;
   onOpen: () => void;
 }) {
-  const c = TIER_COLORS[chest.tier];
   // Pulse animation pe cufere neopenate ca sa-i atraga atentia.
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -171,17 +244,23 @@ function ChestRow({
     anim.start();
     return () => anim.stop();
   }, [pulse]);
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.05] });
 
   return (
     <Pressable
       onPress={onOpen}
       disabled={opening}
-      style={({ pressed }) => [styles.chestCard, pressed && { opacity: 0.9 }]}
+      style={({ pressed }) => [
+        styles.chestCard,
+        { borderColor: visual.glow },
+        pressed && { opacity: 0.92, transform: [{ scale: 0.99 }] },
+      ]}
     >
-      <Animated.View style={[styles.chestIcon, { backgroundColor: c.bg, transform: [{ scale }] }]}>
-        <Text style={[styles.chestIconText, { color: c.fg }]}>🎁</Text>
-      </Animated.View>
+      <View style={[styles.chestIconWrap, { backgroundColor: visual.glow }]}>
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <ChestGlyph visual={visual} size={56} />
+        </Animated.View>
+      </View>
       <View style={styles.chestInfo}>
         <Text style={styles.chestTier}>Cufar {TIER_LABEL[chest.tier]}</Text>
         <Text style={styles.chestSub}>
@@ -189,204 +268,50 @@ function ChestRow({
         </Text>
       </View>
       {opening ? (
-        <ActivityIndicator color={c.fg} />
+        <ActivityIndicator color={visual.dark} style={{ marginRight: 6 }} />
       ) : (
-        <View style={[styles.openBadge, { backgroundColor: c.fg }]}>
-          <Text style={[styles.openBadgeText, { color: c.bg }]}>Deschide</Text>
+        <View style={[styles.openBadge, { backgroundColor: visual.dark }]}>
+          <Text style={styles.openBadgeText}>Deschide</Text>
         </View>
       )}
     </Pressable>
   );
 }
 
-function OpenedRow({ chest, onPeek }: { chest: ChestDto; onPeek: () => void }) {
-  const c = TIER_COLORS[chest.tier];
+function OpenedRow({
+  chest,
+  visual,
+  last,
+  onPeek,
+}: {
+  chest: ChestDto;
+  visual: ResolvedTier;
+  last: boolean;
+  onPeek: () => void;
+}) {
   const itemCount = chest.loot?.items.length ?? 0;
   const xp = chest.loot?.xp ?? 0;
   return (
     <Pressable
       onPress={onPeek}
-      style={({ pressed }) => [styles.chestCardOpened, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [
+        styles.openedRow,
+        !last && styles.openedRowDivider,
+        pressed && { backgroundColor: colors.cardAlt },
+      ]}
     >
-      <View style={[styles.chestIconSmall, { backgroundColor: c.bg }]}>
-        <Text style={[styles.chestIconText, { color: c.fg, fontSize: 18 }]}>🎁</Text>
+      <View style={[styles.openedIconWrap, { backgroundColor: visual.glow }]}>
+        <ChestGlyph visual={visual} size={34} />
       </View>
       <View style={styles.chestInfo}>
-        <Text style={styles.chestTierSm}>{TIER_LABEL[chest.tier]}</Text>
+        <Text style={styles.chestTierSm}>Cufar {TIER_LABEL[chest.tier]}</Text>
         <Text style={styles.chestSub}>
-          {itemCount} {itemCount === 1 ? 'item' : 'iteme'} · +{xp} XP
+          {itemCount > 0 ? `${itemCount} ${itemCount === 1 ? 'item' : 'iteme'} · ` : ''}+{xp} XP
         </Text>
       </View>
+      <Text style={styles.openedDate}>{formatDate(chest.openedAt)}</Text>
       <Text style={styles.peekArrow}>›</Text>
     </Pressable>
-  );
-}
-
-// ---------- Unboxing modal ----------
-
-function UnboxingModal({
-  opening,
-  onClose,
-}: {
-  opening: { chest: ChestDto; loot: ChestLoot } | null;
-  onClose: () => void;
-}) {
-  const [revealed, setRevealed] = useState(false);
-  const shake = useRef(new Animated.Value(0)).current;
-  const open = useRef(new Animated.Value(0)).current;
-  const burst = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!opening) {
-      setRevealed(false);
-      shake.setValue(0);
-      open.setValue(0);
-      burst.setValue(0);
-      return;
-    }
-    // Secventa: shake 0.8s → open 0.4s → burst 0.5s → reveal list
-    Animated.sequence([
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(shake, { toValue: 1, duration: 80, useNativeDriver: true }),
-          Animated.timing(shake, { toValue: -1, duration: 80, useNativeDriver: true }),
-        ]),
-        { iterations: 5 },
-      ),
-      Animated.timing(open, { toValue: 1, duration: 380, useNativeDriver: true, easing: Easing.out(Easing.back(2)) }),
-      Animated.timing(burst, { toValue: 1, duration: 500, useNativeDriver: true, easing: Easing.out(Easing.cubic) }),
-    ]).start(() => setRevealed(true));
-  }, [opening, shake, open, burst]);
-
-  if (!opening) return null;
-  const c = TIER_COLORS[opening.chest.tier];
-  const rotate = shake.interpolate({ inputRange: [-1, 1], outputRange: ['-6deg', '6deg'] });
-  const lidTranslate = open.interpolate({ inputRange: [0, 1], outputRange: [0, -40] });
-  const lidRotate = open.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-30deg'] });
-  const burstScale = burst.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1.4] });
-  const burstOpacity = burst.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0, 0.7, 0] });
-
-  return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={[styles.modalBg, { backgroundColor: c.fg }]}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <View style={styles.modalCenter}>
-          {/* Burst halo */}
-          <Animated.View
-            style={[
-              styles.burst,
-              {
-                backgroundColor: c.glow,
-                opacity: burstOpacity,
-                transform: [{ scale: burstScale }],
-              },
-            ]}
-          />
-
-          {/* Chest */}
-          <Animated.View style={{ transform: [{ rotate }] }}>
-            <View style={[styles.chestBody, { backgroundColor: c.bg }]}>
-              <Text style={[styles.chestBigIcon, { color: c.fg }]}>🎁</Text>
-            </View>
-            <Animated.View
-              style={[
-                styles.chestLid,
-                { backgroundColor: c.bg },
-                {
-                  transform: [
-                    { translateY: lidTranslate },
-                    { rotate: lidRotate },
-                  ],
-                },
-              ]}
-            />
-          </Animated.View>
-
-          {/* Tier title */}
-          <Text style={[styles.modalTier, { color: '#FFFFFF' }]}>
-            Cufar {TIER_LABEL[opening.chest.tier]}
-          </Text>
-        </View>
-
-        {revealed && (
-          <View style={styles.lootPanel}>
-            <LootList loot={opening.loot} />
-            <Pressable
-              onPress={onClose}
-              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.85 }]}
-            >
-              <Text style={styles.closeBtnText}>Gata</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
-    </Modal>
-  );
-}
-
-function LootList({ loot }: { loot: ChestLoot }) {
-  const fadeIn = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(fadeIn, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-  }, [fadeIn]);
-  const allDupes = useMemo(
-    () => loot.duplicates.reduce((s, d) => s + d.shardsXp, 0),
-    [loot.duplicates],
-  );
-  return (
-    <Animated.View style={{ opacity: fadeIn, gap: 12 }}>
-      <View style={styles.xpRow}>
-        <Text style={styles.xpAmount}>+{loot.xp} XP</Text>
-        {allDupes > 0 && (
-          <Text style={styles.xpHint}>(inclus {allDupes} XP din duplicate)</Text>
-        )}
-      </View>
-
-      {loot.items.length > 0 && (
-        <View style={styles.lootGrid}>
-          {loot.items.map((it) => (
-            <View
-              key={it.itemId}
-              style={[
-                styles.lootCard,
-                { borderColor: RARITY_COLORS[it.rarity] },
-              ]}
-            >
-              <View
-                style={[
-                  styles.rarityBadge,
-                  { backgroundColor: RARITY_COLORS[it.rarity] },
-                ]}
-              >
-                <Text style={styles.rarityText}>{it.rarity}</Text>
-              </View>
-              <Text style={styles.lootName} numberOfLines={2}>
-                {it.name}
-              </Text>
-            </View>
-          ))}
-        </View>
-      )}
-
-      {loot.duplicates.length > 0 && (
-        <View style={styles.dupeBox}>
-          <Text style={styles.dupeTitle}>Duplicate convertite in XP</Text>
-          {loot.duplicates.map((d) => (
-            <Text key={d.slug} style={styles.dupeItem}>
-              {d.name} → +{d.shardsXp} XP
-            </Text>
-          ))}
-        </View>
-      )}
-
-      {loot.items.length === 0 && loot.duplicates.length === 0 && (
-        <Text style={styles.dupeItem}>Doar XP — fara iteme de data asta.</Text>
-      )}
-    </Animated.View>
   );
 }
 
@@ -406,66 +331,104 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 18, fontWeight: '800' },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 32 },
-  bigEmoji: { fontSize: 64 },
+  emptyGlyph: {
+    width: 132,
+    height: 132,
+    borderRadius: 36,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
   emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
-  emptySub: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+  emptySub: { color: colors.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
 
-  scrollBody: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 32, gap: 10 },
+  scrollBody: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 36, gap: 22 },
+  section: { gap: 12 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionTitle: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
     textTransform: 'uppercase',
-    paddingBottom: 6,
   },
+  countPill: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 7,
+    borderRadius: 11,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  countPillMuted: { backgroundColor: colors.cardAlt, borderWidth: 1, borderColor: colors.border },
+  countPillText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
 
+  // De deschis — card hero
   chestCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 14,
-  },
-  chestCardOpened: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.cardAlt,
-    borderRadius: 14,
+    borderRadius: 20,
     padding: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
+    borderWidth: 1.5,
+    gap: 14,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  chestIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+  chestIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chestIconSmall: {
-    width: 40,
-    height: 40,
+  chestInfo: { flex: 1, gap: 3 },
+  chestTier: { color: colors.text, fontSize: 16, fontWeight: '800' },
+  chestTierSm: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  chestSub: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  openBadge: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999 },
+  openBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+
+  // Istoric — card grupat cu randuri
+  historyCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 1,
+  },
+  openedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 12,
+  },
+  openedRowDivider: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  openedIconWrap: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chestIconText: { fontSize: 30 },
-  chestInfo: { flex: 1, gap: 2 },
-  chestTier: { color: colors.text, fontSize: 16, fontWeight: '800' },
-  chestTierSm: { color: colors.text, fontSize: 14, fontWeight: '700' },
-  chestSub: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
-  peekArrow: { color: colors.textMuted, fontSize: 22, fontWeight: '700' },
-  openBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  openBadgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
+  openedDate: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
+  peekArrow: { color: colors.textMuted, fontSize: 22, fontWeight: '700', marginLeft: 2 },
 
   primaryBtn: {
     marginTop: 16,
@@ -475,91 +438,4 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   primaryBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-
-  // Modal
-  modalBg: { flex: 1, paddingTop: 60 },
-  modalCenter: { alignItems: 'center', paddingTop: 20 },
-  chestBody: {
-    width: 160,
-    height: 110,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chestLid: {
-    position: 'absolute',
-    top: -22,
-    left: 0,
-    right: 0,
-    height: 28,
-    borderRadius: 12,
-  },
-  chestBigIcon: { fontSize: 60 },
-  burst: {
-    position: 'absolute',
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    top: -40,
-    alignSelf: 'center',
-  },
-  modalTier: {
-    marginTop: 18,
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-
-  lootPanel: {
-    marginTop: 16,
-    marginHorizontal: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 22,
-    padding: 18,
-    flex: 1,
-    maxHeight: '60%',
-    gap: 12,
-  },
-  xpRow: { alignItems: 'center', gap: 4 },
-  xpAmount: { color: colors.accent, fontSize: 28, fontWeight: '900' },
-  xpHint: { color: colors.textMuted, fontSize: 11, fontWeight: '600' },
-  lootGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  lootCard: {
-    width: '48%',
-    backgroundColor: colors.cardAlt,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 2,
-    gap: 6,
-    alignItems: 'center',
-  },
-  rarityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  rarityText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  lootName: { color: colors.text, fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  dupeBox: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 12,
-    padding: 12,
-    gap: 4,
-  },
-  dupeTitle: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.4, textTransform: 'uppercase', marginBottom: 4 },
-  dupeItem: { color: colors.text, fontSize: 13, fontWeight: '600' },
-
-  closeBtn: {
-    marginTop: 'auto',
-    backgroundColor: colors.accent,
-    paddingVertical: 14,
-    borderRadius: 999,
-    alignItems: 'center',
-  },
-  closeBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
 });
