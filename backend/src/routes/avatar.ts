@@ -13,7 +13,7 @@ import {
   type Slot,
 } from '../lib/avatar/catalog.js';
 import { renderAvatarBlinkSvg, renderAvatarSvg } from '../lib/avatar/render.js';
-import { renderAccessoryPreview } from '../lib/avatar/body.js';
+import { renderItemPreviewSvg } from '../lib/avatar/itemPreview.js';
 
 export const avatarRouter = Router();
 
@@ -274,8 +274,10 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
           // Preview SVG doar pentru accesorii (attachmentPoint != null). Iteme
           // face/body au deja swatch / thumbnail DiceBear in mobil; accesoriile
           // au nevoie de un SVG mic cu fragmentul propriu cropat.
-          const previewSvg =
-            item.attachmentPoint !== null ? renderAccessoryPreview(item.feature) : null;
+          const preview = renderItemPreviewSvg({
+            feature: item.feature,
+            attachmentPoint: item.attachmentPoint,
+          });
           return {
             slug: item.slug,
             name: item.name,
@@ -283,7 +285,7 @@ avatarRouter.get('/avatar/catalog', requireAuth, async (req, res, next) => {
             level: item.level,
             locked: item.level > user.level,
             owned,
-            previewSvg,
+            previewSvg: preview?.svg ?? null,
           };
         }),
       };
