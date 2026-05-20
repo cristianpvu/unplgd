@@ -25,6 +25,18 @@ const VIEWBOX_BY_ATTACHMENT: Record<AttachmentPoint, string> = {
   FEET: '270 1240 220 170',
 };
 
+// Override per feature pentru cazurile in care decupajul generic pe
+// attachmentPoint nu cuprinde corect itemul (forme atipice). Cheia = id-ul
+// din ACCESSORY_PARTS (feature inainte de `:`). Daca lipseste, cadem pe
+// VIEWBOX_BY_ATTACHMENT.
+//
+// kite: rombul are y=180..420 (stroke-uri incluse), nu incape in HAND-ul
+// default (y=40..330) si jumatate de jos se taie. Extindem vertical si
+// shift-uim x ca diamantul (centre 655, 300) sa fie central.
+const VIEWBOX_BY_FEATURE: Record<string, string> = {
+  kite: '540 160 220 280',
+};
+
 // Inlocuieste `var(--name, #fallback)` cu `#fallback` ca SvgXml pe RN sa
 // randeze culorile corect (nu suporta CSS vars).
 function inlineVars(svgFragment: string): string {
@@ -110,7 +122,8 @@ export function renderItemPreviewSvg(item: {
   if (!item.feature || !item.attachmentPoint) return null;
   const fragment = ACCESSORY_PARTS[item.feature];
   if (!fragment) return null;
-  const vbStr = VIEWBOX_BY_ATTACHMENT[item.attachmentPoint];
+  const featureId = item.feature.split(':')[0] ?? '';
+  const vbStr = VIEWBOX_BY_FEATURE[featureId] ?? VIEWBOX_BY_ATTACHMENT[item.attachmentPoint];
   if (!vbStr) return null;
   const [x, y, w, h] = vbStr.split(/\s+/).map(Number);
   if (
