@@ -29,6 +29,7 @@ import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
 import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
+import { generateHuntHints, type HintRun } from '../lib/ai/huntHint.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -824,7 +825,32 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
           include: {
             members: {
               include: {
-                user: { select: { id: true, name: true, email: true, birthDate: true } },
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    birthDate: true,
+                    // Pet-ul fiecarui membru (cu specia) pt hint live — daca
+                    // domain-ul monstrului ∈ expertiseDomains, pet-ul respectiv
+                    // soptesste hint subtil pentru runs.
+                    pet: {
+                      select: {
+                        id: true,
+                        name: true,
+                        species: {
+                          select: {
+                            name: true,
+                            systemHint: true,
+                            tone: true,
+                            catchphrases: true,
+                            expertiseDomains: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -858,11 +884,12 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       throw badRequest('too_far', `Apropie-te (esti la ${Math.round(dist)}m)`);
     }
 
-    // Idempotent: daca e deja ENGAGED, returnam runs existente.
+    // Idempotent: daca e deja ENGAGED, returnam runs existente (cu hint-uri
+    // deja salvate de la prima generare — nu regeneram).
     if (monster.status === MonsterStatus.ENGAGED) {
       const existing = await prisma.huntChallengeRun.findMany({
         where: { monsterId: mid },
-        include: { challenge: true },
+        include: RUN_INCLUDE,
       });
       res.json({
         monsterId: mid,
@@ -985,6 +1012,61 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       include: { challenge: true },
     });
 
+    // Hunt hint live: cautam in party un pet a carui specie are domain-ul
+    // monstrului in `expertiseDomains`. Preferam pet-ul liderului daca match;
+    // altfel primul match din echipa. Apel Haiku sincron cu timeout — daca
+    // pica, runs raman cu petHint=null si engagement-ul continua normal.
+    if (monsterDomain) {
+      const matchingMembers = monster.team.members.filter((m) =>
+        m.user.pet?.species.expertiseDomains.includes(monsterDomain),
+      );
+      if (matchingMembers.length > 0) {
+        const leaderMatch = matchingMembers.find((m) => m.userId === me);
+        const chosen = leaderMatch ?? matchingMembers[0]!;
+        const pet = chosen.user.pet!;
+        const sp = pet.species;
+
+        const hintRuns: HintRun[] = runs.map((r) => ({
+          runId: r.id,
+          prompt: r.challenge.prompt,
+          options: r.challenge.options ? r.challenge.options.split('|').filter(Boolean) : null,
+        }));
+
+        const hints = await generateHuntHints(
+          {
+            petId: pet.id,
+            petName: pet.name,
+            speciesName: sp.name,
+            systemHint: sp.systemHint,
+            tone: sp.tone,
+            catchphrases: sp.catchphrases,
+            childName: chosen.user.name,
+          },
+          monster.name,
+          monsterDomain,
+          hintRuns,
+        );
+
+        if (hints.length > 0) {
+          await Promise.all(
+            hints.map((h) =>
+              prisma.huntChallengeRun.update({
+                where: { id: h.runId },
+                data: { petHint: h.hint, petHintPetId: pet.id },
+              }),
+            ),
+          );
+        }
+      }
+    }
+
+    // Re-fetch cu pet info pt DTO complet (include petHintPet pt atribuire
+    // in UI: "Buddy al lui Maria iti soptesste...").
+    const enrichedRuns = await prisma.huntChallengeRun.findMany({
+      where: { monsterId: mid },
+      include: RUN_INCLUDE,
+    });
+
     emitHuntUpdate(id, 'monster_engaged');
     res.json({
       monsterId: mid,
@@ -995,7 +1077,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       },
       engagedAt: now,
       expiresAt,
-      runs: runs.map((r) => buildRunDto(r, me)),
+      runs: enrichedRuns.map((r) => buildRunDto(r, me)),
     });
   } catch (e) {
     next(e);
@@ -1285,8 +1367,19 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
 // Helper: build DTO pentru un challenge run. Ascundem `expected` ca user sa
 // nu primeasca raspunsul in payload. Marcam `mine: true` cand runId-ul e al
 // userului care intreaba.
+const RUN_INCLUDE = {
+  challenge: true,
+  petHintPet: {
+    select: {
+      id: true,
+      name: true,
+      user: { select: { name: true } },
+    },
+  },
+} as const satisfies Prisma.HuntChallengeRunInclude;
+
 type RunWithChallenge = Prisma.HuntChallengeRunGetPayload<{
-  include: { challenge: true };
+  include: typeof RUN_INCLUDE;
 }>;
 
 function buildRunDto(run: RunWithChallenge, me: string) {
@@ -1298,6 +1391,17 @@ function buildRunDto(run: RunWithChallenge, me: string) {
     const raw = run.challenge.options.split('|').filter(Boolean);
     options = stableShuffle(raw, run.id);
   }
+  // Pet hint: cand exista, returnam textul + atributia ("petName al lui owner")
+  // pentru ca UI-ul sa stie cine sopteste. NULL daca niciun pet din party
+  // nu match-uia domain-ul monstrului.
+  const petHint =
+    run.petHint && run.petHintPet
+      ? {
+          text: run.petHint,
+          petName: run.petHintPet.name,
+          ownerName: run.petHintPet.user.name,
+        }
+      : null;
   return {
     id: run.id,
     userId: run.userId,
@@ -1312,6 +1416,7 @@ function buildRunDto(run: RunWithChallenge, me: string) {
     outcome: run.outcome,
     feedback: run.feedback,
     finishedAt: run.finishedAt,
+    petHint,
   };
 }
 

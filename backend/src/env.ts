@@ -15,6 +15,11 @@ const schema = z.object({
   // Default = opus pentru fidelitate maxima pe roleplay si nuanta. Pt dev/cost
   // poti pune sonnet sau haiku via .env.
   ANTHROPIC_MODEL: z.string().default('claude-opus-4-7'),
+  // Modelul folosit specific la hint-urile din hunt — task scurt, 1 propozitie
+  // cu personalitate. Default Haiku pentru latenta sub 1s (esti in lupta cu
+  // timer 90s) si cost minim (~70-100 hint-uri per sesiune). Cresterea la
+  // Sonnet/Opus e ok daca observi ca hint-urile sunt plate.
+  ANTHROPIC_HINT_MODEL: z.string().default('claude-haiku-4-5-20251001'),
   // Director cache MP3-uri TTS. Static-served prin Express. In prod sub volum
   // persistent; cleanup-ul se face manual sau prin cron (LRU pe atime).
   TTS_CACHE_DIR: z.string().default('./tts-cache'),
