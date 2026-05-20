@@ -8,6 +8,7 @@
 import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CHALLENGES } from './data/challenges.js';
 
 const prisma = new PrismaClient();
 
@@ -289,84 +290,6 @@ const TYPES: SeedType[] = [
 // le-a creat cu systemHint-uri si imagePath-uri reale; seed-ul facea override
 // nedorit). Pentru `expertiseDomains` nou (Pas 2 hunt v2) ruleaza one-off SQL
 // pe DB existenta — vezi memoria `project_hunt_v2.md` pt UPDATE statements.
-
-type SeedChallenge = {
-  slug: string;
-  type: 'mcq' | 'counting';
-  prompt: string;
-  expected: string;
-  // Pentru mcq: 4 variante (inclusiv expected). Ordinea storata e aleatorie —
-  // routes/hunt.ts oricum face shuffle stabil per run inainte sa trimita.
-  options?: string[];
-  ageMin: number;
-  ageMax: number;
-  themeTags?: string;
-  difficulty?: number;
-};
-
-// Bank de challenge-uri pentru hunt. MCQ cu cultura generala adaptat varstei
-// + counting (interactiv). Slug-urile sunt stabile — la re-seed, prompt-ul
-// se updateaza dar id-ul DB ramane (idempotent).
-const CHALLENGES: SeedChallenge[] = [
-  // ===== MCQ age 6-9 (difficulty 1) — cultura generala basic =====
-  { slug: 'q-a69-001', type: 'mcq', prompt: 'Care e capitala Romaniei?', options: ['Bucuresti', 'Cluj', 'Iasi', 'Brasov'], expected: 'Bucuresti', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'geografie' },
-  { slug: 'q-a69-002', type: 'mcq', prompt: 'Cate zile are o saptamana?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-003', type: 'mcq', prompt: 'Cate luni are un an?', options: ['10', '11', '12', '13'], expected: '12', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-004', type: 'mcq', prompt: 'Cate picioare are un paianjen?', options: ['6', '8', '10', '4'], expected: '8', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-005', type: 'mcq', prompt: 'Ce culoare obtii daca amesteci galben cu albastru?', options: ['Verde', 'Portocaliu', 'Maro', 'Roz'], expected: 'Verde', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-006', type: 'mcq', prompt: 'Ce numar urmeaza dupa 99?', options: ['90', '99', '100', '101'], expected: '100', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-007', type: 'mcq', prompt: 'In ce anotimp ninge?', options: ['Vara', 'Primavara', 'Toamna', 'Iarna'], expected: 'Iarna', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-008', type: 'mcq', prompt: 'Cine e numit "regele junglei"?', options: ['Tigrul', 'Leul', 'Lupul', 'Ursul'], expected: 'Leul', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-009', type: 'mcq', prompt: 'Cati ochi are o pisica?', options: ['1', '2', '3', '4'], expected: '2', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-010', type: 'mcq', prompt: 'Cum se numeste casuta cainelui?', options: ['Cuibul', 'Cusca', 'Petera', 'Borta'], expected: 'Cusca', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-011', type: 'mcq', prompt: 'Care e cea mai mare planeta din sistemul solar?', options: ['Pamant', 'Marte', 'Jupiter', 'Venus'], expected: 'Jupiter', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'cer,stiinta' },
-  { slug: 'q-a69-012', type: 'mcq', prompt: 'Ce sunet face vaca?', options: ['Miau', 'Cucurigu', 'Muu', 'Hau'], expected: 'Muu', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-013', type: 'mcq', prompt: 'Cati metri are un kilometru?', options: ['10', '100', '1000', '10000'], expected: '1000', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-014', type: 'mcq', prompt: 'Cati pitici are Alba ca Zapada?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-015', type: 'mcq', prompt: 'Ce culoare are cerul senin?', options: ['Verde', 'Albastru', 'Roz', 'Galben'], expected: 'Albastru', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-016', type: 'mcq', prompt: 'Cati ani are un secol?', options: ['10', '50', '100', '1000'], expected: '100', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-017', type: 'mcq', prompt: 'Cate roti are o bicicleta?', options: ['1', '2', '3', '4'], expected: '2', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'transport' },
-  { slug: 'q-a69-018', type: 'mcq', prompt: 'Ce face albina?', options: ['Lapte', 'Miere', 'Branza', 'Unt'], expected: 'Miere', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-  { slug: 'q-a69-019', type: 'mcq', prompt: 'Care e cea mai mica unitate de timp?', options: ['Ora', 'Minutul', 'Secunda', 'Ziua'], expected: 'Secunda', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'q-a69-020', type: 'mcq', prompt: 'Cum se numeste puiul cainelui?', options: ['Catelus', 'Pisoi', 'Pui', 'Manz'], expected: 'Catelus', ageMin: 6, ageMax: 9, difficulty: 1, themeTags: 'animale' },
-
-  // ===== MCQ age 10-14 (difficulty 2-3) — cultura generala avansata =====
-  { slug: 'q-a14-001', type: 'mcq', prompt: 'Cine a scris "Amintiri din copilarie"?', options: ['Mihai Eminescu', 'Ion Creanga', 'I.L. Caragiale', 'Mihail Sadoveanu'], expected: 'Ion Creanga', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'romana' },
-  { slug: 'q-a14-002', type: 'mcq', prompt: 'In ce an a inceput Al Doilea Razboi Mondial?', options: ['1914', '1918', '1939', '1945'], expected: '1939', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'istorie' },
-  { slug: 'q-a14-003', type: 'mcq', prompt: 'Care e formula chimica a apei?', options: ['CO2', 'H2O', 'O2', 'NaCl'], expected: 'H2O', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
-  { slug: 'q-a14-004', type: 'mcq', prompt: 'Cate continente are Pamantul?', options: ['5', '6', '7', '8'], expected: '7', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-005', type: 'mcq', prompt: 'Care e cel mai inalt munte din lume?', options: ['Everest', 'K2', 'Mont Blanc', 'Kilimanjaro'], expected: 'Everest', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,natura' },
-  { slug: 'q-a14-006', type: 'mcq', prompt: 'Cine a pictat "Mona Lisa"?', options: ['Leonardo da Vinci', 'Pablo Picasso', 'Vincent van Gogh', 'Michelangelo'], expected: 'Leonardo da Vinci', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'arta' },
-  { slug: 'q-a14-007', type: 'mcq', prompt: 'Ce planeta e numita "planeta rosie"?', options: ['Marte', 'Jupiter', 'Venus', 'Saturn'], expected: 'Marte', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
-  { slug: 'q-a14-008', type: 'mcq', prompt: 'Care e cel mai lung rau din Romania?', options: ['Olt', 'Mures', 'Dunarea', 'Prut'], expected: 'Dunarea', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
-  { slug: 'q-a14-009', type: 'mcq', prompt: 'Care e capitala Frantei?', options: ['Lyon', 'Marsilia', 'Paris', 'Nisa'], expected: 'Paris', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-010', type: 'mcq', prompt: 'Ce gaz respiram pentru a trai?', options: ['Azot', 'Oxigen', 'Hidrogen', 'Dioxid de carbon'], expected: 'Oxigen', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta' },
-  { slug: 'q-a14-011', type: 'mcq', prompt: 'Care e cel mai mare ocean din lume?', options: ['Atlantic', 'Pacific', 'Indian', 'Arctic'], expected: 'Pacific', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,apa' },
-  { slug: 'q-a14-012', type: 'mcq', prompt: 'Cine a fost domnitorul care a unit Tarile Romane in 1859?', options: ['Mihai Viteazul', 'Stefan cel Mare', 'Alexandru Ioan Cuza', 'Carol I'], expected: 'Alexandru Ioan Cuza', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'istorie' },
-  { slug: 'q-a14-013', type: 'mcq', prompt: 'Cati km are aproximativ un maraton?', options: ['21', '32', '42', '50'], expected: '42', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'sport' },
-  { slug: 'q-a14-014', type: 'mcq', prompt: 'Cat e radacina patrata din 144?', options: ['11', '12', '13', '14'], expected: '12', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'mate' },
-  { slug: 'q-a14-015', type: 'mcq', prompt: 'In ce judet se afla Castelul Bran?', options: ['Sibiu', 'Brasov', 'Hunedoara', 'Cluj'], expected: 'Brasov', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie,istorie' },
-  { slug: 'q-a14-016', type: 'mcq', prompt: 'Cum se numeste fenomenul cand Luna acopera Soarele?', options: ['Aurora', 'Eclipsa', 'Cometa', 'Meteorit'], expected: 'Eclipsa', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'cer,stiinta' },
-  { slug: 'q-a14-017', type: 'mcq', prompt: 'Cate inimi are o caracatita?', options: ['1', '2', '3', '4'], expected: '3', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'animale,apa' },
-  { slug: 'q-a14-018', type: 'mcq', prompt: 'Cine a inventat becul electric?', options: ['Nikola Tesla', 'Thomas Edison', 'Albert Einstein', 'Isaac Newton'], expected: 'Thomas Edison', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta,istorie' },
-  { slug: 'q-a14-019', type: 'mcq', prompt: 'Care e cel mai inalt varf din Romania?', options: ['Negoiu', 'Moldoveanu', 'Omu', 'Parangu Mare'], expected: 'Moldoveanu', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-020', type: 'mcq', prompt: 'Care e capitala Spaniei?', options: ['Barcelona', 'Madrid', 'Sevilla', 'Valencia'], expected: 'Madrid', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-021', type: 'mcq', prompt: 'Cati cromozomi are o celula umana?', options: ['23', '46', '48', '52'], expected: '46', ageMin: 10, ageMax: 14, difficulty: 3, themeTags: 'stiinta' },
-  { slug: 'q-a14-022', type: 'mcq', prompt: 'Cine a scris "Romeo si Julieta"?', options: ['Charles Dickens', 'William Shakespeare', 'Mark Twain', 'Jules Verne'], expected: 'William Shakespeare', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'literatura' },
-  { slug: 'q-a14-023', type: 'mcq', prompt: 'Pe ce continent se afla Egiptul?', options: ['Asia', 'Africa', 'Europa', 'America'], expected: 'Africa', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-024', type: 'mcq', prompt: 'Care e capitala Statelor Unite ale Americii?', options: ['New York', 'Washington', 'Los Angeles', 'Chicago'], expected: 'Washington', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'geografie' },
-  { slug: 'q-a14-025', type: 'mcq', prompt: 'Cum se numeste procesul prin care plantele produc hrana?', options: ['Respiratie', 'Fotosinteza', 'Digestie', 'Evaporare'], expected: 'Fotosinteza', ageMin: 10, ageMax: 14, difficulty: 2, themeTags: 'stiinta,natura' },
-
-  // ===== Counting (toate varstele) =====
-  { slug: 'c-001', type: 'counting', prompt: 'Atinge ecranul de exact 5 ori', expected: '5', ageMin: 6, ageMax: 14, difficulty: 1 },
-  { slug: 'c-002', type: 'counting', prompt: 'Atinge ecranul de exact 7 ori', expected: '7', ageMin: 6, ageMax: 14, difficulty: 1 },
-  { slug: 'c-003', type: 'counting', prompt: 'Atinge ecranul de exact 10 ori', expected: '10', ageMin: 6, ageMax: 14, difficulty: 1 },
-  { slug: 'c-004', type: 'counting', prompt: 'Atinge ecranul de exact 12 ori', expected: '12', ageMin: 8, ageMax: 14, difficulty: 2 },
-  { slug: 'c-005', type: 'counting', prompt: 'Atinge ecranul de exact 8 ori', expected: '8', ageMin: 6, ageMax: 14, difficulty: 1 },
-  { slug: 'c-006', type: 'counting', prompt: 'Atinge ecranul de exact 15 ori', expected: '15', ageMin: 9, ageMax: 14, difficulty: 2 },
-  { slug: 'c-007', type: 'counting', prompt: 'Atinge ecranul de exact 3 ori', expected: '3', ageMin: 6, ageMax: 9, difficulty: 1 },
-  { slug: 'c-008', type: 'counting', prompt: 'Atinge ecranul de exact 6 ori', expected: '6', ageMin: 6, ageMax: 14, difficulty: 1 },
-];
 
 type SeedMonsterTemplate = {
   slug: string;
@@ -893,6 +816,7 @@ async function main() {
         options: optionsStr,
         ageMin: ch.ageMin,
         ageMax: ch.ageMax,
+        domain: ch.domain,
         themeTags: ch.themeTags ?? '',
         difficulty: ch.difficulty ?? 1,
         active: true,
@@ -904,6 +828,7 @@ async function main() {
         options: optionsStr,
         ageMin: ch.ageMin,
         ageMax: ch.ageMax,
+        domain: ch.domain,
         themeTags: ch.themeTags ?? '',
         difficulty: ch.difficulty ?? 1,
         active: true,
