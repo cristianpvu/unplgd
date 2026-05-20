@@ -881,21 +881,81 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + FIGHT_WINDOW_MS);
 
-    const age = ageFromBirthDate(myMembership.user.birthDate);
-    const candidates = await prisma.huntChallenge.findMany({
+    // Party age range — intrebarile sunt potrivite oricarui copil din echipa
+    // (toti discuta raspunsul cu liderul). Folosim min/max in loc de doar
+    // varsta liderului ca un echipaj de 14 sa nu primeasca intrebari de 6.
+    const partyAges = monster.team.members.map((m) => ageFromBirthDate(m.user.birthDate));
+    const partyMin = Math.min(...partyAges);
+    const partyMax = Math.max(...partyAges);
+
+    // Domain-ul monstrului din MonsterTemplate (lookup pe slug — nu avem FK
+    // relation ca sa permitem monstri seedati cu slug-uri vechi). Fallback la
+    // string gol = "fara filtru de domain" daca template-ul a fost sters.
+    const template = await prisma.monsterTemplate.findUnique({
+      where: { slug: monster.slug },
+      select: { domain: true },
+    });
+    const monsterDomain = template?.domain ?? '';
+
+    // Anti-repeat: exclud challenge-urile deja folosite de echipa mea in
+    // sesiunea curenta. Pool-ul scade pe masura ce echipa progreseaza.
+    const usedRuns = await prisma.huntChallengeRun.findMany({
+      where: { monster: { sessionId: id, teamId: monster.teamId } },
+      select: { challengeId: true },
+    });
+    const usedIds = usedRuns.map((r) => r.challengeId);
+
+    const hardTier = monster.type === 'red' || monster.type === 'gold';
+    const baseWhere: Prisma.HuntChallengeWhereInput = {
+      active: true,
+      id: { notIn: usedIds },
+      ageMin: { lte: partyMax },
+      ageMax: { gte: partyMin },
+    };
+
+    // Strategy fallback: incercam selectia tot mai relaxata pana strangem
+    // suficiente intrebari ne-repetate pentru numarul cerut de monstru.
+    // 1) Match exact: domain + party age + difficulty.
+    let candidates = await prisma.huntChallenge.findMany({
       where: {
-        active: true,
-        ageMin: { lte: age },
-        ageMax: { gte: age },
-        // Pentru monstri de tip rosu/gold cerem dificultate >=2.
-        difficulty: monster.type === 'red' || monster.type === 'gold' ? { gte: 2 } : undefined,
+        ...baseWhere,
+        ...(monsterDomain ? { domain: monsterDomain } : {}),
+        ...(hardTier ? { difficulty: { gte: 2 } } : {}),
       },
       select: { id: true },
     });
+    // 2) Relaxez dificultatea (pastrez domain + party age).
+    if (candidates.length < perMonster && monsterDomain) {
+      candidates = await prisma.huntChallenge.findMany({
+        where: { ...baseWhere, domain: monsterDomain },
+        select: { id: true },
+      });
+    }
+    // 3) Relaxez domain (pastrez party age + difficulty).
+    if (candidates.length < perMonster) {
+      candidates = await prisma.huntChallenge.findMany({
+        where: {
+          ...baseWhere,
+          ...(hardTier ? { difficulty: { gte: 2 } } : {}),
+        },
+        select: { id: true },
+      });
+    }
+    // 4) Last resort: orice intrebare activa pentru party age, chiar repetate.
+    if (candidates.length === 0) {
+      candidates = await prisma.huntChallenge.findMany({
+        where: {
+          active: true,
+          ageMin: { lte: partyMax },
+          ageMax: { gte: partyMin },
+        },
+        select: { id: true },
+      });
+    }
     if (candidates.length === 0) {
       throw badRequest(
-        'no_challenges_for_age',
-        `Nu am gasit challenge-uri pentru varsta ${age}`,
+        'no_challenges',
+        `Nu am gasit challenge-uri pentru party age ${partyMin}-${partyMax}`,
       );
     }
     const shuffled = [...candidates].sort(() => Math.random() - 0.5);
