@@ -162,3 +162,17 @@ export const ACCESSORY_PARTS: Record<string, string> = {
   "halo": `<ellipse cx="381" cy="80" rx="85" ry="18" fill="none" stroke="var(--acc, #ddb436)" stroke-width="10"/>
 <ellipse cx="381" cy="80" rx="85" ry="18" fill="none" stroke="#fff8c4" stroke-width="3" opacity="0.7"/>`,
 };
+
+// Crop viewBox per accesoriu pentru thumbnail-uri in editor. Coordonatele
+// raman raportate la BODY_VIEWBOX (762×1400) — schimbam doar viewBox-ul SVG-
+// ului wrapper. Lasam putin "air" in jurul partii vizibile ca pictograma sa
+// nu se lipeasca de marginile cardului. Iteme fara intrare aici nu primesc
+// preview (fallback la pictograma generica in UI).
+export const ACCESSORY_PREVIEW_BOX: Record<string, { x: number; y: number; w: number; h: number }> = {
+  "balloon-blue": { x: 540, y: 55, w: 200, h: 250 },
+  "kite": { x: 550, y: 170, w: 210, h: 280 },
+  "necklace-gold": { x: 320, y: 650, w: 120, h: 60 },
+  "necklace-heart": { x: 320, y: 650, w: 120, h: 80 },
+  "necklace-blue-drop": { x: 305, y: 650, w: 145, h: 130 },
+  "halo": { x: 286, y: 55, w: 190, h: 50 },
+};

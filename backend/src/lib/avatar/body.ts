@@ -5,7 +5,7 @@
 
 import type { AttachmentPoint, Item } from '@prisma/client';
 import type { Slot } from './catalog.js';
-import { ACCESSORY_PARTS, BODY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
+import { ACCESSORY_PARTS, ACCESSORY_PREVIEW_BOX, BODY_PARTS, BODY_VIEWBOX } from './bodyAssets.js';
 
 export const VIEWBOX_W = BODY_VIEWBOX.w;
 export const VIEWBOX_H = BODY_VIEWBOX.h;
@@ -97,6 +97,28 @@ function wrapHead(headSvg: string): string {
   return headSvg.replace(
     /<svg\b[^>]*viewBox="([^"]+)"[^>]*>/,
     (_m, viewBox) => `<svg x="21" y="-8" width="720" height="720" viewBox="${viewBox}">`,
+  );
+}
+
+// SVG mic standalone cu un accesoriu, cropat pe regiunea sa in body coords.
+// Folosit ca thumbnail in editor pentru sloturile fara o reprezentare colora
+// evidenta (holding). Culorile vin din fallback-urile var(--acc, #hex) din
+// asset (nu user-specific) — preview-ul e generic per feature.
+export function renderAccessoryPreview(feature: string | null | undefined): string | null {
+  if (!feature) return null;
+  const id = feature.split(':')[0] ?? '';
+  if (!id) return null;
+  const part = ACCESSORY_PARTS[id];
+  const box = ACCESSORY_PREVIEW_BOX[id];
+  if (!part || !box) return null;
+  const filled = part.replace(
+    /var\(--\w+,\s*#?([0-9a-fA-F]{6})\)/g,
+    (_m: string, hex: string) => `#${hex}`,
+  );
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" width="100%" height="100%">` +
+    filled +
+    `</svg>`
   );
 }
 
