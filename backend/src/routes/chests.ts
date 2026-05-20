@@ -2,28 +2,29 @@ import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { notFound } from '../lib/errors.js';
-import { openChest, type ChestLoot } from '../lib/phonedown/award.js';
+import { enrichLootWithSvg, openChest, type ChestLoot } from '../lib/phonedown/award.js';
 
 export const chestsRouter = Router();
 
-function serializeChest(chest: {
+async function serializeChest(chest: {
   id: string;
   tier: string;
   sourceType: string;
   openedAt: Date | null;
   createdAt: Date;
   lootJson: unknown;
-}, includeLoot = false) {
-  const loot = chest.lootJson as ChestLoot | null;
+}) {
+  const raw = chest.lootJson as ChestLoot | null;
+  // Cufere DESCHISE: expunem loot-ul (cu SVG-uri) pentru istoric. Cufere
+  // NEDESCHISE: loot null (anti-spoiler) — se vede doar la deschidere.
+  const loot = chest.openedAt && raw ? await enrichLootWithSvg(raw) : null;
   return {
     id: chest.id,
     tier: chest.tier,
     sourceType: chest.sourceType,
     openedAt: chest.openedAt,
     createdAt: chest.createdAt,
-    // Loot-ul nu se expune in lista — doar la deschidere (anti-spoiler).
-    // La deschidere returnam totul: xp, items, duplicates.
-    loot: includeLoot ? loot : null,
+    loot,
   };
 }
 
@@ -42,7 +43,7 @@ chestsRouter.get('/', requireAuth, async (req, res, next) => {
         lootJson: true,
       },
     });
-    res.json({ chests: chests.map((c) => serializeChest(c, false)) });
+    res.json({ chests: await Promise.all(chests.map((c) => serializeChest(c))) });
   } catch (e) {
     next(e);
   }

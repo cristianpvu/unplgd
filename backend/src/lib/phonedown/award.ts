@@ -229,7 +229,7 @@ export async function awardChestForParticipant(args: {
 
 // Imbogateste itemele din loot cu SVG preview + rarity (pentru duplicates) prin
 // lookup in DB dupa slug. Lasa loot-ul intact daca itemele nu se gasesc.
-async function enrichLootWithSvg(loot: ChestLoot): Promise<ChestLoot> {
+export async function enrichLootWithSvg(loot: ChestLoot): Promise<ChestLoot> {
   const slugs = new Set<string>([
     ...loot.items.map((i) => i.slug),
     ...loot.duplicates.map((d) => d.slug),
@@ -305,9 +305,15 @@ export async function openChest(chestId: string, userId: string): Promise<ChestL
       skipDuplicates: true,
     });
   }
+  // Persistam loot-ul reclasificat inapoi in lootJson ca istoricul (lista
+  // cufere deschise) sa reflecte rezultatul final — ce s-a primit efectiv vs
+  // ce a devenit duplicate. SVG-urile NU se persista (raman derivate la read).
   await prisma.chest.update({
     where: { id: chest.id },
-    data: { openedAt: new Date() },
+    data: {
+      openedAt: new Date(),
+      lootJson: reclassified as unknown as Prisma.InputJsonValue,
+    },
   });
   return enrichLootWithSvg(reclassified);
 }
