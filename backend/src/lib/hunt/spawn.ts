@@ -1,7 +1,6 @@
 import type { Polygon, MultiPolygon } from 'geojson';
-import type { MonsterType } from '@prisma/client';
+import type { MonsterType, PrismaClient } from '@prisma/client';
 import { randomPointsInPolygon, zoneAreaSqm } from './zones.js';
-import { pickGenericMonsters, pickGoldMonster } from './monsterPool.js';
 
 type AnyPolygon = Polygon | MultiPolygon;
 
@@ -11,9 +10,8 @@ function monsterCountForZone(areaSqm: number): number {
   return Math.max(5, Math.min(15, Math.floor(areaSqm / 800)));
 }
 
-// Distributie tipuri pe sesiune: 60% verde / 30% galben / 10% rosu pentru
-// rate of return decision. Goldul se aloca SEPARAT — exact 1 per sesiune,
-// indiferent de numar de echipe (compeitie pentru el).
+// Distributie tipuri ordinare pe sesiune: 60% verde / 30% galben / 10% rosu.
+// Goldul se aloca SEPARAT — exact 1 per sesiune (competitie pentru el).
 function distributeTypes(count: number): MonsterType[] {
   const greens = Math.floor(count * 0.6);
   const yellows = Math.floor(count * 0.3);
@@ -22,7 +20,6 @@ function distributeTypes(count: number): MonsterType[] {
   for (let i = 0; i < greens; i++) types.push('green');
   for (let i = 0; i < yellows; i++) types.push('yellow');
   for (let i = 0; i < reds; i++) types.push('red');
-  // Shuffle ca distributia spatiala sa nu fie predictibila.
   for (let i = types.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     const tmp = types[i]!;
@@ -31,6 +28,19 @@ function distributeTypes(count: number): MonsterType[] {
   }
   return types;
 }
+
+function pickRandom<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!;
+}
+
+// Subset al MonsterTemplate necesar la spawn. Caller-ul incarca templates-urile
+// inainte de tranzactie si le transmite — evitam DB-call inauntru.
+export type SpawnTemplate = {
+  slug: string;
+  name: string;
+  loreShort: string;
+  tier: MonsterType;
+};
 
 export type SpawnPlan = {
   teamId: string;
@@ -44,18 +54,28 @@ export type SpawnPlan = {
   }>;
 };
 
-// Genereaza spawn-uri pentru o sesiune intreaga. Pentru fiecare echipa,
-// genereaza N monstri normali in zona ei. Goldul se atribuie uneia dintre
-// echipe random (echitabil — toate au sansa la el de la inceput).
+// Genereaza spawn-uri pentru toata sesiunea. Pentru fiecare echipa pune un
+// numar de monstri ordinari in zona ei; o singura echipa (aleasa random)
+// primeste si goldul. Template-urile sunt grupate pe tier — pentru un slot
+// "green" picam random un MonsterTemplate cu tier=green din pool.
 export function generateSpawns(
   teams: Array<{ id: string; zone: AnyPolygon }>,
+  templates: Record<MonsterType, SpawnTemplate[]>,
 ): { spawns: SpawnPlan[]; totalCount: number } {
+  if (templates.gold.length === 0) {
+    throw new Error('Niciun MonsterTemplate activ pentru tier gold');
+  }
+  for (const t of ['green', 'yellow', 'red'] as const) {
+    if (templates[t].length === 0) {
+      throw new Error(`Niciun MonsterTemplate activ pentru tier ${t}`);
+    }
+  }
+
   const spawns: SpawnPlan[] = [];
   let totalCount = 0;
 
-  // Decidem care echipa primeste goldul.
   const goldTeamIdx = Math.floor(Math.random() * teams.length);
-  const goldMonster = pickGoldMonster();
+  const goldTpl = pickRandom(templates.gold);
 
   for (let ti = 0; ti < teams.length; ti++) {
     const team = teams[ti]!;
@@ -64,33 +84,30 @@ export function generateSpawns(
     const types = distributeTypes(baseCount);
     const positions = randomPointsInPolygon(team.zone, baseCount + (ti === goldTeamIdx ? 1 : 0));
 
-    const pool = pickGenericMonsters(types.length);
     const monsters: SpawnPlan['monsters'] = [];
-
     for (let i = 0; i < types.length; i++) {
       const pos = positions[i];
-      const meta = pool[i];
       const type = types[i];
-      if (!pos || !meta || !type) continue;
+      if (!pos || !type) continue;
+      const tpl = pickRandom(templates[type]);
       monsters.push({
         type,
-        slug: meta.slug,
-        name: meta.name,
-        loreShort: meta.loreShort,
+        slug: tpl.slug,
+        name: tpl.name,
+        loreShort: tpl.loreShort,
         lat: pos.lat,
         lng: pos.lng,
       });
     }
 
-    // Adaugam goldul daca echipa asta a fost aleasa.
     if (ti === goldTeamIdx) {
       const pos = positions[positions.length - 1];
       if (pos) {
         monsters.push({
           type: 'gold',
-          slug: goldMonster.slug,
-          name: goldMonster.name,
-          loreShort: goldMonster.loreShort,
+          slug: goldTpl.slug,
+          name: goldTpl.name,
+          loreShort: goldTpl.loreShort,
           lat: pos.lat,
           lng: pos.lng,
         });
@@ -102,6 +119,24 @@ export function generateSpawns(
   }
 
   return { spawns, totalCount };
+}
+
+// Helper: incarca template-urile active grupate pe tier. Folosit de toti
+// callers care apeleaza generateSpawns (hunt:start handler, devSession,
+// test-hunt script).
+export async function loadActiveTemplates(
+  prismaClient: PrismaClient,
+): Promise<Record<MonsterType, SpawnTemplate[]>> {
+  const all = await prismaClient.monsterTemplate.findMany({
+    where: { active: true },
+    select: { slug: true, name: true, loreShort: true, tier: true },
+  });
+  return {
+    green: all.filter((t) => t.tier === 'green'),
+    yellow: all.filter((t) => t.tier === 'yellow'),
+    red: all.filter((t) => t.tier === 'red'),
+    gold: all.filter((t) => t.tier === 'gold'),
+  };
 }
 
 // Mapping public pentru puncte per tip — folosit la finalize si la UI.

@@ -18,6 +18,7 @@ import { splitPolygonIntoZones, zoneAreaSqm } from '../lib/hunt/zones.js';
 import { assignTeamsRandomly } from '../lib/hunt/teamAssign.js';
 import {
   generateSpawns,
+  loadActiveTemplates,
   MONSTER_POINTS,
   MONSTER_CHALLENGES_PER_MEMBER,
 } from '../lib/hunt/spawn.js';
@@ -357,6 +358,11 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
     const now = new Date();
     const endsAt = new Date(now.getTime() + session.durationSec * 1000);
 
+    // Incarcam template-urile de monstri INAINTE de tranzactie — evitam
+    // un query DB inauntrul tranzactiei si fail-uim repede daca lipsesc
+    // template-uri (mesaj clar inainte sa cream zone/echipe).
+    const templatesByTier = await loadActiveTemplates(prisma);
+
     const result = await prisma.$transaction(async (tx) => {
       // Cream echipele cu zona si membri.
       const createdTeams: { id: string; zone: Polygon | MultiPolygon }[] = [];
@@ -379,7 +385,7 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
         createdTeams.push({ id: team.id, zone });
       }
 
-      const { spawns, totalCount } = generateSpawns(createdTeams);
+      const { spawns, totalCount } = generateSpawns(createdTeams, templatesByTier);
 
       // Bulk create monsters per echipa.
       for (const sp of spawns) {

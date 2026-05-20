@@ -23,7 +23,7 @@ import { prisma } from '../lib/prisma.js';
 import { getParksNear } from '../lib/hunt/overpass.js';
 import { splitPolygonIntoZones, zoneAreaSqm } from '../lib/hunt/zones.js';
 import { assignTeamsRandomly } from '../lib/hunt/teamAssign.js';
-import { generateSpawns } from '../lib/hunt/spawn.js';
+import { generateSpawns, loadActiveTemplates } from '../lib/hunt/spawn.js';
 
 const args = process.argv.slice(2);
 // Filter flags + positional args.
@@ -225,6 +225,8 @@ async function main() {
   // sa fie 3-15m de tine (forteaza "very_hot" la deschiderea app-ului).
   const overrideSpawnsForHost = HERE_MODE;
 
+  const templatesByTier = await loadActiveTemplates(prisma);
+
   const session = await prisma.$transaction(async (tx) => {
     const created = await tx.huntSession.create({
       data: {
@@ -257,7 +259,7 @@ async function main() {
       });
     }
 
-    const { spawns, totalCount } = generateSpawns(createdTeams);
+    const { spawns, totalCount } = generateSpawns(createdTeams, templatesByTier);
     for (const sp of spawns) {
       if (sp.monsters.length === 0) continue;
       const team = createdTeams.find((t) => t.id === sp.teamId);

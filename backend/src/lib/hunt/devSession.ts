@@ -4,7 +4,7 @@ import type { Polygon, MultiPolygon } from 'geojson';
 import { prisma } from '../prisma.js';
 import { splitPolygonIntoZones, zoneAreaSqm } from './zones.js';
 import { assignTeamsRandomly } from './teamAssign.js';
-import { generateSpawns } from './spawn.js';
+import { generateSpawns, loadActiveTemplates } from './spawn.js';
 
 const DEMO_PASSWORD_PLAIN = 'TestHunt!1234';
 const DEFAULT_DEMO_COUNT = 3;
@@ -159,6 +159,8 @@ export async function createDevHereSession(opts: {
   const now = new Date();
   const endsAt = new Date(now.getTime() + durationSec * 1000);
 
+  const templatesByTier = await loadActiveTemplates(prisma);
+
   const result = await prisma.$transaction(async (tx) => {
     const session = await tx.huntSession.create({
       data: {
@@ -195,7 +197,7 @@ export async function createDevHereSession(opts: {
       createdTeams.push({ id: team.id, zone, hasHost: isHostTeam });
     }
 
-    const { spawns, totalCount } = generateSpawns(createdTeams);
+    const { spawns, totalCount } = generateSpawns(createdTeams, templatesByTier);
     for (const sp of spawns) {
       if (sp.monsters.length === 0) continue;
       const team = createdTeams.find((t) => t.id === sp.teamId);
