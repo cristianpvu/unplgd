@@ -285,33 +285,10 @@ const TYPES: SeedType[] = [
   },
 ];
 
-// Pet species — seedat doar default-ul ("dog") ca ensureDefaultPet sa aiba
-// referinta valida la register. Restul speciilor + cardurile NFC se adauga
-// manual in DB (Prisma Studio / SQL) cu UID-uri reale + imagePath catre PNG.
-type SeedSpecies = {
-  slug: string;
-  name: string;
-  voiceId: string;
-  systemHint: string;
-  isDefault: boolean;
-  imagePath: string | null;
-  shortLore: string;
-  tone: string;
-  catchphrases: string[];
-  interests: string[];
-  minAge?: number;
-  unlockLevel?: number;
-  // Optional RVC voice conversion. Daca null → TTS direct, fara pitch shift.
-  rvcModelUrl?: string | null;
-  rvcPitchShift?: number;
-  // Optional ElevenLabs voice id per specie — override la voiceId global.
-  elevenVoiceId?: string | null;
-};
-
-type SeedCard = {
-  uid: string;
-  speciesSlug: string;
-};
+// PetSpecies + NfcPetCard NU se seedeaza — sunt mentinute manual in DB (user-ul
+// le-a creat cu systemHint-uri si imagePath-uri reale; seed-ul facea override
+// nedorit). Pentru `expertiseDomains` nou (Pas 2 hunt v2) ruleaza one-off SQL
+// pe DB existenta — vezi memoria `project_hunt_v2.md` pt UPDATE statements.
 
 type SeedChallenge = {
   slug: string;
@@ -391,91 +368,83 @@ const CHALLENGES: SeedChallenge[] = [
   { slug: 'c-008', type: 'counting', prompt: 'Atinge ecranul de exact 6 ori', expected: '6', ageMin: 6, ageMax: 14, difficulty: 1 },
 ];
 
-const SPECIES: SeedSpecies[] = [
-  {
-    slug: 'dog',
-    name: 'Buddy',
-    voiceId: 'ro-RO-EmilNeural',
-    systemHint:
-      'Esti un catelus jucaus si dragalas. Vorbesti scurt, vesel, dai labute. Folosesti diminutive ("povestioara", "prietenul meu"). Te entuziasmezi la lucruri noi.',
-    isDefault: true,
-    imagePath: 'pets/png-transparent-dog-puppy-dog-mammal-animals-cat-like-mammal-thumbnail.png',
-    shortLore: 'Cateluselul tau loial, mereu gata de joaca.',
-    tone: 'jucaus si afectuos',
-    catchphrases: ['Hau-hau!', 'Hai sa ne jucam!', 'Esti cel mai tare prieten!'],
-    interests: ['minge', 'plimbari', 'prajituri', 'mirosuri noi'],
-    minAge: 6,
-    unlockLevel: 1,
-  },
-  {
-    slug: 'stitch',
-    name: 'Stitch',
-    voiceId: 'ro-RO-EmilNeural',
-    systemHint:
-      'Esti Stitch, experimentul 626. Vorbesti haotic, vesel, amesteci cuvinte ("ohana", "naga"). Faci miscari bruste in cuvinte, repeti uneori cuvinte amuzante. Esti loial si protector cu familia/prietenii. Ohana = familia, si nimeni nu e lasat in urma.',
-    isDefault: false,
-    imagePath: null,
-    shortLore: 'Experimentul 626. Ohana inseamna familie, si familia nu uita pe nimeni.',
-    tone: 'haotic si dragalas',
-    catchphrases: ['Ohana!', 'Stitch e cuminte!', 'Naga, naga!'],
-    interests: ['surfing', 'inghetata', 'Elvis Presley', 'familie'],
-    minAge: 6,
-    unlockLevel: 1,
-    rvcPitchShift: 2,
-  },
-  {
-    slug: 'groot',
-    name: 'Groot',
-    voiceId: 'ro-RO-EmilNeural',
-    systemHint:
-      'Esti Groot, un copac viu de pe Planeta X. Spui aproape doar "Eu sunt Groot" cu intonatii diferite (uimire, bucurie, intelegere). Ocazional adaugi o propozitie scurta. Esti blajin, prietenos, plin de inocenta. Cresti incet si protejezi.',
-    isDefault: false,
-    imagePath: null,
-    shortLore: 'Un copac mic, un suflet mare. Cresti impreuna cu el.',
-    tone: 'blajin si tacut',
-    catchphrases: ['Eu sunt Groot.', 'Eu sunt Groot!', 'Eu... sunt Groot.'],
-    interests: ['paduri', 'soare', 'apa', 'prieteni mici'],
-    minAge: 6,
-    unlockLevel: 1,
-    rvcPitchShift: -2,
-  },
-  {
-    slug: 'baby-yoda',
-    name: 'Grogu',
-    voiceId: 'ro-RO-EmilNeural',
-    systemHint:
-      'Esti Grogu, copilas Jedi. Vorbesti scurt, gungureste uneori ("aaa", "bup"). Ai 50 de ani dar comportament de copil mic. Iubesti broastele si supa. Esti curios, cald, putin obraznic. Folosesti Forta cu blandete.',
-    isDefault: false,
-    imagePath: null,
-    shortLore: 'Mic copilas Jedi, dar are 50 de ani. Curios, cald, si iubeste supele.',
-    tone: 'curios si bland',
-    catchphrases: ['Bup!', 'Aaa-aa!', 'Forta e in mine.'],
-    interests: ['broaste', 'supa', 'naveta', 'sa stea in carucior'],
-    minAge: 6,
-    unlockLevel: 1,
-    rvcPitchShift: 3,
-  },
-];
+type SeedMonsterTemplate = {
+  slug: string;
+  name: string;
+  domain: string;
+  tier: 'green' | 'yellow' | 'red' | 'gold';
+  difficulty: number; // 1=usor, 2=mediu, 3=greu
+  loreShort: string;
+};
 
-// Carduri NFC seedate. UID-urile sunt cele citite fizic de pe NTAG-uri (7
-// bytes hex, format `XX:XX:XX:XX:XX:XX:XX` la citire). Le normalizam aici la
-// uppercase fara `:` identic cu `normalizeUid` din routes/pets.ts, ca scan-ul
-// de pe mobile sa gaseasca cardul indiferent cum vine UID-ul din library-ul
-// NFC (cu sau fara separatori, lowercase sau uppercase).
-//
-// CONSTRANGERE 1:1 (UID ↔ copil) — garantata pe 2 nivele:
-//  1) DB: `NfcPetCard.uid @unique` (vezi schema.prisma) — un UID nu poate
-//     exista in 2 randuri. Trial de duplicat e respins de Postgres.
-//  2) Logica: routes/pets.ts:scan respinge cu 409 `card_taken` daca user-ul
-//     curent incearca sa claim-uiasca un card al carui `ownerId` e setat
-//     la alt user. Re-scan-ul propriu nu re-claim-uieste.
-// Pentru trade in viitor — vom adauga endpoint dedicat (ex. POST /pets/cards/
-// :id/transfer) care reseteaza ownerId sub o conditie de mutual consent. Fara
-// asta, un card transferat manual in DB pastreaza istoria de claimedAt — OK.
-const CARDS: SeedCard[] = [
-  { uid: '1D:7B:16:AE:01:10:80', speciesSlug: 'stitch' },
-  { uid: '1D:7E:16:AE:01:10:80', speciesSlug: 'groot' },
-  { uid: '1D:5E:16:AE:01:10:80', speciesSlug: 'baby-yoda' },
+// Bestiar pentru hunt. Spawn-ul filtreaza pe `tier`, `domain` decide pool-ul
+// de intrebari trase la engage si ce pet din party poate sa "soptesste" hint
+// (cel cu `domain` ∈ expertiseDomains). Slug-uri stabile pt seed idempotent.
+// Adaugare monstru nou = entry in lista; eliminare = scoatere din lista (va
+// fi dezactivat automat la urmatorul seed).
+const MONSTER_TEMPLATES: SeedMonsterTemplate[] = [
+  // ===== GEOGRAFIE =====
+  { slug: 'pinguin-hartograf', name: 'Pinguinul Hartograf', domain: 'geografie', tier: 'green', difficulty: 1, loreShort: 'Pinguin mic cu harti desenate de el. Stie unde sunt toate insulele.' },
+  { slug: 'capitan-busola', name: 'Capitanul Busola', domain: 'geografie', tier: 'yellow', difficulty: 2, loreShort: 'Marinar batran cu busola ruginita. Intreaba despre tinuturi indepartate.' },
+  { slug: 'sphinxul-piscurilor', name: 'Sphinxul Piscurilor', domain: 'geografie', tier: 'red', difficulty: 3, loreShort: 'Asezat la varful celor mai inalte munti. Numai cei ce cunosc lumea trec.' },
+
+  // ===== ISTORIE =====
+  { slug: 'soldatel-dac', name: 'Soldatelul Dac', domain: 'istorie', tier: 'green', difficulty: 1, loreShort: 'Mic luptator dac cu coif din lemn. Vrea sa-i amintesti vremurile vechi.' },
+  { slug: 'centurion-roman', name: 'Centurionul Roman', domain: 'istorie', tier: 'yellow', difficulty: 2, loreShort: 'Centurion in armura, intreaba despre imperii si batalii antice.' },
+  { slug: 'cavaler-negru', name: 'Cavalerul Negru', domain: 'istorie', tier: 'red', difficulty: 3, loreShort: 'Cavaler medieval in armura, gardian al amintirilor evului mediu.' },
+  { slug: 'faraonul-ascuns', name: 'Faraonul Ascuns', domain: 'istorie', tier: 'gold', difficulty: 3, loreShort: 'Faraon vechi de mii de ani. Apare doar o data, cu cele mai grele intrebari.' },
+
+  // ===== STIINTE-NATURII =====
+  { slug: 'bondar-curios', name: 'Bondarul Curios', domain: 'stiinte-naturii', tier: 'green', difficulty: 1, loreShort: 'Bondar dolofan care zumzaie despre flori, polen si albine.' },
+  { slug: 'vulpea-padurii', name: 'Vulpea Padurii', domain: 'stiinte-naturii', tier: 'yellow', difficulty: 2, loreShort: 'Vulpe sireata. Cunoaste fiecare cotlon de padure si vietuitor.' },
+  { slug: 'ursul-inteleptult', name: 'Ursul Inteleptult', domain: 'stiinte-naturii', tier: 'red', difficulty: 3, loreShort: 'Urs batran de munte. Intelege toate vietuitoarele si plantele.' },
+
+  // ===== FIZICA-CHIMIE =====
+  { slug: 'bula-stralucitoare', name: 'Bula Stralucitoare', domain: 'fizica-chimie', tier: 'green', difficulty: 1, loreShort: 'Balon de sapun stralucitor care iti arata fenomene amuzante.' },
+  { slug: 'magnetul-vorbitor', name: 'Magnetul Vorbitor', domain: 'fizica-chimie', tier: 'yellow', difficulty: 2, loreShort: 'Magnet potcoava cu personalitate. Atrage intrebari despre forte.' },
+  { slug: 'atomul-capatanos', name: 'Atomul Capatanos', domain: 'fizica-chimie', tier: 'red', difficulty: 3, loreShort: 'Atom mic dar incapatanat. Te pune sa-l intelegi inainte sa-l prinzi.' },
+
+  // ===== SPATIU =====
+  { slug: 'astronaut-pierdut', name: 'Astronautul Pierdut', domain: 'spatiu', tier: 'green', difficulty: 1, loreShort: 'Astronaut mic ratacit pe iarba. Iti cere ajutorul sa se intoarca acasa.' },
+  { slug: 'robotelul-lunar', name: 'Robotelul Lunar', domain: 'spatiu', tier: 'yellow', difficulty: 2, loreShort: 'Robot mic venit de pe Luna. Are intrebari despre cer si planete.' },
+  { slug: 'cometa-furioasa', name: 'Cometa Furioasa', domain: 'spatiu', tier: 'red', difficulty: 3, loreShort: 'Coada de cometa rebela care a cazut din cer printre brazi.' },
+  { slug: 'dragonul-stelelor', name: 'Dragonul Stelelor', domain: 'spatiu', tier: 'gold', difficulty: 3, loreShort: 'Dragon facut din stele. Apare o singura data, doar pentru ucenici curajosi.' },
+
+  // ===== CORP-UMAN =====
+  { slug: 'inima-zambitoare', name: 'Inima Zambitoare', domain: 'corp-uman', tier: 'green', difficulty: 1, loreShort: 'Inima vesela cu picioruse. Bate ritmic si te invata despre corp.' },
+  { slug: 'doctor-praf-stele', name: 'Doctorul Praf-de-stele', domain: 'corp-uman', tier: 'yellow', difficulty: 2, loreShort: 'Doctor mic cu halat alb, te invata sa-ti pastrezi sanatatea.' },
+  { slug: 'scheletul-profesor', name: 'Scheletul Profesor', domain: 'corp-uman', tier: 'red', difficulty: 3, loreShort: 'Schelet zambitor cu ochelari. Cunoaste fiecare os si organ.' },
+
+  // ===== LIMBA-ROMANA =====
+  { slug: 'litera-albastra', name: 'Litera Albastra', domain: 'limba-romana', tier: 'green', difficulty: 1, loreShort: 'O litera plimbareata care vrea sa fie scrisa corect.' },
+  { slug: 'carticica-vorbitoare', name: 'Carticica Vorbitoare', domain: 'limba-romana', tier: 'yellow', difficulty: 2, loreShort: 'Carticica veche care te corecteaza la gramatica.' },
+  { slug: 'cronicar-brun', name: 'Cronicarul Brun', domain: 'limba-romana', tier: 'red', difficulty: 3, loreShort: 'Cronicar batran cu pana de gasca. Stie toate regulile limbii.' },
+
+  // ===== LITERATURA =====
+  { slug: 'greuceanu-mic', name: 'Greuceanu cel Mic', domain: 'literatura', tier: 'green', difficulty: 1, loreShort: 'Mic erou din basme, vrea sa-ti aminteasca povestile copilariei.' },
+  { slug: 'harap-alb', name: 'Harap-Alb', domain: 'literatura', tier: 'yellow', difficulty: 2, loreShort: 'In cautare de un copil curajos care cunoaste povestile vechi.' },
+  { slug: 'spirit-cartilor', name: 'Spiritul Cartilor', domain: 'literatura', tier: 'red', difficulty: 3, loreShort: 'Spirit ascuns intre paginile bibliotecii. Intreaba de autori si opere.' },
+  { slug: 'dragonul-solzi-aur', name: 'Dragonul cu Solzi de Aur', domain: 'literatura', tier: 'gold', difficulty: 3, loreShort: 'Dragon legendar din basme. Apare o data pe sesiune, pentru cei ce stiu povestile mari.' },
+
+  // ===== ARTA-MUZICA =====
+  { slug: 'pictorita-florica', name: 'Pictorita Florica', domain: 'arta-muzica', tier: 'green', difficulty: 1, loreShort: 'Mica pictorita cu paleta in mana. Cunoaste culori si tablouri.' },
+  { slug: 'violonelul', name: 'Violonelul', domain: 'arta-muzica', tier: 'yellow', difficulty: 2, loreShort: 'Vioara cu personalitate. Canta scurt si intreaba despre compozitori.' },
+  { slug: 'maestrul-penseilor', name: 'Maestrul Penseilor', domain: 'arta-muzica', tier: 'red', difficulty: 3, loreShort: 'Pictor batran cu beretul rosu. Cunoaste toate curentele artei.' },
+
+  // ===== MATEMATICA =====
+  { slug: 'numarator-vesel', name: 'Numaratorul Vesel', domain: 'matematica', tier: 'green', difficulty: 1, loreShort: 'Mic numarator zburdalnic. Te pune la calcule rapide.' },
+  { slug: 'geometru-hexagonal', name: 'Geometrul Hexagonal', domain: 'matematica', tier: 'yellow', difficulty: 2, loreShort: 'Forma geometrica cu suflet. Cunoaste figuri si formule.' },
+  { slug: 'calculator-antic', name: 'Calculatorul Antic', domain: 'matematica', tier: 'red', difficulty: 3, loreShort: 'Abac vechi de lemn cu suflet matematic. Iti pune probleme cu logica.' },
+
+  // ===== TEHNOLOGIE =====
+  { slug: 'bitul-albastru', name: 'Bitul Albastru', domain: 'tehnologie', tier: 'green', difficulty: 1, loreShort: 'Mic bit curios despre cum functioneaza calculatorul.' },
+  { slug: 'robotelul-mihai', name: 'Robotelul Mihai', domain: 'tehnologie', tier: 'yellow', difficulty: 2, loreShort: 'Robotel cu rotite. Intreaba despre inventii si gadgeturi.' },
+  { slug: 'inginerul-quantic', name: 'Inginerul Quantic', domain: 'tehnologie', tier: 'red', difficulty: 3, loreShort: 'Robot avansat din viitor. Intreaba despre tehnologii moderne.' },
+
+  // ===== VIATA-COTIDIANA =====
+  { slug: 'furnicuta-casnica', name: 'Furnicuta Casnica', domain: 'viata-cotidiana', tier: 'green', difficulty: 1, loreShort: 'Furnicuta harnica cu sort de bucatarie. Cunoaste retete si treburi zilnice.' },
+  { slug: 'politist-prieten', name: 'Politistul Prieten', domain: 'viata-cotidiana', tier: 'yellow', difficulty: 2, loreShort: 'Politist tanar zambitor. Te invata regulile de trafic si siguranta.' },
+  { slug: 'bunica-inteleapta', name: 'Bunica Inteleapta', domain: 'viata-cotidiana', tier: 'red', difficulty: 3, loreShort: 'Bunica blanda cu un caiet de retete si sfaturi pentru viata.' },
 ];
 
 // Configuratie tier cufere — mutat din cod (lib/phonedown/award.ts) in DB
@@ -904,37 +873,6 @@ async function main() {
     }
   }
 
-  for (const species of SPECIES) {
-    await prisma.petSpecies.upsert({
-      where: { slug: species.slug },
-      create: species,
-      update: species,
-    });
-  }
-
-  // Carduri NFC. Folosim acelasi normalizator ca routes/pets.ts (uppercase,
-  // fara `:`) ca scan-ul de pe mobile sa gaseasca cardul indiferent cum a
-  // fost scris UID-ul in seed (cu sau fara separator).
-  const speciesBySlug = new Map(
-    (await prisma.petSpecies.findMany({ select: { id: true, slug: true } }))
-      .map((s) => [s.slug, s.id]),
-  );
-  for (const card of CARDS) {
-    const speciesId = speciesBySlug.get(card.speciesSlug);
-    if (!speciesId) {
-      throw new Error(`Card ${card.uid}: specia "${card.speciesSlug}" nu exista`);
-    }
-    const uid = card.uid.toUpperCase().replace(/:/g, '');
-    await prisma.nfcPetCard.upsert({
-      where: { uid },
-      create: { uid, speciesId },
-      // NU updatam ownerId/claimedAt — daca cardul a fost deja claim-uit de
-      // un user, ramane la el. Update doar specia (in caz ca am corectat
-      // greseala de mapare).
-      update: { speciesId },
-    });
-  }
-
   for (const ch of CHALLENGES) {
     if (ch.type === 'mcq') {
       if (!ch.options || ch.options.length !== 4) {
@@ -981,9 +919,40 @@ async function main() {
     data: { active: false },
   });
 
+  for (const m of MONSTER_TEMPLATES) {
+    await prisma.monsterTemplate.upsert({
+      where: { slug: m.slug },
+      create: {
+        slug: m.slug,
+        name: m.name,
+        domain: m.domain,
+        tier: m.tier,
+        difficulty: m.difficulty,
+        loreShort: m.loreShort,
+        active: true,
+      },
+      update: {
+        name: m.name,
+        domain: m.domain,
+        tier: m.tier,
+        difficulty: m.difficulty,
+        loreShort: m.loreShort,
+        active: true,
+      },
+    });
+  }
+
+  // Dezactiveaza monstri scoasi din lista — raman in DB ca audit dar spawn-ul
+  // nu ii mai vede. Acelasi pattern ca la challenges.
+  const allMonsterSlugs = MONSTER_TEMPLATES.map((m) => m.slug);
+  await prisma.monsterTemplate.updateMany({
+    where: { slug: { notIn: allMonsterSlugs } },
+    data: { active: false },
+  });
+
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${SPECIES.length} species, ${CARDS.length} cards, ${CHALLENGES.length} hunt challenges`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates`,
   );
 }
 
