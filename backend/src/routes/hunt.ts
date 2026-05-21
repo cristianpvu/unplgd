@@ -30,6 +30,7 @@ import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
 import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
 import { generateHuntHints, type HintRun } from '../lib/ai/huntHint.js';
+import { resolvePetImagePath } from '../lib/petImage.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -895,7 +896,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
         monsterId: mid,
         engagedAt: monster.engagedAt,
         expiresAt: monster.expiresAt,
-        runs: existing.map((r) => buildRunDto(r, me)),
+        runs: await Promise.all(existing.map((r) => buildRunDto(r, me))),
       });
       return;
     }
@@ -1077,7 +1078,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
       },
       engagedAt: now,
       expiresAt,
-      runs: enrichedRuns.map((r) => buildRunDto(r, me)),
+      runs: await Promise.all(enrichedRuns.map((r) => buildRunDto(r, me))),
     });
   } catch (e) {
     next(e);
@@ -1383,7 +1384,7 @@ type RunWithChallenge = Prisma.HuntChallengeRunGetPayload<{
   include: typeof RUN_INCLUDE;
 }>;
 
-function buildRunDto(run: RunWithChallenge, me: string) {
+async function buildRunDto(run: RunWithChallenge, me: string) {
   // MCQ: shuffle deterministic pe runId — pozitia variantei corecte e diferita
   // la fiecare run dar consistenta intre requests pentru acelasi run, ca
   // user-ul sa nu vada lista re-aranjata daca refresh-ueste.
@@ -1392,8 +1393,9 @@ function buildRunDto(run: RunWithChallenge, me: string) {
     const raw = run.challenge.options.split('|').filter(Boolean);
     options = stableShuffle(raw, run.id);
   }
-  // Pet hint: cand exista, returnam textul + atributia ("petName al lui owner")
-  // pentru ca UI-ul sa stie cine sopteste. NULL daca niciun pet din party
+  // Pet hint: cand exista, returnam textul + atributia + URL semnat catre
+  // imaginea speciei (rezolvat prin resolvePetImagePath — handle GCS keys,
+  // absolute URLs si static paths uniform). NULL daca niciun pet din party
   // nu match-uia domain-ul monstrului.
   const petHint =
     run.petHint && run.petHintPet
@@ -1401,7 +1403,7 @@ function buildRunDto(run: RunWithChallenge, me: string) {
           text: run.petHint,
           petName: run.petHintPet.name,
           ownerName: run.petHintPet.user.name,
-          petImagePath: run.petHintPet.species.imagePath,
+          petImageUrl: await resolvePetImagePath(run.petHintPet.species.imagePath),
         }
       : null;
   return {
