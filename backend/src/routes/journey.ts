@@ -160,6 +160,7 @@ type QuestionDto = {
   correctIndex: number;
   successLine: string;
   failLine: string;
+  explanation: string | null;
 };
 
 journeyRouter.get('/questions', async (req, res, next) => {
@@ -186,7 +187,7 @@ journeyRouter.get('/questions', async (req, res, next) => {
     // ORDER BY random() in Postgres pentru selectie aleatorie. Cu index pe
     // (domain, active) e suficient de rapid pentru sub 10k randuri/domain.
     const rows = await prisma.$queryRaw<QuestionDto[]>`
-      SELECT id, prompt, options, "correctIndex", "successLine", "failLine"
+      SELECT id, prompt, options, "correctIndex", "successLine", "failLine", explanation
       FROM "JourneyQuestion"
       WHERE domain = ${domain}
         AND active = true

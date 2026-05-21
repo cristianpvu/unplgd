@@ -471,6 +471,9 @@ model JourneyQuestion {
   correctIndex Int      // index 0-based al optiunii corecte
   successLine  String   @default("Asa este!") // reactia pet la corect
   failLine     String   @default("Nu chiar, dar e bine ca incercam.") // reactia la gresit
+  // Explicatie scurta citita de narator DUPA reactia pet-ului (atat la
+  // corect, cat si la gresit). Intareste cunostinta cu o curiozitate. Optional.
+  explanation  String?
   active       Boolean  @default(true)
   createdAt    DateTime @default(now())
 
