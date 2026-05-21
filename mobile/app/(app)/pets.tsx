@@ -268,15 +268,15 @@ export default function Pets() {
           )}
         </View>
 
-        {/* Intrare in jocul story-adventure */}
+        {/* Intrare in journey — un singur drum infinit, side-scroller. */}
         <Pressable
-          onPress={() => router.push('/(app)/adventure')}
+          onPress={() => router.push('/(app)/journey')}
           style={({ pressed }) => [styles.adventureBtn, pressed && styles.adventurePressed]}
         >
           <View style={{ flex: 1 }}>
-            <Text style={styles.adventureTitle}>Aventuri cu {pet.name}</Text>
+            <Text style={styles.adventureTitle}>Drumul cu {pet.name}</Text>
             <Text style={styles.adventureSub}>
-              Explorati lumile lui si deblocati fundaluri
+              Mergeti impreuna prin lume si treceti obstacolele
             </Text>
           </View>
           <Text style={styles.adventureArrow}>→</Text>

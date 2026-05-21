@@ -61,6 +61,8 @@ export default function AppLayout() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.bg },
+          // Default lock pe portrait. Doar /journey override-uieste la landscape.
+          orientation: 'portrait',
         }}
       />
       <CoWalkToast />

@@ -8,6 +8,7 @@ export default function AuthLayout() {
         headerShown: false,
         contentStyle: { backgroundColor: colors.bg },
         animation: 'slide_from_right',
+        orientation: 'portrait',
       }}
     />
   );
