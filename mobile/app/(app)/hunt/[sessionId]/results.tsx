@@ -259,9 +259,12 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
   const charW = sz.char;
   const charH = Math.round(sz.char * 1.45);
 
-  // Crop ferestre 2 caractere on screen max — fallback "+N" daca mai multi.
-  const visible = team.members.slice(0, 2);
-  const hiddenCount = Math.max(0, team.members.length - visible.length);
+  // Cu cat sunt mai multi membri intr-o echipa, cu atat caracterele se
+  // imbratiseaza mai dens ca sa intre in latimea coloanei (overlap inteligent).
+  // 1-2 membri: gap mic; 3+: caracterele se suprapun partial.
+  const memberCount = team.members.length;
+  const memberOverlap =
+    memberCount <= 1 ? 0 : memberCount === 2 ? -Math.round(charW * 0.18) : -Math.round(charW * 0.32);
 
   return (
     <View style={styles.podiumCol}>
@@ -276,26 +279,46 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
         ]}
       >
         <View style={styles.podiumLineup}>
-          {visible.map((m) => (
-            <View key={m.id} style={styles.podiumMember}>
-              <View style={styles.podiumCharCol}>
-                {/* Coronita individuala deasupra fiecarui caracter, colorata
-                    cu rank-ul echipei (aur / argint / bronz). */}
-                <View style={styles.podiumCrownOnHead}>
-                  <SvgXml
-                    xml={crownSvg}
-                    width={sz.crown}
-                    height={Math.round(sz.crown * 0.7)}
-                  />
-                </View>
-                {m.avatarSvg ? (
-                  <SvgXml xml={m.avatarSvg} width={charW} height={charH} />
-                ) : (
-                  <View style={[styles.charFallback, { width: charW, height: charH }]} />
-                )}
+          {team.members.map((m, idx) => (
+            <View
+              key={m.id}
+              style={[
+                styles.podiumMember,
+                {
+                  width: charW,
+                  height: charH,
+                  marginLeft: idx === 0 ? 0 : memberOverlap,
+                  zIndex: team.members.length - idx,
+                },
+              ]}
+            >
+              {/* Coronita pe cap, colorata cu rank-ul echipei. */}
+              <View style={styles.podiumCrownOnHead}>
+                <SvgXml
+                  xml={crownSvg}
+                  width={sz.crown}
+                  height={Math.round(sz.crown * 0.7)}
+                />
               </View>
+              {m.avatarSvg ? (
+                <SvgXml xml={m.avatarSvg} width={charW} height={charH} />
+              ) : (
+                <View style={[styles.charFallback, { width: charW, height: charH }]} />
+              )}
+              {/* Pet stand IN FATA caracterului in coltul jos-dreapta — peek
+                  out partial ca un sidekick. Absolute pozitionat ca sa nu
+                  largeasca containerul caracterului. */}
               {m.petImageUrl && (
-                <View style={[styles.podiumPet, { width: sz.pet, height: sz.pet }]}>
+                <View
+                  style={[
+                    styles.podiumPet,
+                    {
+                      width: sz.pet,
+                      height: sz.pet,
+                      right: -Math.round(sz.pet * 0.25),
+                    },
+                  ]}
+                >
                   <Image
                     source={{ uri: m.petImageUrl }}
                     style={{ width: sz.pet, height: sz.pet }}
@@ -305,11 +328,6 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
               )}
             </View>
           ))}
-          {hiddenCount > 0 && (
-            <View style={styles.podiumMore}>
-              <Text style={styles.podiumMoreText}>+{hiddenCount}</Text>
-            </View>
-          )}
         </View>
 
         <Text style={[styles.podiumTeamName, mine && styles.podiumTeamNameMine]} numberOfLines={1}>
@@ -397,43 +415,36 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingBottom: 4,
   },
-  // Coloana caracter + crown pe cap. Crown overlap-uieste varful avatarului
-  // cu marginBottom negativ ca sa stea efectiv "pe par", nu deasupra.
-  podiumCharCol: {
-    alignItems: 'center',
-  },
+  // Crown overlap-uieste varful avatarului — absolute pozitionata in interiorul
+  // podiumMember ca sa nu mute layout-ul caracterului in jos.
   podiumCrownOnHead: {
-    marginBottom: -6,
-    zIndex: 2,
+    position: 'absolute',
+    top: -8,
+    alignSelf: 'center',
+    zIndex: 6,
   },
   // Caracterele stau langa-langa, fara crop circular — full body se vede
-  // ca pe podium real.
+  // ca pe podium real. Pet-ul sta IN FATA caracterului (absolute), nu langa,
+  // ca sa para realmente lipit. Cand sunt multi membri intr-o echipa,
+  // caracterele se imbratiseaza cu overlap dinamic per memberCount.
   podiumLineup: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: -4,
   },
   podiumMember: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    position: 'relative',
   },
   charFallback: {
     backgroundColor: colors.cardAlt,
     borderRadius: 8,
   },
   podiumPet: {
-    marginLeft: -8,
-    marginBottom: 0,
+    position: 'absolute',
+    bottom: 0,
+    zIndex: 5,
   },
-  podiumMore: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    backgroundColor: colors.cardAlt,
-    borderRadius: 8,
-    marginLeft: 4,
-    marginBottom: 4,
-  },
-  podiumMoreText: { color: colors.text, fontSize: 11, fontWeight: '900' },
   podiumTeamName: {
     color: colors.text,
     fontSize: 12,
