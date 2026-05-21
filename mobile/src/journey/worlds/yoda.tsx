@@ -17,6 +17,7 @@ const PACK: WorldPack = {
       midColor: '#3B4A3B',
       groundColor: '#2E3A2E',
       accent: '#C9D17B',
+      celestial: { shape: 'sun', color: '#D8E0B0', position: [0.65, 0.2], size: 75 },
     },
     {
       key: 'firefly-night',
@@ -25,6 +26,7 @@ const PACK: WorldPack = {
       midColor: '#2A3A30',
       groundColor: '#1E2A1E',
       accent: '#B8FF6B',
+      celestial: { shape: 'moon', color: '#E8F5D8', position: [0.7, 0.13], size: 85 },
     },
   ],
   obstacles: [
@@ -196,6 +198,29 @@ const PACK: WorldPack = {
         {/* Muschi luminos */}
         <Circle cx={W * 0.32} cy={H * 0.5} r={4} fill={lighter} />
         <Circle cx={W * 0.58} cy={H * 0.55} r={5} fill={lighter} />
+      </Svg>
+    );
+  },
+  // Back layer — silueta munti foarte departe, ploata in ceata.
+  renderBackLayer: ({ width: W, height: H, color }) => {
+    const distant = shade(color, -0.05);
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        <Polygon
+          points={[
+            `0,${H}`,
+            `0,${H * 0.75}`,
+            `${W * 0.18},${H * 0.45}`,
+            `${W * 0.35},${H * 0.6}`,
+            `${W * 0.55},${H * 0.4}`,
+            `${W * 0.75},${H * 0.55}`,
+            `${W * 0.9},${H * 0.5}`,
+            `${W},${H * 0.75}`,
+            `${W},${H}`,
+          ].join(' ')}
+          fill={distant}
+          opacity={0.55}
+        />
       </Svg>
     );
   },

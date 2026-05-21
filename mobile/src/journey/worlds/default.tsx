@@ -18,6 +18,7 @@ export const DEFAULT_WORLD: WorldPack = {
       midColor: '#5BA67A',
       groundColor: '#3D7A56',
       accent: '#FF9F43',
+      celestial: { shape: 'sun', color: '#FFE876', position: [0.78, 0.14], size: 80 },
     },
     {
       key: 'dusk',
@@ -26,6 +27,7 @@ export const DEFAULT_WORLD: WorldPack = {
       midColor: '#4A7A60',
       groundColor: '#2E5A40',
       accent: '#FFD93D',
+      celestial: { shape: 'sun', color: '#FF8A4A', position: [0.85, 0.5], size: 95 },
     },
   ],
   obstacles: [

@@ -17,6 +17,7 @@ const PACK: WorldPack = {
       midColor: '#2D8C5F',
       groundColor: '#E8C97A',
       accent: '#FF6B9D',
+      celestial: { shape: 'sun', color: '#FFEB6B', position: [0.72, 0.12], size: 90 },
     },
     {
       key: 'sunset',
@@ -25,6 +26,7 @@ const PACK: WorldPack = {
       midColor: '#1F5A3F',
       groundColor: '#C9A55F',
       accent: '#FFEB6B',
+      celestial: { shape: 'sun', color: '#FF5A3F', position: [0.88, 0.5], size: 110 },
     },
   ],
   obstacles: [
@@ -204,6 +206,25 @@ const PACK: WorldPack = {
         <Circle cx={W * 0.4} cy={H * 0.65} r={4} fill={seashell} />
         <Circle cx={W * 0.6} cy={H * 0.45} r={6} fill={seashell} />
         <Circle cx={W * 0.78} cy={H * 0.6} r={5} fill={lighter} />
+      </Svg>
+    );
+  },
+  // Back layer — alte insule pe orizont, foarte mici si pale.
+  renderBackLayer: ({ width: W, height: H }) => {
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        {/* Insula 1 */}
+        <Polygon
+          points={`${W * 0.1},${H} ${W * 0.13},${H * 0.7} ${W * 0.2},${H * 0.5} ${W * 0.3},${H * 0.55} ${W * 0.35},${H * 0.78} ${W * 0.4},${H}`}
+          fill="#3A6A8A"
+          opacity={0.45}
+        />
+        {/* Insula 2 */}
+        <Polygon
+          points={`${W * 0.55},${H} ${W * 0.6},${H * 0.65} ${W * 0.7},${H * 0.45} ${W * 0.78},${H * 0.5} ${W * 0.85},${H * 0.7} ${W * 0.88},${H}`}
+          fill="#3A6A8A"
+          opacity={0.45}
+        />
       </Svg>
     );
   },

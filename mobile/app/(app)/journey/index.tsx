@@ -21,7 +21,7 @@ import { colors } from '../../../src/theme/colors';
 import { Scene } from '../../../src/journey/Scene';
 import { MOCK_QUESTIONS, type JourneyObstacle } from '../../../src/journey/mock';
 import { getWorldForPet } from '../../../src/journey/worlds';
-import { computeEffectiveBiome } from '../../../src/journey/worlds/util';
+import { computeBiomeTransition } from '../../../src/journey/worlds/util';
 
 type Phase = 'walking' | 'arriving' | 'asking' | 'feedback';
 
@@ -51,12 +51,13 @@ export default function JourneyScreen() {
   const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
   const [distance, setDistance] = useState(0);
 
-  // Biome cu tranzitie smooth — interpoleaza culorile pe ultimii 20% din
-  // fiecare segment, asa ca lumea "se transforma" treptat in loc sa sara.
-  const biome = useMemo(
-    () => computeEffectiveBiome(world, distance, BIOME_EVERY),
+  // Tranzitie biome cu interpolare smooth pe ultimii 20% din segment + info
+  // pt crossfade celestial (soare/luna).
+  const transition = useMemo(
+    () => computeBiomeTransition(world, distance, BIOME_EVERY),
     [world, distance],
   );
+  const biome = transition.effective;
 
   useEffect(() => {
     if (phase !== 'walking') return;
@@ -139,7 +140,7 @@ export default function JourneyScreen() {
       <View style={styles.fullScreen}>
         <Scene
           world={world}
-          biome={biome}
+          transition={transition}
           petImageUrl={petImg}
           obstacle={obstacle}
           walking={phase === 'walking' || phase === 'arriving'}

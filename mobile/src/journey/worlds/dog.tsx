@@ -17,6 +17,7 @@ const PACK: WorldPack = {
       midColor: '#6B8B5A',
       groundColor: '#5A8A4A',
       accent: '#FF6B6B',
+      celestial: { shape: 'sun', color: '#FFE876', position: [0.75, 0.12], size: 80 },
     },
     {
       key: 'evening',
@@ -25,6 +26,7 @@ const PACK: WorldPack = {
       midColor: '#4A5A50',
       groundColor: '#4A6A3A',
       accent: '#FFD93D',
+      celestial: { shape: 'sun', color: '#FF6B3F', position: [0.88, 0.5], size: 95 },
     },
   ],
   obstacles: [

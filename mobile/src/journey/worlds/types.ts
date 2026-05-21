@@ -10,6 +10,15 @@
 
 import type { ReactNode } from 'react';
 
+// Corp ceresc afisat in cer (soare, luna, planeta). Pozitia se exprima ca
+// fractie din latime/inaltime — [0..1, 0..1] cu (0,0) = top-left.
+export type CelestialConfig = {
+  shape: 'sun' | 'moon' | 'planet';
+  color: string;
+  position: [number, number];
+  size: number;
+};
+
 export type Biome = {
   // Identificator intern (ex. "day", "night", "dusk").
   key: string;
@@ -21,6 +30,9 @@ export type Biome = {
   groundColor: string;
   // Accent pt obstacole + speech bubble.
   accent: string;
+  // Corp ceresc (optional). Cand biome-ul se transforma, Scene cross-fade-uieste
+  // intre cel de la `fromBiome` si cel de la `toBiome`.
+  celestial?: CelestialConfig;
 };
 
 // Props primite de render-functiile de strat. World-ul poate desena ce vrea
@@ -82,6 +94,9 @@ export type WorldPack = {
   renderMidLayer: (props: LayerRenderProps) => ReactNode;
   renderGroundLayer: (props: LayerRenderProps) => ReactNode;
   renderCloudsLayer?: (props: { width: number; height: number }) => ReactNode;
+  // Strat parallax extra in spate (munti departe, silueta foarte ploata) —
+  // optional. Se misca la 0.18x viteza solului → adauga depth fara overhead.
+  renderBackLayer?: (props: LayerRenderProps) => ReactNode;
   // Meta narativ — daca lipseste, AI naratorul foloseste PetSpecies din DB.
   narrator?: {
     toneOverride?: string;

@@ -18,6 +18,7 @@ const PACK: WorldPack = {
       midColor: '#1F1A3E',
       groundColor: '#100B26',
       accent: '#E74C3C',
+      celestial: { shape: 'planet', color: '#8B4F8C', position: [0.72, 0.18], size: 110 },
     },
     {
       key: 'nebula',
@@ -26,6 +27,7 @@ const PACK: WorldPack = {
       midColor: '#3D1F5C',
       groundColor: '#1B0E2E',
       accent: '#9B59FF',
+      celestial: { shape: 'moon', color: '#E8DFFF', position: [0.65, 0.12], size: 70 },
     },
   ],
   obstacles: [
@@ -172,6 +174,29 @@ const PACK: WorldPack = {
         <Circle cx={W * 0.6} cy={H * 0.45} r={11} fill={darker} />
         <Circle cx={W * 0.6} cy={H * 0.4} r={7} fill={lighter} opacity={0.6} />
         <Circle cx={W * 0.82} cy={H * 0.65} r={5} fill={darker} />
+      </Svg>
+    );
+  },
+  // Back layer — galaxie spirala departe, foarte stilizat.
+  renderBackLayer: ({ width: W, height: H }) => {
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        {/* Silueta planeta gigant pe orizont */}
+        <Polygon
+          points={[
+            `0,${H}`,
+            `0,${H * 0.7}`,
+            `${W * 0.15},${H * 0.5}`,
+            `${W * 0.3},${H * 0.65}`,
+            `${W * 0.45},${H * 0.55}`,
+            `${W * 0.65},${H * 0.6}`,
+            `${W * 0.85},${H * 0.45}`,
+            `${W},${H * 0.7}`,
+            `${W},${H}`,
+          ].join(' ')}
+          fill="#1A1230"
+          opacity={0.7}
+        />
       </Svg>
     );
   },

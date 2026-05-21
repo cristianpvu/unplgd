@@ -2,6 +2,19 @@
 
 import type { Biome, WorldPack } from './types';
 
+// Rezultat compus pt UI — Scene foloseste asta ca sa randeze atat culorile
+// interpolate cat si celestial-urile cross-fade.
+export type BiomeTransition = {
+  // Biome cu culori interpolate (sky/mid/ground/accent).
+  effective: Biome;
+  // Biome de la care plecam (full state, fara interpolare).
+  from: Biome;
+  // Biome catre care mergem (full state).
+  to: Biome;
+  // Progres tranzitie 0..1 (smoothstep aplicat).
+  t: number;
+};
+
 const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
 
 function parseHex(hex: string): [number, number, number] {
@@ -46,19 +59,20 @@ export function lerpBiome(a: Biome, b: Biome, t: number): Biome {
   };
 }
 
-// Calculeaza biome-ul efectiv pe baza distantei parcurse. Logica:
+// Calculeaza tranzitia de biome pe baza distantei parcurse. Logica:
 //   - Fiecare biome "ocupa" `metersPerBiome` (de ex. 500m)
 //   - 80% din timp ramane in biome-ul curent ("settled")
 //   - In ultimii 20% face tranzitie smooth catre urmatorul
-// Asta da senzatia ca lumea "se schimba treptat" la finalul fiecarui segment,
-// nu un crossfade constant care nu lasa timp sa apreciezi vibe-ul curent.
-export function computeEffectiveBiome(
+export function computeBiomeTransition(
   world: WorldPack,
   distance: number,
   metersPerBiome: number,
-): Biome {
+): BiomeTransition {
   const cycleLen = world.biomes.length;
-  if (cycleLen === 1) return world.biomes[0];
+  if (cycleLen === 1) {
+    const only = world.biomes[0];
+    return { effective: only, from: only, to: only, t: 0 };
+  }
   const phase = distance / metersPerBiome;
   const phaseInCycle = ((phase % cycleLen) + cycleLen) % cycleLen;
   const fromIdx = Math.floor(phaseInCycle);
@@ -69,5 +83,8 @@ export function computeEffectiveBiome(
     localPhase < TRANSITION_START
       ? 0
       : (localPhase - TRANSITION_START) / (1 - TRANSITION_START);
-  return lerpBiome(world.biomes[fromIdx], world.biomes[toIdx], smoothstep(tRaw));
+  const t = smoothstep(tRaw);
+  const from = world.biomes[fromIdx];
+  const to = world.biomes[toIdx];
+  return { effective: lerpBiome(from, to, t), from, to, t };
 }
