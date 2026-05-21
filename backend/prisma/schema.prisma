@@ -414,19 +414,26 @@ model AdventureRun {
 // `requiredCompletions` ori pt tier-uri superioare).
 model ProfileBackground {
   id        String  @id @default(cuid())
-  key       String  @unique // ex. "groot-padure-zori"
-  worldSlug String
+  key       String  @unique // ex. "groot-padure-zori" sau "vader-ch2-nebula"
+  // Legatura la o lume adventure — NULL pentru fundalurile din journey (care
+  // se deblocheaza la checkpoint, nu prin AdventureWorld). Decuplat ca journey
+  // sa fie modular independent de adventure.
+  worldSlug String?
+  // Pet-ul (specia) careia ii apartine fundalul — folosit de journey ca sa
+  // afiseze fundalurile in ordine. Liber, fara FK.
+  petSlug   String?
   name      String
   imageUrl  String // populat de user; static
   tier      Int     @default(1) // 1=bronze, 2=argint, 3=aur — pt extindere viitoare
-  requiredCompletions Int @default(1) // cate victorii la boss ca sa deblochezi
+  requiredCompletions Int @default(1) // cate victorii la boss ca sa deblochezi (adventure)
   sortOrder Int     @default(0)
   active    Boolean @default(true)
 
-  world    AdventureWorld   @relation(fields: [worldSlug], references: [slug])
+  world    AdventureWorld?  @relation(fields: [worldSlug], references: [slug])
   unlocks  UserBackground[]
 
   @@index([worldSlug, active])
+  @@index([petSlug, active])
 }
 
 // Deblocare fundal de catre user — idempotent prin unique (userId, backgroundKey).

@@ -8,12 +8,13 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound, serverError } from '../lib/errors.js';
+import { badRequest, notFound } from '../lib/errors.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { logger } from '../lib/logger.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
 import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.js';
 import { resolvePetImagePath } from '../lib/petImage.js';
+import { awardBondXp } from '../lib/pet/bond.js';
 
 export const journeyRouter = Router();
 journeyRouter.use(requireAuth);
@@ -148,12 +149,87 @@ journeyRouter.get('/random-friend', async (req, res, next) => {
   }
 });
 
+// POST /journey/checkpoint
+// Acordat cand mobile ajunge la o scena de tip checkpoint. Idempotent:
+//   - bond xp prin BondXpTransaction unique (petId, 'journey_checkpoint', sceneId)
+//   - unlock background prin UserBackground unique (userId, backgroundKey)
+// Returneaza fundalul deblocat (daca exista + e in DB), ca mobile sa-l arate.
+const checkpointSchema = z.object({
+  sceneId: z.string().min(1).max(64),
+  chapterId: z.string().min(1).max(64),
+  bondXp: z.number().int().min(0).max(1000).optional(),
+  backgroundKey: z.string().min(1).max(80).optional(),
+});
+
+type CheckpointResponse = {
+  bondAwarded: number;
+  unlockedBackground: {
+    key: string;
+    name: string;
+    imageUrl: string;
+    tier: number;
+  } | null;
+};
+
+journeyRouter.post('/checkpoint', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const body = checkpointSchema.parse(req.body);
+
+    await ensureDefaultPet(userId);
+    const pet = await prisma.pet.findUniqueOrThrow({ where: { userId } });
+
+    let bondAwarded = 0;
+    if (body.bondXp && body.bondXp > 0) {
+      const granted = await awardBondXp(
+        pet.id,
+        body.bondXp,
+        'journey_checkpoint',
+        body.sceneId,
+        `Checkpoint ${body.chapterId}`,
+      );
+      if (granted) bondAwarded = body.bondXp;
+    }
+
+    let unlockedBackground: CheckpointResponse['unlockedBackground'] = null;
+    if (body.backgroundKey) {
+      // Fundalul trebuie sa existe in DB (populat manual de admin/tine).
+      const bg = await prisma.profileBackground.findUnique({
+        where: { key: body.backgroundKey },
+      });
+      if (!bg) {
+        logger.warn(
+          { backgroundKey: body.backgroundKey },
+          'journey.checkpoint_background_missing — nu exista in ProfileBackground',
+        );
+      } else if (bg.active) {
+        // Unlock idempotent.
+        try {
+          await prisma.userBackground.create({
+            data: { userId, backgroundKey: bg.key },
+          });
+        } catch (err: any) {
+          // P2002 = deja deblocat → ignoram, returnam tot fundalul.
+          if (err?.code !== 'P2002') throw err;
+        }
+        unlockedBackground = {
+          key: bg.key,
+          name: bg.name,
+          imageUrl: bg.imageUrl,
+          tier: bg.tier,
+        };
+      }
+    }
+
+    const response: CheckpointResponse = { bondAwarded, unlockedBackground };
+    res.json(response);
+  } catch (e) {
+    if (e instanceof z.ZodError) return next(badRequest('invalid_body', e.message));
+    next(e);
+  }
+});
+
 // GET /journey/health
 journeyRouter.get('/health', (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
-});
-
-// Placeholder progress (iteratie viitoare).
-journeyRouter.get('/progress/:petSlug', (_req, _res, next) => {
-  next(serverError('not_implemented', 'Progress persistat vine intr-o iteratie viitoare.'));
 });
