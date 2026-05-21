@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -185,14 +188,14 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
           </Pressable>
         </View>
 
-        {engaged?.monster && (
-          <View style={styles.nameWrap} pointerEvents="none">
-            <Text style={styles.monsterName}>{engaged.monster.name}</Text>
-          </View>
-        )}
-
         {/* Spacer — impinge bottomCard la baza ecranului. */}
         <View style={{ flex: 1 }} pointerEvents="none" />
+
+        {currentRun?.petHint && (
+          <View style={styles.petHintRow} pointerEvents="box-none">
+            <PetHintBadge petHint={currentRun.petHint} />
+          </View>
+        )}
 
         <View style={[styles.bottomCard, { paddingBottom: insets.bottom + 18 }]}>
           {currentRun ? (
@@ -346,6 +349,139 @@ function ChallengePanel({
   );
 }
 
+// Petul "vrea sa-ti spuna ceva" — character floating cu wiggle + bob + glow
+// ring pulse + "Psst!" bubble bouncing. User-ul TREBUIE sa tap-uiasca pe pet
+// ca sa primeasca hint-ul (intentional — friction step). Cand revealed, bubble
+// "Psst!" se transforma intr-o speech bubble cu hint text + comic tail, cu
+// pop-in animation. Reset la schimbarea runului.
+function PetHintBadge({ petHint }: { petHint: NonNullable<ChallengeRunDto['petHint']> }) {
+  const [revealed, setRevealed] = useState(false);
+  // Cat timp NU revealed: wiggle (rotation) + bob (translateY) pe pet + pulse
+  // pe bubble Psst. Cand revealed: pop-in scale spring pe bubble.
+  const attention = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    setRevealed(false);
+    reveal.setValue(0);
+  }, [petHint.text]);
+
+  // Loop attention (gentle bob + faint wiggle + Psst pulse) cat timp collapsed.
+  // Sine-eased ping-pong (0→1→0) ca sa nu fie reset brusc — fiecare leg are
+  // ease-in-out, deci varfurile (0 si 1) sunt fluide ca o oscilatie sin.
+  useEffect(() => {
+    if (revealed) {
+      attention.stopAnimation();
+      return;
+    }
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(attention, {
+          toValue: 1,
+          duration: 1300,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(attention, {
+          toValue: 0,
+          duration: 1300,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [revealed, attention]);
+
+  // Pop-in cand devine revealed (spring scale).
+  useEffect(() => {
+    if (!revealed) return;
+    reveal.setValue(0);
+    Animated.spring(reveal, {
+      toValue: 1,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+  }, [revealed, reveal]);
+
+  // Interpolations — atentia oscileaza 0→1→0 cu sin-easing per leg, deci
+  // amplitudinile sunt mapate direct intre cele doua extreme. Subtil pe tot:
+  // wiggle ±2.5deg, bob 3px, Psst scale 1.08, tilt ±2deg.
+  const wiggleRot = attention.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-2.5deg', '2.5deg'],
+  });
+  const bobY = attention.interpolate({
+    inputRange: [0, 1],
+    outputRange: [2, -3],
+  });
+  const psstScale = attention.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+  const psstRot = attention.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-2deg', '2deg'],
+  });
+  const bubbleScale = reveal.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const bubbleOpacity = reveal;
+
+  const imgUrl = petHint.petImageUrl;
+  const initial = petHint.petName.charAt(0).toUpperCase();
+
+  return (
+    <View style={styles.petWrap}>
+      <Pressable onPress={() => setRevealed((s) => !s)} style={styles.petPressable}>
+        {/* Caracter raw, fara cerc/ring — doar PNG-ul cu wiggle + bob. Shadow
+            pe wrapper ca sa-l detaseze de fundal. */}
+        <Animated.View
+          style={[
+            styles.petAnchor,
+            { transform: [{ translateY: bobY }, { rotate: wiggleRot }] },
+          ]}
+        >
+          {imgUrl ? (
+            <Image source={{ uri: imgUrl }} style={styles.petImage} resizeMode="contain" />
+          ) : (
+            <View style={styles.petFallbackBox}>
+              <Text style={styles.petFallbackLetter}>{initial}</Text>
+            </View>
+          )}
+        </Animated.View>
+
+        {/* Bubble — Psst collapsed sau hint revealed */}
+        {!revealed ? (
+          <Animated.View
+            style={[
+              styles.psstBubble,
+              { transform: [{ scale: psstScale }, { rotate: psstRot }] },
+            ]}
+          >
+            <Text style={styles.psstText}>Psst!</Text>
+            <View style={styles.psstTail} />
+          </Animated.View>
+        ) : (
+          <Animated.View
+            style={[
+              styles.hintBubble,
+              { opacity: bubbleOpacity, transform: [{ scale: bubbleScale }] },
+            ]}
+          >
+            <Text style={styles.hintAttribution}>
+              {petHint.petName} al lui {petHint.ownerName} sopteste:
+            </Text>
+            <Text style={styles.hintText}>{petHint.text}</Text>
+            <Text style={styles.hintDismiss}>atinge ca sa inchizi</Text>
+            <View style={styles.hintTail} />
+          </Animated.View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
 function TeammateProgress({ runs }: { runs: ChallengeRunDto[] }) {
   // Grupare per user, contam done vs pending.
   const byUser = new Map<string, { done: number; total: number }>();
@@ -409,10 +545,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  nameWrap: {
-    alignItems: 'center',
-    marginTop: 8,
-  },
   spriteBg: {
     width: 180,
     height: 180,
@@ -425,15 +557,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
   },
   spriteEmoji: { fontSize: 96 },
-  monsterName: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '900',
-    marginTop: 18,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 6,
-  },
 
   bottomCard: {
     backgroundColor: 'rgba(15,15,18,0.92)',
@@ -517,4 +640,115 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   teammateText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+
+  // Pet hint widget: caracter raw (PNG transparent, fara cerc/ring) floating
+  // chiar deasupra bottomCard, cu Psst bubble (collapsed) sau speech bubble
+  // (revealed) langa el. Wiggle + bob pe pet, Psst pulse pe bubble.
+  petHintRow: {
+    paddingHorizontal: 14,
+    marginBottom: 18,
+  },
+  petWrap: {
+    minHeight: 110,
+  },
+  petPressable: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+  },
+  petAnchor: {
+    width: 110,
+    height: 110,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    // Shadow ca pet-ul sa se detaseze de fundal (iOS). Pe Android elevation
+    // nu se aplica corect pe Image transparent, lasam fara — wiggle + bob
+    // dau singure semnalul vizual.
+    shadowColor: '#000000',
+    shadowOpacity: 0.55,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  petImage: {
+    width: 110,
+    height: 110,
+  },
+  petFallbackBox: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#FFD24D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  petFallbackLetter: {
+    color: '#2A1B0E',
+    fontSize: 48,
+    fontWeight: '900',
+  },
+  psstBubble: {
+    backgroundColor: '#FFE4A3',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  psstText: {
+    color: '#2A1B0E',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  // Comic tail — patrat rotit, partial sub bubble (efect de varf).
+  psstTail: {
+    position: 'absolute',
+    left: -6,
+    top: 16,
+    width: 14,
+    height: 14,
+    backgroundColor: '#FFE4A3',
+    transform: [{ rotate: '45deg' }],
+  },
+  hintBubble: {
+    flex: 1,
+    backgroundColor: '#FFE4A3',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 18,
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  hintTail: {
+    position: 'absolute',
+    left: -7,
+    top: 24,
+    width: 16,
+    height: 16,
+    backgroundColor: '#FFE4A3',
+    transform: [{ rotate: '45deg' }],
+  },
+  hintAttribution: {
+    color: '#7A5C30',
+    fontSize: 11,
+    fontWeight: '700',
+    fontStyle: 'italic',
+    marginBottom: 6,
+  },
+  hintText: {
+    color: '#2A1B0E',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+  },
+  hintDismiss: {
+    color: '#8C6B45',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 6,
+  },
 });

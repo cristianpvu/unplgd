@@ -120,6 +120,17 @@ export type ChallengeRunDto = {
   outcome: ChallengeOutcome;
   feedback: string | null;
   finishedAt: string | null;
+  // Hint subtil generat de un pet din party (cel cu domain match). NULL daca
+  // niciun pet din echipa nu match-uia domain-ul monstrului sau AI a esuat.
+  petHint: {
+    text: string;
+    petName: string;
+    ownerName: string;
+    // URL deja rezolvat (signed GCS URL, absolute http, sau /pets/... static).
+    // Backend-ul foloseste `resolvePetImagePath` ca pe restul app-ului (parity
+    // cu /pets/me). NULL daca specia n-are imagine — UI fallback la initiala.
+    petImageUrl: string | null;
+  } | null;
 };
 
 export type EngageResponse = {
