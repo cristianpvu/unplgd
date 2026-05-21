@@ -1,0 +1,59 @@
+// Client journey — TTS + random friend pt encounter dinamic.
+
+import { api, API_BASE_URL } from './client';
+
+export type JourneyVoice = 'narrator' | 'pet';
+
+export type JourneyTtsResponse = {
+  text: string;
+  audioUrl: string | null;
+  provider: 'eleven' | 'edge' | null;
+};
+
+export function synthesizeJourneyTts(
+  text: string,
+  voice: JourneyVoice,
+  visitorSpeciesSlug?: string,
+) {
+  return api<JourneyTtsResponse>('/journey/tts', {
+    method: 'POST',
+    body: { text, voice, visitorSpeciesSlug },
+  });
+}
+
+export type RandomFriendPet = {
+  friendName: string;
+  petName: string;
+  speciesSlug: string;
+  speciesName: string;
+  petImageUrl: string | null;
+};
+
+export function getRandomFriendPet() {
+  return api<RandomFriendPet>('/journey/random-friend');
+}
+
+export type CheckpointReward = {
+  bondAwarded: number;
+  unlockedBackground: {
+    key: string;
+    name: string;
+    imageUrl: string;
+    tier: number;
+  } | null;
+};
+
+export function claimCheckpoint(args: {
+  sceneId: string;
+  chapterId: string;
+  bondXp?: number;
+  backgroundKey?: string;
+}) {
+  return api<CheckpointReward>('/journey/checkpoint', { method: 'POST', body: args });
+}
+
+export function absoluteAudioUrl(path: string | null): string | null {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path}`;
+}

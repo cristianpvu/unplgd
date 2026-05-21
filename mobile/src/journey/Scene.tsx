@@ -2,32 +2,52 @@
 // pet-ului) si un Biome (= stadiul curent zi/noapte). Scene NU stie nimic
 // specific despre pet — totul vine din pack.
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, Image, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop, RadialGradient } from 'react-native-svg';
-import type { JourneyObstacle } from './mock';
 import type { Biome, WorldPack } from './worlds/types';
 import { AmbientLayer } from './AmbientLayer';
 import { Celestial } from './Celestial';
 import type { BiomeTransition } from './worlds/util';
+import type { EngineObstacle, EngineVisitor } from './StoryEngine';
+import { VfxOverlay, type SpecificVfx } from './VfxOverlay';
 
 const LAYER_W = 900;
 const PET_LEFT_RATIO = 0.22;
 const OBSTACLE_STOP_RATIO = 0.58;
 const SCROLL_DURATION_MS = 22000;
 
+type GenericVfx = 'flash' | 'shake' | 'darken' | 'rumble' | 'zoom-in';
+type VfxEvent = { id: number; vfx: GenericVfx | SpecificVfx };
+
+const SPECIFIC_VFX: SpecificVfx[] = [
+  'meteor',
+  'lightning',
+  'shooting-stars',
+  'dust-gust',
+  'glow-pulse',
+];
+function isSpecificVfx(v: string): v is SpecificVfx {
+  return (SPECIFIC_VFX as string[]).includes(v);
+}
+
 type Props = {
   world: WorldPack;
-  // Tranzitie completa (effective + from + to + t). Scene foloseste `effective`
-  // pt culori si `from/to/t` pt crossfade-ul celestial.
   transition: BiomeTransition;
   petImageUrl: string | null;
-  obstacle: JourneyObstacle | null;
+  obstacle: EngineObstacle | null;
+  visitor: EngineVisitor | null;
+  // Tovaras persistent — merge langa pet pana pleaca.
+  companion: EngineVisitor | null;
   walking: boolean;
-  onArrive: () => void;
+  vfxEvent: VfxEvent | null;
+  // Cand intro cinematic ruleaza, ascundem pet-ul din Scene (cinematic-ul isi
+  // randeaza propriul pet care termina exact in pozitia de mers).
+  hidePet?: boolean;
 };
 
-export function Scene({ world, transition, petImageUrl, obstacle, walking, onArrive }: Props) {
+export function Scene({ world, transition, petImageUrl, obstacle, visitor, companion, walking, vfxEvent, hidePet }: Props) {
+  const visitorImageUrl = visitor?.imageUrl ?? null;
   const biome = transition.effective;
   const { width, height } = useWindowDimensions();
   const groundY = height * 0.78;
@@ -42,6 +62,86 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
   // Pet reactions — mic "tilt" ocazional al capului, ca pet-ul ar fi observat
   // ceva. Random la 5-12s; spring back la 0.
   const petTilt = useRef(new Animated.Value(0)).current;
+  // Vizitator — apare din dreapta cu spring, bob propriu, iese spre dreapta.
+  const visitorX = useRef(new Animated.Value(width + 200)).current;
+  const visitorBob = useRef(new Animated.Value(0)).current;
+  // Companion — tovaras care merge in spatele pet-ului. enter 0→1, bob propriu.
+  const companionEnter = useRef(new Animated.Value(0)).current;
+  const companionBob = useRef(new Animated.Value(0)).current;
+  // Tinem companion-ul randat si in timpul animatiei de iesire (lag fata de prop).
+  const [displayCompanion, setDisplayCompanion] = useState<EngineVisitor | null>(companion);
+  // VFX values — flash white overlay opacity, shake offset X, darken opacity,
+  // zoom scale. Toate native-driven cand posibil.
+  const flashOpacity = useRef(new Animated.Value(0)).current;
+  const shakeX = useRef(new Animated.Value(0)).current;
+  const darkenOpacity = useRef(new Animated.Value(0)).current;
+  const zoomScale = useRef(new Animated.Value(1)).current;
+  // Event-ul curent pt overlay-ul de efecte specifice (meteor, fulger, etc).
+  const [specificVfx, setSpecificVfx] = useState<{ id: number; vfx: SpecificVfx } | null>(null);
+
+  // Cand vfxEvent.id se schimba → declanseaza animatia corespunzatoare. Efectele
+  // specifice merg la VfxOverlay; cele generice misca camera/overlay-urile aici.
+  useEffect(() => {
+    if (!vfxEvent) return;
+    if (isSpecificVfx(vfxEvent.vfx)) {
+      setSpecificVfx({ id: vfxEvent.id, vfx: vfxEvent.vfx });
+      // Meteor + lightning beneficiaza si de un flash subtil de camera.
+      if (vfxEvent.vfx === 'lightning' || vfxEvent.vfx === 'meteor') {
+        Animated.sequence([
+          Animated.timing(flashOpacity, { toValue: 0.3, duration: 90, useNativeDriver: true }),
+          Animated.timing(flashOpacity, { toValue: 0, duration: 320, useNativeDriver: true }),
+        ]).start();
+      }
+      return;
+    }
+    switch (vfxEvent.vfx) {
+      case 'flash':
+        Animated.sequence([
+          Animated.timing(flashOpacity, { toValue: 0.85, duration: 80, useNativeDriver: true }),
+          Animated.timing(flashOpacity, { toValue: 0, duration: 280, useNativeDriver: true }),
+        ]).start();
+        break;
+      case 'shake':
+        Animated.sequence([
+          Animated.timing(shakeX, { toValue: 14, duration: 50, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: -14, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: 10, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: -8, duration: 60, useNativeDriver: true }),
+          Animated.timing(shakeX, { toValue: 0, duration: 100, useNativeDriver: true }),
+        ]).start();
+        break;
+      case 'rumble': {
+        // 6 oscilatii mai mici, mai lungi.
+        const seq: Animated.CompositeAnimation[] = [];
+        for (let i = 0; i < 8; i++) {
+          seq.push(
+            Animated.timing(shakeX, {
+              toValue: i % 2 === 0 ? 5 : -5,
+              duration: 130,
+              useNativeDriver: true,
+            }),
+          );
+        }
+        seq.push(Animated.timing(shakeX, { toValue: 0, duration: 120, useNativeDriver: true }));
+        Animated.sequence(seq).start();
+        break;
+      }
+      case 'darken':
+        Animated.sequence([
+          Animated.timing(darkenOpacity, { toValue: 0.45, duration: 300, useNativeDriver: true }),
+          Animated.delay(800),
+          Animated.timing(darkenOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+        ]).start();
+        break;
+      case 'zoom-in':
+        Animated.sequence([
+          Animated.timing(zoomScale, { toValue: 1.08, duration: 700, useNativeDriver: true }),
+          Animated.delay(400),
+          Animated.timing(zoomScale, { toValue: 1, duration: 700, useNativeDriver: true }),
+        ]).start();
+        break;
+    }
+  }, [vfxEvent?.id]);
   // Mic "breath" al camerei — sine lent pe Y, ~3px amplitudine, perioada ~7s.
   // Da senzatia ca lumea respira, nu e statica ca o poza.
   const breath = useRef(new Animated.Value(0)).current;
@@ -188,7 +288,6 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
               useNativeDriver: true,
             }),
           ]).start();
-          onArrive();
         }
       });
     } else {
@@ -200,7 +299,124 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
       }).start();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obstacle?.id, width]);
+  }, [obstacle?.sceneId, width]);
+
+  // Spawn/exit visitor — intra din dreapta cu spring, sta linga pet.
+  const visitorStopX = width * 0.7;
+  useEffect(() => {
+    if (visitor) {
+      visitorX.setValue(width + 200);
+      Animated.spring(visitorX, {
+        toValue: visitorStopX,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 22,
+      }).start();
+    } else {
+      Animated.timing(visitorX, {
+        toValue: width + 200,
+        duration: 800,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visitor?.sceneId, width]);
+
+  // Bob constant al vizitatorului cand e pe ecran.
+  useEffect(() => {
+    if (!visitor) {
+      visitorBob.stopAnimation();
+      Animated.timing(visitorBob, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(visitorBob, {
+          toValue: 1,
+          duration: 600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(visitorBob, {
+          toValue: 0,
+          duration: 600,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [visitor, visitorBob]);
+
+  const visitorTranslateY = visitorBob.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -6],
+  });
+
+  // Companion enter/exit. Cand prop devine set → enter (0→1). Cand devine null
+  // → exit (1→0) apoi demontam (displayCompanion).
+  useEffect(() => {
+    if (companion) {
+      setDisplayCompanion(companion);
+      companionEnter.setValue(0);
+      Animated.spring(companionEnter, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 18,
+      }).start();
+    } else if (displayCompanion) {
+      Animated.timing(companionEnter, {
+        toValue: 0,
+        duration: 650,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setDisplayCompanion(null);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companion?.sceneId]);
+
+  // Bob companion cand merge (walking).
+  useEffect(() => {
+    if (!displayCompanion || !walking) {
+      companionBob.stopAnimation();
+      Animated.timing(companionBob, { toValue: 0, duration: 200, useNativeDriver: true }).start();
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(companionBob, {
+          toValue: 1,
+          duration: 360,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(companionBob, {
+          toValue: 0,
+          duration: 360,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [displayCompanion, walking, companionBob]);
+
+  // Companion: in spatele pet-ului (la stanga, putin mai mic). enter aluneca
+  // dinspre dreapta-jos catre pozitie; exit invers + fade.
+  const companionTranslateX = companionEnter.interpolate({
+    inputRange: [0, 1],
+    outputRange: [width * 0.35, 0],
+  });
+  const companionTranslateY = Animated.add(
+    companionBob.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }),
+    companionEnter.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }),
+  );
 
   const midTranslate = useMemo(
     () => scrollAnim.interpolate({ inputRange: [-LAYER_W, 0], outputRange: [-LAYER_W * 0.35, 0] }),
@@ -256,7 +472,16 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
   return (
     <View style={[styles.scene, { backgroundColor: biome.skyColor }]}>
       <Animated.View
-        style={[StyleSheet.absoluteFill, { transform: [{ translateY: breathY }] }]}
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            transform: [
+              { translateY: breathY },
+              { translateX: shakeX },
+              { scale: zoomScale },
+            ],
+          },
+        ]}
         pointerEvents="box-none"
       >
       {/* Sky gradient subtle — adauga adancime (mai luminat in jos pe orizont) */}
@@ -401,7 +626,77 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
         </Animated.View>
       )}
 
-      {/* Pet */}
+      {/* Vizitator (alt pet) */}
+      {visitor && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: groundY - petSize * 0.85,
+            left: -petSize / 2,
+            width: petSize,
+            height: petSize,
+            transform: [{ translateX: visitorX }, { translateY: visitorTranslateY }],
+          }}
+          pointerEvents="none"
+        >
+          {visitorImageUrl ? (
+            <Image
+              source={{ uri: visitorImageUrl }}
+              style={{ width: petSize * 0.9, height: petSize * 0.9 }}
+              resizeMode="contain"
+            />
+          ) : (
+            <View
+              style={{
+                width: petSize * 0.9,
+                height: petSize * 0.9,
+                backgroundColor: 'rgba(255,255,255,0.25)',
+                borderRadius: (petSize * 0.9) / 2,
+              }}
+            />
+          )}
+        </Animated.View>
+      )}
+
+      {/* Companion — tovaras care merge in spatele pet-ului (la stanga) */}
+      {displayCompanion && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            top: groundY - petSize * 0.78,
+            left: width * 0.1 - petSize / 2,
+            width: petSize,
+            height: petSize,
+            opacity: companionEnter,
+            transform: [
+              { translateX: companionTranslateX },
+              { translateY: companionTranslateY },
+              { scale: 0.8 },
+            ],
+          }}
+          pointerEvents="none"
+        >
+          {displayCompanion.imageUrl ? (
+            <Image
+              source={{ uri: displayCompanion.imageUrl }}
+              style={{ width: petSize * 0.8, height: petSize * 0.8 }}
+              resizeMode="contain"
+            />
+          ) : (
+            <View
+              style={{
+                width: petSize * 0.8,
+                height: petSize * 0.8,
+                backgroundColor: 'rgba(255,255,255,0.22)',
+                borderRadius: (petSize * 0.8) / 2,
+              }}
+            />
+          )}
+        </Animated.View>
+      )}
+
+      {/* Pet — ascuns in timpul intro cinematic */}
+      {!hidePet && (
       <Animated.View
         style={{
           position: 'absolute',
@@ -430,6 +725,7 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
           />
         )}
       </Animated.View>
+      )}
 
       {/* Ambient — strat fata (praf, fluturi) */}
       {ambientFore.length > 0 && (
@@ -437,7 +733,28 @@ export function Scene({ world, transition, petImageUrl, obstacle, walking, onArr
       )}
       </Animated.View>
 
-      {/* Vignette — colturi mai inchise, look cinematic. Out of breath wrap. */}
+      {/* Vfx — darken overlay (suspans) */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: '#000', opacity: darkenOpacity },
+        ]}
+        pointerEvents="none"
+      />
+
+      {/* Vfx — flash white (fulger, lumina dramatica) */}
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          { backgroundColor: '#FFFFFF', opacity: flashOpacity },
+        ]}
+        pointerEvents="none"
+      />
+
+      {/* Vfx specifice — meteor, fulger, ploaie de stele, praf, glow */}
+      <VfxOverlay event={specificVfx} />
+
+      {/* Vignette — colturi mai inchise, look cinematic. */}
       <Svg
         width={width}
         height={height}

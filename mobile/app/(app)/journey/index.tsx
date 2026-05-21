@@ -1,12 +1,13 @@
-// Journey — un singur drum infinit, side-scroller cu pet animat, LANDSCAPE.
-// Toata estetica vine din WorldPack-ul mapat per pet species slug; daca pet-ul
-// nu are config dedicat, fallback la DEFAULT_WORLD.
+// Journey — drum infinit cu povesti predefinite per pet. Conducerea o face
+// `StoryEngine` care consuma `Chapter.scenes[]` din StoryPack-ul mapat pe pet.
+// Mobile-ul detine 100% continutul; backend-ul doar sintetizeaza TTS.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Easing,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -19,16 +20,13 @@ import { useQuery } from '@tanstack/react-query';
 import { getMyPet, petImageUrl } from '../../../src/api/pets';
 import { colors } from '../../../src/theme/colors';
 import { Scene } from '../../../src/journey/Scene';
-import { MOCK_QUESTIONS, type JourneyObstacle } from '../../../src/journey/mock';
+import { IntroCinematic } from '../../../src/journey/IntroCinematic';
 import { getWorldForPet } from '../../../src/journey/worlds';
+import { getStoryForPet } from '../../../src/journey/stories';
+import { findActiveChapter, useStoryEngine } from '../../../src/journey/StoryEngine';
 import { computeBiomeTransition } from '../../../src/journey/worlds/util';
 
-type Phase = 'walking' | 'arriving' | 'asking' | 'feedback';
-
-const MIN_WALK_MS = 14000;
-const MAX_WALK_MS = 18000;
 const DISTANCE_TICK_MS = 90;
-const BIOME_EVERY = 500;
 
 const STACK_OPTIONS = {
   orientation: 'landscape' as const,
@@ -42,69 +40,52 @@ export default function JourneyScreen() {
   const pet = petQuery.data?.pet ?? null;
   const petImg = petImageUrl(pet?.species.imagePath ?? null);
 
-  // World pack = sursa de adevar pentru toata estetica scenei.
   const world = useMemo(() => getWorldForPet(pet?.species.slug), [pet?.species.slug]);
+  const story = useMemo(() => getStoryForPet(pet?.species.slug), [pet?.species.slug]);
+  // Pt MVP: primul capitol al povestii. Iteratie urmatoare: progresul user.
+  const chapter = useMemo(
+    () => (story ? findActiveChapter(story.chapters) : null),
+    [story],
+  );
 
-  const [phase, setPhase] = useState<Phase>('walking');
-  const [obstacle, setObstacle] = useState<JourneyObstacle | null>(null);
-  const [obstacleSeq, setObstacleSeq] = useState(0);
-  const [feedback, setFeedback] = useState<'correct' | 'wrong' | null>(null);
+  // Intro cinematic — daca capitolul are unul, il jucam inainte sa porneasca
+  // engine-ul. introDone gateaza pornirea engine-ului (chapter=null pana atunci).
+  const [introDone, setIntroDone] = useState(false);
+  useEffect(() => {
+    // La schimbare de capitol: daca are intro → asteapta-l; altfel sari direct.
+    setIntroDone(!chapter?.introCinematic);
+  }, [chapter?.id, chapter?.introCinematic]);
+
+  const { state, answerChallenge, skipCurrent } = useStoryEngine(introDone ? chapter : null);
+
+  // Distanta — pur cosmetica, contor metri afisat sus. Nu mai dicteaza biome.
   const [distance, setDistance] = useState(0);
-
-  // Tranzitie biome cu interpolare smooth pe ultimii 20% din segment + info
-  // pt crossfade celestial (soare/luna).
-  const transition = useMemo(
-    () => computeBiomeTransition(world, distance, BIOME_EVERY),
-    [world, distance],
-  );
-  const biome = transition.effective;
-
   useEffect(() => {
-    if (phase !== 'walking') return;
-    const id = setInterval(() => {
-      setDistance((d) => d + 1);
-    }, DISTANCE_TICK_MS);
+    if (!state.petCanWalk) return;
+    const id = setInterval(() => setDistance((d) => d + 1), DISTANCE_TICK_MS);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [state.petCanWalk]);
 
-  useEffect(() => {
-    if (phase !== 'walking') return;
-    const delay = MIN_WALK_MS + Math.random() * (MAX_WALK_MS - MIN_WALK_MS);
-    const id = setTimeout(() => {
-      // Compunem obstacolul: shape random din WorldPack + intrebare random
-      // din pool-ul mock. La Faza 2 intrebarile vin din cache AI.
-      const shape = world.obstacles[Math.floor(Math.random() * world.obstacles.length)];
-      const question = MOCK_QUESTIONS[Math.floor(Math.random() * MOCK_QUESTIONS.length)];
-      const next: JourneyObstacle = {
-        id: `obs-${Date.now()}-${obstacleSeq}`,
-        shapeKey: shape.key,
-        question,
-      };
-      setObstacle(next);
-      setPhase('arriving');
-    }, delay);
-    return () => clearTimeout(id);
-  }, [phase, obstacleSeq, world]);
+  // Biome — fix per capitol. Gasim biome obj dupa chapter.biomeKey.
+  const biome = useMemo(() => {
+    if (!chapter) return world.biomes[0];
+    return world.biomes.find((b) => b.key === chapter.biomeKey) ?? world.biomes[0];
+  }, [chapter, world]);
 
-  const handleArrive = useCallback(() => {
-    setPhase((p) => (p === 'arriving' ? 'asking' : p));
-  }, []);
-
-  const handleAnswer = useCallback(
-    (idx: number) => {
-      if (phase !== 'asking' || !obstacle) return;
-      const correct = idx === obstacle.question.correctIndex;
-      setFeedback(correct ? 'correct' : 'wrong');
-      setPhase('feedback');
-      setTimeout(() => {
-        setObstacle(null);
-        setFeedback(null);
-        setObstacleSeq((s) => s + 1);
-        setPhase('walking');
-      }, 1500);
-    },
-    [phase, obstacle],
+  // Pt tranzitia smooth Scene asteapta un BiomeTransition. Cand biome-ul e
+  // fix, ii dam un "static" cu t=0.
+  const transition = useMemo(
+    () => ({
+      effective: biome,
+      from: biome,
+      to: biome,
+      t: 0,
+    }),
+    [biome],
   );
+
+  // Vizitatorul are imageUrl direct in engine state (vine din backend cu URL
+  // signed/absolut). Nu mai e nevoie de lookup separat.
 
   if (petQuery.isPending) {
     return (
@@ -133,6 +114,23 @@ export default function JourneyScreen() {
     );
   }
 
+  if (!story || !chapter) {
+    return (
+      <>
+        <Stack.Screen options={STACK_OPTIONS} />
+        <StatusBar hidden />
+        <View style={[styles.fullScreen, styles.center, { gap: 16 }]}>
+          <Text style={styles.errorText}>
+            {pet.name} inca nu are povesti scrise. Vin in curand!
+          </Text>
+          <Pressable onPress={() => router.back()} style={styles.backBtnInline}>
+            <Text style={styles.backInlineText}>Inapoi</Text>
+          </Pressable>
+        </View>
+      </>
+    );
+  }
+
   return (
     <>
       <Stack.Screen options={STACK_OPTIONS} />
@@ -142,44 +140,89 @@ export default function JourneyScreen() {
           world={world}
           transition={transition}
           petImageUrl={petImg}
-          obstacle={obstacle}
-          walking={phase === 'walking' || phase === 'arriving'}
-          onArrive={handleArrive}
+          obstacle={state.obstacle}
+          visitor={state.visitor}
+          companion={state.companion}
+          walking={state.petCanWalk}
+          vfxEvent={state.vfxEvent}
+          hidePet={!introDone}
         />
 
+        {/* Intro cinematic — peste scena, inainte de prima replica */}
+        {!introDone && chapter.introCinematic && (
+          <IntroCinematic
+            type={chapter.introCinematic}
+            petImageUrl={petImg}
+            accent={biome.accent}
+            onComplete={() => setIntroDone(true)}
+          />
+        )}
+
+        {/* Top bar */}
         <View style={styles.topBar} pointerEvents="box-none">
           <Pressable onPress={() => router.back()} hitSlop={16} style={styles.pauseBtn}>
             <PauseIcon />
           </Pressable>
           <View style={styles.topPill}>
-            <Text style={styles.biomeText}>{biome.name}</Text>
-            <Text style={styles.distanceText}>{distance} m</Text>
+            <Text style={styles.biomeText}>{chapter.title}</Text>
+            <Text style={styles.distanceText}>
+              {state.sceneIdx + 1} / {state.totalScenes}
+            </Text>
           </View>
-          <View style={{ width: 36 }} />
+          <Pressable onPress={skipCurrent} hitSlop={16} style={styles.skipBtn}>
+            <Text style={styles.skipText}>›</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.bottomArea} pointerEvents="box-none">
-          {phase === 'asking' && obstacle && (
-            <AskingPanel
-              petName={pet.name}
-              obstacle={obstacle}
-              onAnswer={handleAnswer}
-              accentColor={biome.accent}
-            />
-          )}
-          {phase === 'feedback' && obstacle && feedback && (
-            <FeedbackPanel
-              feedback={feedback}
-              line={
-                feedback === 'correct'
-                  ? obstacle.question.successLine
-                  : obstacle.question.failLine
-              }
-            />
-          )}
-          {(phase === 'walking' || phase === 'arriving') && (
-            <WalkingHint approaching={phase === 'arriving'} petName={pet.name} />
-          )}
+        {/* Caption — subtitle stil film, jos */}
+        {state.caption && <CaptionBar text={state.caption} speaker={state.speakerLabel} />}
+
+        {/* Panel optiuni cand engine cere raspuns la challenge */}
+        {state.obstacle && (
+          <ChallengeOptions
+            options={state.obstacle.options}
+            accentColor={biome.accent}
+            onAnswer={answerChallenge}
+          />
+        )}
+
+        {/* Card final cand chapterul s-a terminat — arata reward-ul */}
+        {state.chapterDone && (
+          <View style={styles.doneOverlay} pointerEvents="box-none">
+            <View style={styles.doneCard}>
+              <Text style={styles.doneTag}>CAPITOL INCHEIAT</Text>
+              <Text style={styles.doneTitle}>{chapter.title}</Text>
+              {state.lastReward?.bondAwarded ? (
+                <Text style={styles.rewardLine}>
+                  +{state.lastReward.bondAwarded} legatura cu {pet.name}
+                </Text>
+              ) : null}
+              {state.lastReward?.unlockedBackground && (
+                <View style={styles.bgUnlock}>
+                  <Image
+                    source={{ uri: state.lastReward.unlockedBackground.imageUrl }}
+                    style={styles.bgUnlockImg}
+                    resizeMode="cover"
+                  />
+                  <Text style={styles.bgUnlockTag}>FUNDAL NOU DEBLOCAT</Text>
+                  <Text style={styles.bgUnlockName}>
+                    {state.lastReward.unlockedBackground.name}
+                  </Text>
+                  <Text style={styles.bgUnlockHint}>
+                    Il poti pune pe profil din pagina pet-ului
+                  </Text>
+                </View>
+              )}
+              <Pressable onPress={() => router.back()} style={styles.doneBtn}>
+                <Text style={styles.doneBtnText}>Inapoi la pet</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {/* Distance counter discret bottom-right */}
+        <View style={styles.distanceCorner} pointerEvents="none">
+          <Text style={styles.distanceCornerText}>{distance}m</Text>
         </View>
       </View>
     </>
@@ -188,72 +231,83 @@ export default function JourneyScreen() {
 
 // =====================================================================
 
-function AskingPanel({
-  petName,
-  obstacle,
-  onAnswer,
-  accentColor,
-}: {
-  petName: string;
-  obstacle: JourneyObstacle;
-  onAnswer: (idx: number) => void;
-  accentColor: string;
-}) {
+function CaptionBar({ text, speaker }: { text: string; speaker: string | null }) {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    fade.setValue(0);
     Animated.timing(fade, {
       toValue: 1,
-      duration: 280,
+      duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [fade]);
-
+  }, [text, fade]);
   return (
     <Animated.View
-      style={{
-        opacity: fade,
-        transform: [
-          { translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
-        ],
-      }}
+      style={[
+        styles.captionWrap,
+        {
+          opacity: fade,
+          transform: [
+            { translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+          ],
+        },
+      ]}
+      pointerEvents="none"
     >
-      <View style={[styles.bubble, { borderColor: accentColor }]}>
-        <Text style={styles.bubbleName}>{petName}</Text>
-        <Text style={styles.bubbleText}>{obstacle.question.prompt}</Text>
-      </View>
-      <View style={styles.optionsRow}>
-        {obstacle.question.options.map((opt, idx) => (
-          <Pressable
-            key={idx}
-            onPress={() => onAnswer(idx)}
-            style={({ pressed }) => [styles.optionBtn, pressed && styles.optionPressed]}
-          >
-            <Text style={styles.optionText}>{opt.label}</Text>
-          </Pressable>
-        ))}
+      <View style={styles.captionCard}>
+        {speaker && <Text style={styles.captionSpeaker}>{speaker}</Text>}
+        <Text style={styles.captionText}>{text}</Text>
       </View>
     </Animated.View>
   );
 }
 
-function FeedbackPanel({ feedback, line }: { feedback: 'correct' | 'wrong'; line: string }) {
+function ChallengeOptions({
+  options,
+  accentColor,
+  onAnswer,
+}: {
+  options: string[];
+  accentColor: string;
+  onAnswer: (idx: number) => void;
+}) {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    fade.setValue(0);
     Animated.timing(fade, {
       toValue: 1,
-      duration: 200,
+      duration: 250,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   }, [fade]);
-  const color = feedback === 'correct' ? '#27AE60' : '#E67E22';
   return (
-    <Animated.View style={{ opacity: fade, alignItems: 'center' }}>
-      <View style={styles.feedbackCard}>
-        <Text style={[styles.feedbackTag, { color }]}>
-          {feedback === 'correct' ? 'BRAVO!' : 'HMMM...'}
-        </Text>
-        <Text style={styles.feedbackLine}>{line}</Text>
+    <Animated.View
+      style={[
+        styles.optionsArea,
+        {
+          opacity: fade,
+          transform: [
+            { translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) },
+          ],
+        },
+      ]}
+    >
+      <View style={styles.optionsRow}>
+        {options.map((opt, idx) => (
+          <Pressable
+            key={idx}
+            onPress={() => onAnswer(idx)}
+            style={({ pressed }) => [
+              styles.optionBtn,
+              pressed && styles.optionPressed,
+              { borderColor: accentColor },
+            ]}
+          >
+            <Text style={styles.optionText}>{opt}</Text>
+          </Pressable>
+        ))}
       </View>
     </Animated.View>
   );
@@ -268,49 +322,16 @@ function PauseIcon() {
   );
 }
 
-function WalkingHint({ approaching, petName }: { approaching: boolean; petName: string }) {
-  const pulse = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1100,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
-  return (
-    <View style={styles.walkingHint}>
-      <Animated.Text
-        style={[
-          styles.walkingHintText,
-          {
-            opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.55, 1] }),
-          },
-        ]}
-      >
-        {approaching ? `${petName} a vazut ceva...` : `${petName} merge cu tine`}
-      </Animated.Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   fullScreen: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: 'center', justifyContent: 'center' },
-  errorText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  errorText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '600',
+    paddingHorizontal: 40,
+    textAlign: 'center',
+  },
 
   topBar: {
     position: 'absolute',
@@ -329,6 +350,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.75)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  skipBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  skipText: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: 'rgba(45,42,74,0.95)',
+    marginTop: -2,
   },
   backBtnInline: {
     paddingHorizontal: 24,
@@ -359,73 +394,135 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
-  bottomArea: {
+  // Caption — bara joasa subtitle stil film.
+  captionWrap: {
     position: 'absolute',
-    bottom: 16,
-    left: '32%',
-    right: 16,
-    alignItems: 'stretch',
+    bottom: 14,
+    left: 40,
+    right: 40,
+    alignItems: 'center',
   },
-
-  bubble: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 2,
-    marginBottom: 10,
+  captionCard: {
+    backgroundColor: 'rgba(15, 15, 25, 0.78)',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 10,
+    maxWidth: 640,
   },
-  bubbleName: {
-    color: colors.textMuted,
-    fontSize: 10,
+  captionText: {
+    color: '#F5F2E8',
+    fontSize: 12.5,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 17,
+    letterSpacing: 0.15,
+  },
+  captionSpeaker: {
+    color: 'rgba(255, 232, 118, 0.95)',
+    fontSize: 9.5,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 1.2,
+    textAlign: 'center',
     textTransform: 'uppercase',
-    marginBottom: 2,
+    marginBottom: 3,
   },
-  bubbleText: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
 
-  optionsRow: { flexDirection: 'row', gap: 8 },
+  // Optiuni — lipite de caption, compacte, mai mici. Sub caption la 46px de jos.
+  optionsArea: {
+    position: 'absolute',
+    bottom: 46,
+    left: 40,
+    right: 40,
+    alignItems: 'center',
+  },
+  optionsRow: { flexDirection: 'row', gap: 6, maxWidth: 540 },
   optionBtn: {
     flex: 1,
     backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    minWidth: 80,
   },
-  optionPressed: { backgroundColor: colors.cardAlt, transform: [{ scale: 0.97 }] },
-  optionText: { color: colors.text, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  optionPressed: { backgroundColor: colors.cardAlt, transform: [{ scale: 0.96 }] },
+  optionText: { color: colors.text, fontSize: 12, fontWeight: '700', textAlign: 'center' },
 
-  feedbackCard: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+  // Card final capitol.
+  doneOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  feedbackTag: {
-    fontSize: 12,
+  doneCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 260,
+  },
+  doneTag: {
+    fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 1.2,
-    marginBottom: 4,
+    color: colors.accent,
+    letterSpacing: 1.5,
   },
-  feedbackLine: {
+  doneTitle: {
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.text,
-    fontSize: 14,
-    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 20,
   },
-
-  walkingHint: { alignItems: 'center' },
-  walkingHintText: {
-    color: 'rgba(255,255,255,0.95)',
+  doneBtn: {
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+  },
+  doneBtnText: { color: '#FFFFFF', fontWeight: '800' },
+  rewardLine: {
+    color: colors.accent,
     fontSize: 13,
+    fontWeight: '800',
+  },
+  bgUnlock: {
+    alignItems: 'center',
+    gap: 3,
+    marginTop: 6,
+    marginBottom: 2,
+  },
+  bgUnlockImg: {
+    width: 180,
+    height: 90,
+    borderRadius: 12,
+    marginBottom: 4,
+    backgroundColor: colors.cardAlt,
+  },
+  bgUnlockTag: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#27AE60',
+    letterSpacing: 1.2,
+  },
+  bgUnlockName: { fontSize: 14, fontWeight: '800', color: colors.text },
+  bgUnlockHint: { fontSize: 11, color: colors.textMuted, textAlign: 'center' },
+
+  distanceCorner: {
+    position: 'absolute',
+    bottom: 8,
+    right: 12,
+  },
+  distanceCornerText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 11,
     fontWeight: '700',
-    letterSpacing: 0.4,
-    textShadowColor: 'rgba(0,0,0,0.25)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 });
