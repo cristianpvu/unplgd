@@ -289,8 +289,15 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
     const correct = chosen === question.correctIndex;
     await playLine(correct ? question.successLine : question.failLine, 'pet', myToken);
     if (!isMine(myToken)) return;
-    // Naratorul citeste explicatia DUPA reactia pet-ului — intareste cunostinta
-    // si adauga o curiozitate, indiferent ce a ales copilul.
+    // La GRESIT: naratorul spune intai care era raspunsul corect, apoi explicatia.
+    // La CORECT: direct explicatia, ca o curiozitate.
+    if (!correct) {
+      const correctOption = question.options[question.correctIndex] ?? '';
+      const correction = `Raspunsul corect era: ${correctOption}.`;
+      await sleep(250);
+      if (!isMine(myToken)) return;
+      await playLine(correction, 'narrator', myToken);
+    }
     if (question.explanation) {
       await sleep(250);
       if (!isMine(myToken)) return;

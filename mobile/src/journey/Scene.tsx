@@ -170,25 +170,28 @@ export function Scene({ world, transition, petImageUrl, obstacle, visitor, compa
   const breathY = breath.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
 
   // Ref pentru ultima valoare scrollAnim — la pauza retinem valoarea curenta
-  // si la resume continuam de acolo (fara reset la 0, ca sa nu mai sara
-  // tile-urile inapoi cand se incheie o intrebare).
+  // si la resume continuam de acolo. Combinat cu Animated.modulo (vezi mai jos),
+  // loop-ul devine vizual seamless: setValue(0) al lui Animated.loop nu mai
+  // produce nicio schimbare vizibila, pentru ca modulo absoarbe saltul.
   const scrollPausedAtRef = useRef(0);
   useEffect(() => {
     if (!walking) {
-      // La pauza, oprim animatia si salvam valoarea curenta.
       scrollAnim.stopAnimation((v) => {
         scrollPausedAtRef.current = v;
       });
       return;
     }
     let cancelled = false;
-    // Calculam cat mai e pana sa ajungem la -LAYER_W din valoarea curenta.
     const from = scrollPausedAtRef.current;
-    const remainingFraction = Math.max(0, Math.min(1, 1 - Math.abs(from) / LAYER_W));
-    const remainingMs = SCROLL_DURATION_MS * remainingFraction;
+    // Cat de departe e curent in interiorul unei iteratii (0..LAYER_W).
+    const fromMod = ((from % LAYER_W) + LAYER_W) % LAYER_W;
+    const distRemaining = LAYER_W - fromMod;
+    const remainingMs = SCROLL_DURATION_MS * (distRemaining / LAYER_W);
 
     const startLoop = () => {
       if (cancelled) return;
+      // Reset la 0: invizibil pentru ca modulo(0)=0 si modulo(-LAYER_W)=0
+      // dau aceeasi translateX = -LAYER_W.
       scrollAnim.setValue(0);
       Animated.loop(
         Animated.timing(scrollAnim, {
@@ -200,10 +203,12 @@ export function Scene({ world, transition, petImageUrl, obstacle, visitor, compa
       ).start();
     };
 
-    if (remainingMs > 30) {
-      // Continuam scroll-ul de la valoarea curenta pana la -LAYER_W, apoi loop.
+    if (remainingMs > 30 && remainingMs < SCROLL_DURATION_MS) {
+      // Pornim de la valoarea exacta unde am ramas (poate fi orice numar
+      // negativ, modulo wrap-uieste); mergem pana ajungem la urmatorul multiplu
+      // de -LAYER_W, apoi loop. Asa nu mai exista discrepanta in modulo.
       Animated.timing(scrollAnim, {
-        toValue: -LAYER_W,
+        toValue: from - distRemaining,
         duration: remainingMs,
         easing: Easing.linear,
         useNativeDriver: true,
@@ -452,19 +457,39 @@ export function Scene({ world, transition, petImageUrl, obstacle, visitor, compa
     companionEnter.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }),
   );
 
-  const midTranslate = useMemo(
-    () => scrollAnim.interpolate({ inputRange: [-LAYER_W, 0], outputRange: [-LAYER_W * 0.35, 0] }),
+  // Animated.modulo wrap-uieste scrollAnim la [0, LAYER_W). Scadem LAYER_W ca
+  // sa avem un translateX in [-LAYER_W, 0]. Asa, oricat de mult scade scrollAnim
+  // sau cand Animated.loop face setValue(0), translateX-ul vizual ramane continuu.
+  const scrollWrapped = useMemo(
+    () => Animated.subtract(Animated.modulo(scrollAnim, LAYER_W), LAYER_W),
     [scrollAnim],
+  );
+
+  const midTranslate = useMemo(
+    () =>
+      scrollWrapped.interpolate({
+        inputRange: [-LAYER_W, 0],
+        outputRange: [-LAYER_W * 0.35, 0],
+      }),
+    [scrollWrapped],
   );
 
   const cloudsTranslate = useMemo(
-    () => scrollAnim.interpolate({ inputRange: [-LAYER_W, 0], outputRange: [-LAYER_W * 0.1, 0] }),
-    [scrollAnim],
+    () =>
+      scrollWrapped.interpolate({
+        inputRange: [-LAYER_W, 0],
+        outputRange: [-LAYER_W * 0.1, 0],
+      }),
+    [scrollWrapped],
   );
 
   const backTranslate = useMemo(
-    () => scrollAnim.interpolate({ inputRange: [-LAYER_W, 0], outputRange: [-LAYER_W * 0.18, 0] }),
-    [scrollAnim],
+    () =>
+      scrollWrapped.interpolate({
+        inputRange: [-LAYER_W, 0],
+        outputRange: [-LAYER_W * 0.18, 0],
+      }),
+    [scrollWrapped],
   );
 
   const petTranslateY = petBob.interpolate({
@@ -632,7 +657,7 @@ export function Scene({ world, transition, petImageUrl, obstacle, visitor, compa
           {
             width: LAYER_W * 2,
             height: groundH,
-            transform: [{ translateX: scrollAnim }],
+            transform: [{ translateX: scrollWrapped }],
             top: groundY,
           },
         ]}
