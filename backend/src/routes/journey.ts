@@ -1,157 +1,95 @@
-// Journey — endpoint pentru beat-uri narrative + TTS optional.
+// Journey — endpoint TTS pentru povestile predefinite din mobile.
 //
-// Mobile cere arc-uri narrative pe masura ce pet-ul merge: fiecare arc are
-// 4 beat-uri scurte pe care narator-ul le rosteste in secventa. Cache-uim
-// per (pet, biome, sectionIndex) — al doilea start in acelasi biome livreaza
-// aceleasi beat-uri instant.
+// Mobile-ul detine tot continutul (StoryPack-uri TS predefinite). Aici doar
+// sintetizam audio pentru un text dat, cu voce de narator sau voce a speciei
+// pet-ului echipat. Cache SHA pe text+voce → al doilea play e instant.
 
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound, serverError } from '../lib/errors.js';
+import { badRequest, serverError } from '../lib/errors.js';
 import { ensureDefaultPet } from '../lib/pet.js';
-import { redis } from '../lib/redis.js';
 import { logger } from '../lib/logger.js';
-import {
-  generateNarratorArc,
-  type NarratorArc,
-  type NarratorBiome,
-  type NarratorPet,
-} from '../lib/ai/journeyNarrator.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
-import {
-  NARRATOR_EDGE_VOICE,
-  narratorElevenVoiceId,
-} from '../lib/ai/narrator.js';
+import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.js';
 
 export const journeyRouter = Router();
 journeyRouter.use(requireAuth);
 
-// Cache key — invalidam manual din admin daca vrem.
-function arcCacheKey(speciesSlug: string, biomeKey: string, sectionIndex: number): string {
-  return `journey:arc:v1:${speciesSlug}:${biomeKey}:${sectionIndex}`;
-}
+// Lungime maxima rezonabila pentru un beat de scena — ~3-4 propozitii.
+const MAX_TEXT = 600;
 
-const ARC_TTL_SEC = 60 * 60 * 24 * 30; // 30 zile
-
-const narrateSchema = z.object({
-  biomeKey: z.string().min(1).max(64),
-  biomeName: z.string().min(1).max(64),
-  worldHint: z.string().min(1).max(64),
-  // Index al "sectiunii" — folosit ca seed pt cache. 0, 1, 2, ... Mobile
-  // creste pe masura ce pet-ul parcurge segmente.
-  sectionIndex: z.number().int().min(0).max(99),
-  // Daca true, sintetizam TTS si returnam audioUrl per beat. Costuri mai mari
-  // — mobile cheama doar daca user-ul nu a oprit sunetul.
-  withAudio: z.boolean().optional().default(false),
+const ttsSchema = z.object({
+  text: z.string().min(2).max(MAX_TEXT),
+  // 'narrator' = voce generala de povestitor.
+  // 'pet'      = voce a speciei pet-ului echipat (PetSpecies.elevenVoiceId).
+  voice: z.enum(['narrator', 'pet']),
 });
 
-type BeatDto = {
+type TtsResponse = {
   text: string;
   audioUrl: string | null;
+  provider: 'eleven' | 'edge' | null;
 };
 
-type NarrateResponse = {
-  beats: BeatDto[];
-  cached: boolean;
-  ttsProvider: 'eleven' | 'edge' | null;
-};
-
-// POST /journey/narrate
-// Body: { biomeKey, biomeName, worldHint, sectionIndex, withAudio? }
-journeyRouter.post('/narrate', async (req, res, next) => {
+// POST /journey/tts
+// Sintetizeaza textul cu voce de narator sau pet. Erori pe TTS → audioUrl=null,
+// mobile cade pe expo-speech device-side.
+journeyRouter.post('/tts', async (req, res, next) => {
   try {
     const userId = req.userId!;
-    const body = narrateSchema.parse(req.body);
+    const body = ttsSchema.parse(req.body);
 
-    await ensureDefaultPet(userId);
-    const pet = await prisma.pet.findUniqueOrThrow({
-      where: { userId },
-      include: { species: true, user: { select: { name: true } } },
-    });
+    let elevenVoiceId: string | null = null;
+    let edgeVoiceFallback = NARRATOR_EDGE_VOICE;
 
-    const narratorPet: NarratorPet = {
-      petName: pet.name,
-      speciesName: pet.species.name,
-      childName: pet.user.name,
-      expertiseDomains: pet.species.expertiseDomains,
-      shortLore: pet.species.shortLore || `${pet.species.name} curios si jucaus.`,
-    };
-    const narratorBiome: NarratorBiome = {
-      name: body.biomeName,
-      worldHint: body.worldHint,
-    };
+    if (body.voice === 'pet') {
+      // Voce a pet-ului echipat — luam din PetSpecies.elevenVoiceId.
+      await ensureDefaultPet(userId);
+      const pet = await prisma.pet.findUniqueOrThrow({
+        where: { userId },
+        include: { species: true },
+      });
+      elevenVoiceId = pet.species.elevenVoiceId;
+      edgeVoiceFallback = pet.species.voiceId || NARRATOR_EDGE_VOICE;
+    } else {
+      elevenVoiceId = narratorElevenVoiceId();
+    }
 
-    const cacheKey = arcCacheKey(pet.species.slug, body.biomeKey, body.sectionIndex);
-
-    let arc: NarratorArc | null = null;
-    let cached = false;
     try {
-      const raw = await redis.get(cacheKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as NarratorArc;
-        if (parsed?.beats?.length) {
-          arc = parsed;
-          cached = true;
-        }
-      }
+      const result = await synthesizeTts(body.text, edgeVoiceFallback, {
+        elevenVoiceId,
+      });
+      const response: TtsResponse = {
+        text: body.text,
+        audioUrl: result.urlPath,
+        provider: result.provider,
+      };
+      res.json(response);
     } catch (err) {
-      logger.warn({ err, cacheKey }, 'journey.cache_read_failed');
+      logger.warn({ err, voice: body.voice, len: body.text.length }, 'journey.tts_failed');
+      // Nu blocam UX-ul — mobile cade pe device speech.
+      const response: TtsResponse = {
+        text: body.text,
+        audioUrl: null,
+        provider: null,
+      };
+      res.json(response);
     }
-
-    if (!arc) {
-      try {
-        arc = await generateNarratorArc(narratorPet, narratorBiome, 4);
-      } catch (err) {
-        logger.error({ err, biome: body.biomeKey }, 'journey.generation_failed');
-        throw serverError('narration_failed', 'Nu am putut genera povestea acum.');
-      }
-      try {
-        await redis.set(cacheKey, JSON.stringify(arc), 'EX', ARC_TTL_SEC);
-      } catch (err) {
-        logger.warn({ err, cacheKey }, 'journey.cache_write_failed');
-      }
-    }
-
-    // Sintetizam audio per beat doar daca clientul cere. Erorile pe TTS NU
-    // dau fail intregului request — livram textul, audioUrl=null.
-    let ttsProvider: 'eleven' | 'edge' | null = null;
-    const beats: BeatDto[] = await Promise.all(
-      arc.beats.map(async (b) => {
-        if (!body.withAudio) return { text: b.text, audioUrl: null };
-        try {
-          const result = await synthesizeTts(b.text, NARRATOR_EDGE_VOICE, {
-            elevenVoiceId: narratorElevenVoiceId(),
-          });
-          ttsProvider = result.provider;
-          return { text: b.text, audioUrl: result.urlPath };
-        } catch (err) {
-          logger.warn({ err, text: b.text.slice(0, 50) }, 'journey.tts_failed');
-          return { text: b.text, audioUrl: null };
-        }
-      }),
-    );
-
-    const response: NarrateResponse = { beats, cached, ttsProvider };
-    res.json(response);
   } catch (e) {
     if (e instanceof z.ZodError) return next(badRequest('invalid_body', e.message));
     next(e);
   }
 });
 
-// Stub — daca admin vrea sa forteze regenerare la urmatorul play.
-journeyRouter.delete('/cache/:speciesSlug', async (req, res, next) => {
-  try {
-    const { speciesSlug } = req.params;
-    if (!speciesSlug) throw notFound('species_required', 'Lipseste species slug');
-    const keys = await redis.keys(`journey:arc:v1:${speciesSlug}:*`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-    res.json({ cleared: keys.length });
-  } catch (e) {
-    next(e);
-  }
+// GET /journey/health — quick check ca ruta e mounted.
+journeyRouter.get('/health', (_req, res) => {
+  res.json({ ok: true, ts: Date.now() });
+});
+
+// Bara stub — placeholder pentru viitor (progress per user). Pastram serverError
+// daca cineva incearca acum, ca sa nu primeasca 404 silent.
+journeyRouter.get('/progress/:petSlug', (_req, _res, next) => {
+  next(serverError('not_implemented', 'Progress persistat vine intr-o iteratie viitoare.'));
 });
