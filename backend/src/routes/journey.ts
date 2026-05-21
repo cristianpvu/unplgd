@@ -149,6 +149,76 @@ journeyRouter.get('/random-friend', async (req, res, next) => {
   }
 });
 
+// GET /journey/questions?domain=spatiu&count=10
+// Returneaza intrebari random pentru un domain, filtrate dupa varsta user-ului.
+// Mobile cere acest endpoint o singura data la inceputul fiecarui capitol si
+// distribuie intrebarile la scenele challenge.
+type QuestionDto = {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  successLine: string;
+  failLine: string;
+};
+
+journeyRouter.get('/questions', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const domain = String(req.query.domain ?? '').trim();
+    const count = Math.max(1, Math.min(20, Number(req.query.count ?? 5)));
+    if (!domain) throw badRequest('domain_required', 'Lipseste parametrul domain');
+
+    // Calculam varsta din birthDate. Daca lipseste, default la 8 (mijloc).
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { birthDate: true },
+    });
+    let age = 8;
+    if (user.birthDate) {
+      const now = new Date();
+      age = now.getFullYear() - user.birthDate.getFullYear();
+      const m = now.getMonth() - user.birthDate.getMonth();
+      if (m < 0 || (m === 0 && now.getDate() < user.birthDate.getDate())) age--;
+      age = Math.max(6, Math.min(14, age));
+    }
+
+    // ORDER BY random() in Postgres pentru selectie aleatorie. Cu index pe
+    // (domain, active) e suficient de rapid pentru sub 10k randuri/domain.
+    const rows = await prisma.$queryRaw<QuestionDto[]>`
+      SELECT id, prompt, options, "correctIndex", "successLine", "failLine"
+      FROM "JourneyQuestion"
+      WHERE domain = ${domain}
+        AND active = true
+        AND "minAge" <= ${age}
+        AND "maxAge" >= ${age}
+      ORDER BY random()
+      LIMIT ${count}
+    `;
+
+    // Daca nu sunt suficiente intrebari in domain, completam din 'general'.
+    let questions = rows;
+    if (questions.length < count && domain !== 'general') {
+      const fillNeeded = count - questions.length;
+      const extras = await prisma.$queryRaw<QuestionDto[]>`
+        SELECT id, prompt, options, "correctIndex", "successLine", "failLine"
+        FROM "JourneyQuestion"
+        WHERE domain = 'general'
+          AND active = true
+          AND "minAge" <= ${age}
+          AND "maxAge" >= ${age}
+        ORDER BY random()
+        LIMIT ${fillNeeded}
+      `;
+      questions = [...questions, ...extras];
+    }
+
+    res.json({ questions, age });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /journey/checkpoint
 // Acordat cand mobile ajunge la o scena de tip checkpoint. Idempotent:
 //   - bond xp prin BondXpTransaction unique (petId, 'journey_checkpoint', sceneId)

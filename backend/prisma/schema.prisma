@@ -450,6 +450,33 @@ model UserBackground {
   @@index([userId])
 }
 
+// Pool global de intrebari de cultura generala pentru jocul Journey.
+// Mobile cere random N intrebari per `domain` la inceputul fiecarui capitol,
+// filtrate dupa varsta copilului. Asa fiecare playthrough are alta combinatie
+// si copiii nu pot impartasi raspunsurile.
+//
+// Adaugare intrebare noua = INSERT in DB (manual sau prin script). Bazele
+// mari (sute) → sanse minime de overlap intre copii.
+model JourneyQuestion {
+  id           String   @id @default(cuid())
+  // Domeniul tematic: 'spatiu' | 'ocean' | 'padure' | 'desert' | 'oras' |
+  // 'general'. Trebuie sa coincida cu domain-urile setate pe scene challenge.
+  domain       String
+  // Interval varsta tinta (ani). Copilul cu varsta in [minAge, maxAge]
+  // primeste intrebarea. Calculam varsta din User.birthDate.
+  minAge       Int      @default(6)
+  maxAge       Int      @default(14)
+  prompt       String   // intrebarea pe care o citeste pet-ul
+  options      String[] // 2-4 optiuni
+  correctIndex Int      // index 0-based al optiunii corecte
+  successLine  String   @default("Asa este!") // reactia pet la corect
+  failLine     String   @default("Nu chiar, dar e bine ca incercam.") // reactia la gresit
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@index([domain, active])
+}
+
 // Card NFC fizic colectabil. UID-ul e hardcodat de fabrica si unic global.
 // Cand un user scaneaza un card neclamat, devine ownerId. Re-scan = doar
 // equip (Pet.speciesId schimbat la specia cardului). Un user are O colectie

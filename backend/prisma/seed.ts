@@ -9,6 +9,7 @@ import { AttachmentPoint, ChestTier, PrismaClient, Rarity } from '@prisma/client
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHALLENGES } from './data/challenges.js';
+import { seedJourneyQuestions } from './seed-journey-questions.js';
 
 const prisma = new PrismaClient();
 
@@ -825,6 +826,10 @@ async function main() {
 
   // Lumile de aventura ruleaza mereu (nu sub skip guard).
   await seedAdventureWorlds();
+
+  // Pool-ul de intrebari journey ruleaza mereu — idempotent prin (domain,prompt).
+  // Adaugare intrebari noi → urcari de fisier + container restart.
+  await seedJourneyQuestions(prisma);
 
   // Cleanup ownership orphan + Backfill UserItem (idempotent) — pt useri existenti.
   await cleanupOrphanUserItems();
