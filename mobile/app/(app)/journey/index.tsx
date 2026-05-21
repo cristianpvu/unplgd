@@ -174,8 +174,15 @@ export default function JourneyScreen() {
           </Pressable>
         </View>
 
-        {/* Caption — subtitle stil film, jos */}
-        {state.caption && <CaptionBar text={state.caption} speaker={state.speakerLabel} />}
+        {/* Caption — subtitle stil film. Cand obstacolul e activ, captionul se
+            ridica deasupra optiunilor ca sa nu se suprapuna pe text lung. */}
+        {state.caption && (
+          <CaptionBar
+            text={state.caption}
+            speaker={state.speakerLabel}
+            raised={!!state.obstacle}
+          />
+        )}
 
         {/* Panel optiuni cand engine cere raspuns la challenge */}
         {state.obstacle && (
@@ -231,7 +238,15 @@ export default function JourneyScreen() {
 
 // =====================================================================
 
-function CaptionBar({ text, speaker }: { text: string; speaker: string | null }) {
+function CaptionBar({
+  text,
+  speaker,
+  raised,
+}: {
+  text: string;
+  speaker: string | null;
+  raised: boolean;
+}) {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     fade.setValue(0);
@@ -246,6 +261,7 @@ function CaptionBar({ text, speaker }: { text: string; speaker: string | null })
     <Animated.View
       style={[
         styles.captionWrap,
+        raised && styles.captionWrapRaised,
         {
           opacity: fade,
           transform: [
@@ -402,6 +418,11 @@ const styles = StyleSheet.create({
     right: 40,
     alignItems: 'center',
   },
+  // Cand exista intrebare cu optiuni, captionul se ridica deasupra randului de
+  // optiuni ca sa nu se suprapuna pe text de pe 2 randuri. ~50px peste optiuni.
+  captionWrapRaised: {
+    bottom: 60,
+  },
   captionCard: {
     backgroundColor: 'rgba(15, 15, 25, 0.78)',
     paddingHorizontal: 14,
@@ -427,10 +448,11 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
 
-  // Optiuni — lipite de caption, compacte, mai mici. Sub caption la 46px de jos.
+  // Optiuni — jos de tot. Captionul se ridica deasupra lor (captionWrapRaised)
+  // ca sa nu mai existe suprapunere indiferent cat de lung e textul intrebarii.
   optionsArea: {
     position: 'absolute',
-    bottom: 46,
+    bottom: 14,
     left: 40,
     right: 40,
     alignItems: 'center',

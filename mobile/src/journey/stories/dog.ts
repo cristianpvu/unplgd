@@ -42,11 +42,8 @@ const PACK: StoryPack = {
           id: 'd1-04',
           intro: 'Un hidrant roșu îi stă în cale, exact în mijlocul aleii.',
           shapeKey: 'hydrant',
-          prompt: 'Hidrantul ăsta îmi e cunoscut! Spune-mi, care simț al meu este cel mai puternic?',
-          options: ['Văzul', 'Mirosul', 'Auzul'],
-          correctIndex: 1,
-          successLine: 'Mirosul! Adulmec totul de la kilometri. Nasul meu e o minune! Ham!',
-          failLine: 'Mirosul, prietene. Noi câinii vedem lumea prin nas mai mult decât prin ochi.',
+
+          domain: 'oras',
           vfx: 'shake',
         },
         {
@@ -78,11 +75,8 @@ const PACK: StoryPack = {
           id: 'd1-08',
           intro: 'O bancă de parc le barează scurtătura printre tufișuri.',
           shapeKey: 'bench',
-          prompt: 'Hai să sărim peste! Spune-mi, în ce coș aruncă oamenii ca natura să rămână curată?',
-          options: ['Oriunde', 'În coșul de gunoi', 'În iarbă'],
-          correctIndex: 1,
-          successLine: 'În coșul de gunoi! Așa păstrăm parcul curat pentru toți. Bravo!',
-          failLine: 'În coșul de gunoi, prietene. Așa rămâne parcul curat și frumos pentru toată lumea.',
+
+          domain: 'oras',
         },
         {
           kind: 'narrate',
@@ -106,11 +100,8 @@ const PACK: StoryPack = {
           id: 'd1-12',
           intro: 'Un coș de gunoi răsturnat de vânt blochează poteca, cu hârtii împrăștiate în jur.',
           shapeKey: 'trashbin',
-          prompt: 'Hai să-l ridicăm! Spune-mi, hârtia, sticla și plasticul, cum le numim când le refolosim?',
-          options: ['Reciclare', 'Risipă', 'Murdărie'],
-          correctIndex: 0,
-          successLine: 'Reciclare! Le dăm o viață nouă în loc să le aruncăm. Ești grozav!',
-          failLine: 'Reciclare, prietene. Așa refolosim lucrurile și ajutăm planeta să respire.',
+
+          domain: 'oras',
           vfx: 'shake',
         },
         {
@@ -170,11 +161,8 @@ const PACK: StoryPack = {
           id: 'd2-04',
           intro: 'Un gard de lemn înconjoară o grădină înflorită, tăind calea cățelușului.',
           shapeKey: 'fence',
-          prompt: 'Hai să găsim o trecere! Spune-mi, la semafor, ce culoare ne spune să traversăm?',
-          options: ['Roșu', 'Verde', 'Galben'],
-          correctIndex: 1,
-          successLine: 'Verde! Verde înseamnă că putem trece în siguranță. Știi regulile! Ham!',
-          failLine: 'Verde, prietene. La verde traversăm, la roșu așteptăm cuminți.',
+
+          domain: 'oras',
           vfx: 'shake',
         },
         {
@@ -206,11 +194,8 @@ const PACK: StoryPack = {
           id: 'd2-08',
           intro: 'Un hidrant ruginit le iese în cale lângă o clădire veche.',
           shapeKey: 'hydrant',
-          prompt: 'Încă un hidrant! Spune-mi, la ce folosește cu adevărat un hidrant în oraș?',
-          options: ['La joacă', 'La stins incendii', 'La decor'],
-          correctIndex: 1,
-          successLine: 'La stins incendii! Pompierii iau apă de aici. Foarte important! Ham!',
-          failLine: 'La stins incendii, prietene. Pompierii conectează furtunul și iau apă de aici.',
+
+          domain: 'oras',
         },
         {
           kind: 'narrate',
@@ -222,11 +207,8 @@ const PACK: StoryPack = {
           id: 'd2-10',
           intro: 'O bancă lungă le stă în cale, chiar în mijlocul piațetei.',
           shapeKey: 'bench',
-          prompt: 'Ultimul obstacol! Spune-mi, când un prieten e trist, ce este cel mai bine să faci?',
-          options: ['Să-l ignori', 'Să-l ajuți', 'Să râzi de el'],
-          correctIndex: 1,
-          successLine: 'Să-l ajuți! Un prieten adevărat e mereu alături. Ai o inimă mare! Ham!',
-          failLine: 'Să-l ajuți, prietene. Prietenii adevărați se sprijină mereu unul pe altul.',
+
+          domain: 'oras',
           vfx: 'flash',
         },
         {

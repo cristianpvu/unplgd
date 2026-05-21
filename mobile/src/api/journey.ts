@@ -43,6 +43,23 @@ export type CheckpointReward = {
   } | null;
 };
 
+export type JourneyQuestionDto = {
+  id: string;
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  successLine: string;
+  failLine: string;
+  // Citita de narator dupa reactia pet-ului. Optional.
+  explanation: string | null;
+};
+
+export function fetchJourneyQuestions(domain: string, count: number) {
+  return api<{ questions: JourneyQuestionDto[]; age: number }>(
+    `/journey/questions?domain=${encodeURIComponent(domain)}&count=${count}`,
+  );
+}
+
 export function claimCheckpoint(args: {
   sceneId: string;
   chapterId: string;

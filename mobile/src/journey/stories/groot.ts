@@ -41,11 +41,8 @@ const PACK: StoryPack = {
           id: 'g1-04',
           intro: 'O rădăcină uriașă iese din pământ și se încolăcește peste poteca verde.',
           shapeKey: 'giant_root',
-          prompt: 'Eu sunt Groot? (Adică: spune-mi, cum afli câți ani are un copac, după ce semn?)',
-          options: ['După înălțime', 'După inele', 'După frunze'],
-          correctIndex: 1,
-          successLine: 'Eu sunt Groot! (După inele! Un inel pentru fiecare an. Ai ghicit!)',
-          failLine: 'Eu... sunt Groot. (După inele, prietene. Un inel nou crește în fiecare an.)',
+
+          domain: 'padure',
           vfx: 'rumble',
         },
         {
@@ -77,11 +74,8 @@ const PACK: StoryPack = {
           id: 'g1-08',
           intro: 'O ciupercă uriașă, strălucitoare, crește în mijlocul potecii.',
           shapeKey: 'mushroom',
-          prompt: 'Eu sunt Groot? (Adică: ce gaz prețios fac copacii pentru noi să respirăm?)',
-          options: ['Oxigen', 'Fum', 'Praf'],
-          correctIndex: 0,
-          successLine: 'Eu sunt Groot! (Oxigen! Copacii ni-l dăruiesc. De-aia îi iubim.)',
-          failLine: 'Eu sunt Groot. (Oxigen, prietene. Copacii îl fac, iar noi îl respirăm.)',
+
+          domain: 'padure',
         },
         {
           kind: 'narrate',
@@ -105,11 +99,8 @@ const PACK: StoryPack = {
           id: 'g1-12',
           intro: 'O viță înflorită atârnă precum o perdea peste drum, plină de boboci.',
           shapeKey: 'vine',
-          prompt: 'Eu sunt Groot? (Adică: dintr-o sămânță mică, ce mare lucru poate crește?)',
-          options: ['O piatră', 'Un copac', 'Un nor'],
-          correctIndex: 1,
-          successLine: 'Eu sunt Groot! (Un copac! Dintr-o sămânță cât un bob. Uimitor, nu?)',
-          failLine: 'Eu sunt Groot. (Un copac, prietene. Totul începe dintr-o sămânță mică.)',
+
+          domain: 'padure',
           vfx: 'glow-pulse',
         },
         {
@@ -169,11 +160,8 @@ const PACK: StoryPack = {
           id: 'g2-04',
           intro: 'O rădăcină uriașă, plină de mușchi luminos, se ridică în calea lor.',
           shapeKey: 'giant_root',
-          prompt: 'Eu sunt Groot? (Adică: ce parte a copacului ține apa și hrana din pământ?)',
-          options: ['Frunzele', 'Rădăcinile', 'Scoarța'],
-          correctIndex: 1,
-          successLine: 'Eu sunt Groot! (Rădăcinile! Ele beau apa din pământ. Foarte bine!)',
-          failLine: 'Eu sunt Groot. (Rădăcinile, prietene. Ele sorb apa și hrănesc copacul.)',
+
+          domain: 'padure',
           vfx: 'rumble',
         },
         {
@@ -205,11 +193,8 @@ const PACK: StoryPack = {
           id: 'g2-08',
           intro: 'O ciupercă uriașă, cât un copac, blochează poteca cu pălăria ei luminoasă.',
           shapeKey: 'mushroom',
-          prompt: 'Eu sunt Groot? (Adică: ciupercile sunt plante, animale sau cu totul altceva?)',
-          options: ['Plante', 'Animale', 'Altceva'],
-          correctIndex: 2,
-          successLine: 'Eu sunt Groot! (Altceva! Ciupercile sunt un regn aparte. Nici plantă, nici animal.)',
-          failLine: 'Eu sunt Groot. (Altceva, prietene. Ciupercile au regnul lor, doar al lor.)',
+
+          domain: 'padure',
         },
         {
           kind: 'narrate',
@@ -222,11 +207,8 @@ const PACK: StoryPack = {
           id: 'g2-10',
           intro: 'O floare uriașă, închisă în boboc, baricadează ultima potecă.',
           shapeKey: 'bloom',
-          prompt: 'Eu sunt Groot? (Adică: ce mică viețuitoare ajută florile să facă semințe, zburând din floare în floare?)',
-          options: ['Albina', 'Peștele', 'Șopârla'],
-          correctIndex: 0,
-          successLine: 'Eu sunt Groot! (Albina! Ea duce polenul și ajută florile. Prietena pădurii!)',
-          failLine: 'Eu sunt Groot. (Albina, prietene. Ea poartă polenul din floare în floare.)',
+
+          domain: 'padure',
           vfx: 'glow-pulse',
         },
         {

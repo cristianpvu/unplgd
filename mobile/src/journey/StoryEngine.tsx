@@ -13,9 +13,11 @@ import { playPetVoiceAwait, stopRemoteAudio, stopDevice } from '../lib/speech';
 import {
   absoluteAudioUrl,
   claimCheckpoint,
+  fetchJourneyQuestions,
   getRandomFriendPet,
   synthesizeJourneyTts,
   type CheckpointReward,
+  type JourneyQuestionDto,
   type RandomFriendPet,
 } from '../api/journey';
 import type {
@@ -147,6 +149,27 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
   }
 
   async function runChapter(ch: Chapter, myToken: number) {
+    // Pre-fetch intrebarile pentru toate scenele challenge. Grupam per domain,
+    // cerem batch-uri si pastram un cursor per domain pentru distribuire in
+    // ordinea scenelor. Daca fetch-ul pica, scenele pica pe fallback in
+    // runChallenge (raman fara intrebare → skip silent).
+    const challengeDomains: string[] = ch.scenes
+      .filter((s): s is SceneChallenge => s.kind === 'challenge')
+      .map((s) => s.domain);
+    const domainNeeds = new Map<string, number>();
+    challengeDomains.forEach((d) => domainNeeds.set(d, (domainNeeds.get(d) ?? 0) + 1));
+    const domainQueues = new Map<string, JourneyQuestionDto[]>();
+    for (const [domain, needed] of domainNeeds.entries()) {
+      try {
+        const res = await fetchJourneyQuestions(domain, needed);
+        if (isMine(myToken)) domainQueues.set(domain, res.questions);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[engine] fetch questions failed for', domain, String(err));
+        domainQueues.set(domain, []);
+      }
+    }
+
     for (let i = 0; i < ch.scenes.length; i++) {
       if (!isMine(myToken)) return;
       const scene = ch.scenes[i];
@@ -177,7 +200,16 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
           break;
         }
         case 'challenge': {
-          await runChallenge(scene, myToken);
+          const queue = domainQueues.get(scene.domain);
+          const question = queue && queue.length > 0 ? queue.shift()! : null;
+          if (!question) {
+            // Fara intrebare — saltam scena (nu blocam povestea).
+            // eslint-disable-next-line no-console
+            console.warn('[engine] no question for domain', scene.domain, '— skipping');
+            await sleep(300);
+            break;
+          }
+          await runChallenge(scene, question, myToken);
           break;
         }
         case 'encounter': {
@@ -226,7 +258,11 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
     }));
   }
 
-  async function runChallenge(scene: SceneChallenge, myToken: number) {
+  async function runChallenge(
+    scene: SceneChallenge,
+    question: JourneyQuestionDto,
+    myToken: number,
+  ) {
     setState((s) => ({ ...s, petCanWalk: true }));
     await playLine(scene.intro, 'narrator', myToken);
     if (!isMine(myToken)) return;
@@ -236,22 +272,30 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
       obstacle: {
         sceneId: scene.id,
         shapeKey: scene.shapeKey,
-        prompt: scene.prompt,
-        options: scene.options,
-        correctIndex: scene.correctIndex,
-        successLine: scene.successLine,
-        failLine: scene.failLine,
+        prompt: question.prompt,
+        options: question.options,
+        correctIndex: question.correctIndex,
+        successLine: question.successLine,
+        failLine: question.failLine,
       },
     }));
-    await playLine(scene.prompt, 'pet', myToken);
+    await playLine(question.prompt, 'pet', myToken);
     if (!isMine(myToken)) return;
     const chosen = await new Promise<number>((resolve) => {
       pendingAnswerRef.current = resolve;
     });
     pendingAnswerRef.current = null;
     if (!isMine(myToken)) return;
-    const correct = chosen === scene.correctIndex;
-    await playLine(correct ? scene.successLine : scene.failLine, 'pet', myToken);
+    const correct = chosen === question.correctIndex;
+    await playLine(correct ? question.successLine : question.failLine, 'pet', myToken);
+    if (!isMine(myToken)) return;
+    // Naratorul citeste explicatia DUPA reactia pet-ului — intareste cunostinta
+    // si adauga o curiozitate, indiferent ce a ales copilul.
+    if (question.explanation) {
+      await sleep(250);
+      if (!isMine(myToken)) return;
+      await playLine(question.explanation, 'narrator', myToken);
+    }
     if (!isMine(myToken)) return;
     setState((s) => ({ ...s, obstacle: null, petCanWalk: true }));
     await sleep(500);

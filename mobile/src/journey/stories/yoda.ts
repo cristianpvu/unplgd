@@ -44,11 +44,8 @@ const PACK: StoryPack = {
           id: 'y1-04',
           intro: 'Un bolovan mare, încins de soare, blochează cărarea dintre dune.',
           shapeKey: 'boulder',
-          prompt: 'Piatra, fierbinte este. Spune-mi tu, câți sori are cerul acestui desert, Tatooine?',
-          options: ['Unul', 'Doi', 'Trei'],
-          correctIndex: 1,
-          successLine: 'Doi, sunt. Sori gemeni, ard împreună. Frumos apus, fac seara. Bine ai văzut.',
-          failLine: 'Doi, sunt sorii. De aceea, dublă este căldura. Ține minte, tu. Hm.',
+
+          domain: 'desert',
           vfx: 'shake',
         },
         {
@@ -81,11 +78,8 @@ const PACK: StoryPack = {
           id: 'y1-08',
           intro: 'Un vaporizator de umiditate, înalt și ruginit, se înalță în mijlocul cărării.',
           shapeKey: 'vaporator',
-          prompt: 'Apă, din aer scoate aceasta. Spune-mi, de ce lucru au nevoie cel mai mult ființele în desert?',
-          options: ['Apă', 'Aur', 'Umbră'],
-          correctIndex: 0,
-          successLine: 'Apă, da. Fără ea, nimic nu trăiește. Pretioasă, în desert este. Înțelept ești.',
-          failLine: 'Apă, este. Mai de preț ca aurul, în pustiu. Fără ea, viața se stinge. Hm.',
+
+          domain: 'desert',
           vfx: 'rumble',
         },
         {
@@ -109,11 +103,8 @@ const PACK: StoryPack = {
           id: 'y1-12',
           intro: 'Un schelet alb de creatură uriașă iese din nisip, baricadând trecerea.',
           shapeKey: 'bones',
-          prompt: 'Oase vechi, povestesc. Spune-mi, ce face nisipul desertului atât de fierbinte ziua?',
-          options: ['Vântul', 'Soarele', 'Apa'],
-          correctIndex: 1,
-          successLine: 'Soarele, da. Razele lui încălzesc nisipul, ore în șir. Cuptor, devine. Bine.',
-          failLine: 'Soarele, este. El încinge nisipul toată ziua. De aceea, noaptea mergem. Hm.',
+
+          domain: 'desert',
           vfx: 'shake',
         },
         {
@@ -173,11 +164,8 @@ const PACK: StoryPack = {
           id: 'y2-04',
           intro: 'Un bolovan rotund, scăldat în lumina apusului, le stă în cale.',
           shapeKey: 'boulder',
-          prompt: 'Răcoare, vine. Spune-mi, de ce călătorii desertului merg mai mult noaptea decât ziua?',
-          options: ['E mai frig', 'E mai cald', 'E mai lumină'],
-          correctIndex: 0,
-          successLine: 'Frig, da. Noaptea răcoroasă este, fără soare. Mai ușor, drumul atunci. Înțelept.',
-          failLine: 'Mai frig, este noaptea. Fără sori, nisipul se răcește. Atunci, mergem. Hm.',
+
+          domain: 'desert',
           vfx: 'shake',
         },
         {
@@ -210,11 +198,8 @@ const PACK: StoryPack = {
           id: 'y2-08',
           intro: 'Un vaporizator vechi, acoperit de praf, blochează poteca spre canion.',
           shapeKey: 'vaporator',
-          prompt: 'Stelele, se ivesc. Spune-mi, stelele de pe cer ce sunt, de fapt, când le privești noaptea?',
-          options: ['Lămpi', 'Sori îndepărtați', 'Găuri'],
-          correctIndex: 1,
-          successLine: 'Sori, sunt. Departe, foarte departe. Mici par, dar uriași sunt. Uimitor, nu? Hm.',
-          failLine: 'Sori îndepărtați, sunt stelele. Atât de departe, încât mici par. Înțelege, tu.',
+
+          domain: 'desert',
           vfx: 'rumble',
         },
         {
@@ -228,11 +213,8 @@ const PACK: StoryPack = {
           id: 'y2-10',
           intro: 'Un schelet imens de krayt dragon arcuiește peste ultima cărare spre canion.',
           shapeKey: 'bones',
-          prompt: 'Ultima taină, astăzi. Spune-mi, ce animal poate trăi mult timp fără apă, în desert?',
-          options: ['Cămila', 'Peștele', 'Broasca'],
-          correctIndex: 0,
-          successLine: 'Cămila, da. Apă păstrează, zile întregi rezistă. Înțeleaptă, natura este. Hm.',
-          failLine: 'Cămila, este. Rezerve de apă poartă în trup. Departe merge, fără să bea. Bine.',
+
+          domain: 'desert',
           vfx: 'glow-pulse',
         },
         {

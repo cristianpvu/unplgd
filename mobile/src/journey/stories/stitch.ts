@@ -42,11 +42,8 @@ const PACK: StoryPack = {
           id: 's1-04',
           intro: 'O nucă de cocos uriașă se rostogolește din palmier și îi barează calea pe nisip.',
           shapeKey: 'coconut',
-          prompt: 'Nuca asta a căzut din palmier! Spune-mi, apa din ocean este sărată sau dulce?',
-          options: ['Dulce', 'Sărată', 'Fără gust'],
-          correctIndex: 1,
-          successLine: 'Sărată! De-aia te usucă pe limbă dacă înghiți din ea. Bravo!',
-          failLine: 'Este sărată, micuțule. De-aceea nu o putem bea precum apa de la robinet.',
+
+          domain: 'ocean',
           vfx: 'shake',
         },
         {
@@ -78,11 +75,8 @@ const PACK: StoryPack = {
           id: 's1-08',
           intro: 'Un crab mare iese din nisip și clămpăne din clești, păzind o cărare de scoici.',
           shapeKey: 'crab',
-          prompt: 'Crabul vrea să ne încerce! Știi cu ce respiră peștii sub apă?',
-          options: ['Cu plămânii', 'Cu branhiile', 'Nu respiră'],
-          correctIndex: 1,
-          successLine: 'Cu branhiile! Iau aerul direct din apă. Ești deștept!',
-          failLine: 'Cu branhiile, prietene. Ele scot aerul din apă, așa cum noi îl luăm din vânt.',
+
+          domain: 'ocean',
           vfx: 'shake',
         },
         {
@@ -106,11 +100,8 @@ const PACK: StoryPack = {
           id: 's1-12',
           intro: 'Un trunchi de palmier căzut blochează poteca dintre stânci.',
           shapeKey: 'palm_log',
-          prompt: 'Trebuie să-l sărim! Spune-mi, delfinul este pește sau mamifer precum noi?',
-          options: ['Pește', 'Mamifer', 'Pasăre'],
-          correctIndex: 1,
-          successLine: 'Mamifer! Respiră aer la suprafață, exact precum tine și precum mine. Uimitor!',
-          failLine: 'Este mamifer, micuțule. Iese la suprafață să respire aer, nu precum peștii.',
+
+          domain: 'ocean',
         },
         {
           kind: 'narrate',
@@ -123,11 +114,8 @@ const PACK: StoryPack = {
           id: 's1-14',
           intro: 'O placă de surf veche plutește în golf, prinsă între două stânci.',
           shapeKey: 'surfboard',
-          prompt: 'Hai să o eliberăm! Spune-mi, de unde vine ploaia care umple oceanul?',
-          options: ['Din nori', 'Din pământ', 'Din stele'],
-          correctIndex: 0,
-          successLine: 'Din nori! Apa se ridică, se face nor, apoi cade înapoi. Magie!',
-          failLine: 'Din nori, prietene. Apa se ridică în aer, se adună în nori și cade ca ploaie.',
+
+          domain: 'ocean',
           vfx: 'glow-pulse',
         },
         {
@@ -187,11 +175,8 @@ const PACK: StoryPack = {
           id: 's2-04',
           intro: 'Un crab pustnic îi taie calea, agitându-și cleștii curios.',
           shapeKey: 'crab',
-          prompt: 'Crabul vrea să știe ceva. Spune-mi, ce iese dintr-un vulcan când erupe?',
-          options: ['Apă rece', 'Lavă fierbinte', 'Zăpadă'],
-          correctIndex: 1,
-          successLine: 'Lavă fierbinte! Rocă topită din adâncul pământului. Atenție la ea!',
-          failLine: 'Lavă fierbinte, micuțule. Este rocă topită care iese din adâncuri.',
+
+          domain: 'ocean',
           vfx: 'shake',
         },
         {
@@ -223,11 +208,8 @@ const PACK: StoryPack = {
           id: 's2-08',
           intro: 'O nucă de cocos arsă de soare se rostogolește spre ei pe pantă.',
           shapeKey: 'coconut',
-          prompt: 'Ferește! Spune-mi, insulele tropicale precum aceasta cum se nasc adesea?',
-          options: ['Din vulcani', 'Din nori', 'Din nisip'],
-          correctIndex: 0,
-          successLine: 'Din vulcani! Lava se răcește în apă și construiește insule. Incredibil!',
-          failLine: 'Din vulcani, prietene. Lava răcită în ocean clădește, încet, insule noi.',
+
+          domain: 'ocean',
           vfx: 'shake',
         },
         {
@@ -241,11 +223,8 @@ const PACK: StoryPack = {
           id: 's2-10',
           intro: 'Un trunchi de palmier ars zace de-a curmezișul ultimei cărări spre vârf.',
           shapeKey: 'palm_log',
-          prompt: 'Ultimul obstacol! Spune-mi, ce face oceanul de două ori pe zi, urcând și coborând?',
-          options: ['Fierbe', 'Maree', 'Îngheață'],
-          correctIndex: 1,
-          successLine: 'Maree! Apa urcă și coboară datorită Lunii. Ea trage de ocean!',
-          failLine: 'Se cheamă maree, micuțule. Luna trage de apă și o face să urce și să coboare.',
+
+          domain: 'ocean',
         },
         {
           kind: 'narrate',

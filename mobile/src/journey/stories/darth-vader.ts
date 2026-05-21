@@ -55,11 +55,8 @@ const PACK: StoryPack = {
           id: 'v1-05',
           intro: 'Un meteorit se rostogolește spre el, lăsând o dâră de scântei. Vader se oprește și ridică mâna.',
           shapeKey: 'asteroid',
-          prompt: 'Meteoritul arde fiindcă vine cu viteză mare. Spune-mi, în spațiu ce călătorește mai iute, lumina sau sunetul?',
-          options: ['Sunetul', 'Lumina', 'La fel'],
-          correctIndex: 1,
-          successLine: 'Da. Lumina. Sunetul nu poate călători prin vidul cosmosului. Ești ager.',
-          failLine: 'Lumina, mereu lumina. Sunetul are nevoie de aer, iar în spațiu nu există niciun pic.',
+
+          domain: 'spatiu',
           vfx: 'meteor',
         },
         {
@@ -96,11 +93,8 @@ const PACK: StoryPack = {
           id: 'v1-10',
           intro: 'Un satelit vechi, pe jumătate îngropat, blochează calea. Vader îl studiază, iar lumina roșie dinăuntru pulsează.',
           shapeKey: 'satellite',
-          prompt: 'Satelitul ăsta a căzut demult. Știi cumva câți ani are o stea precum cea pe care o urmăresc, sute, mii sau miliarde?',
-          options: ['Sute', 'Mii', 'Miliarde'],
-          correctIndex: 2,
-          successLine: 'Miliarde. Trecutul lor este mai vechi decât orice imperiu.',
-          failLine: 'Miliarde, copile. Stelele trăiesc mai mult decât orice civilizație.',
+
+          domain: 'spatiu',
         },
         {
           kind: 'narrate',
@@ -118,11 +112,8 @@ const PACK: StoryPack = {
           id: 'v1-13',
           intro: 'Un cristal uriaș și vibrant blochează poteca. Energia lui face aerul să tremure.',
           shapeKey: 'energybarrier',
-          prompt: 'Cristalul rezonează. Spune-mi, soarele nostru este o stea sau o planetă?',
-          options: ['Planetă', 'Stea', 'Niciuna'],
-          correctIndex: 1,
-          successLine: 'O stea. Soarele este o stea exact precum cele pe care le caut.',
-          failLine: 'Este o stea. Toate planetele se învârt în jurul stelelor, la fel se întâmplă și la noi.',
+
+          domain: 'spatiu',
           vfx: 'glow-pulse',
         },
         {
@@ -147,11 +138,8 @@ const PACK: StoryPack = {
           id: 'v1-17',
           intro: 'Un al doilea meteorit vine din altă direcție, parcă aruncat dinadins. Cineva îl urmărește cu adevărat.',
           shapeKey: 'asteroid',
-          prompt: 'Cineva îmi aruncă pietre din spațiu! Dacă o navetă merge mai repede decât lumina, ce se întâmplă cu timpul?',
-          options: ['Se grăbește', 'Se încetinește', 'Stă pe loc'],
-          correctIndex: 1,
-          successLine: 'Se încetinește. Pentru călătorul rapid, timpul curge mai lent. O magie a fizicii.',
-          failLine: 'Timpul se încetinește pentru cine zboară repede. Este o lege a stelelor.',
+
+          domain: 'spatiu',
           vfx: 'meteor',
         },
         {
@@ -212,11 +200,8 @@ const PACK: StoryPack = {
           id: 'v2-04',
           intro: 'Un satelit ruginit plutește în cale și transmite un semnal vechi. Cineva încearcă să le vorbească.',
           shapeKey: 'satellite',
-          prompt: 'Semnalul vine de departe. Spune-mi, câte planete are sistemul nostru solar?',
-          options: ['Șapte', 'Opt', 'Nouă'],
-          correctIndex: 1,
-          successLine: 'Opt. Pluto a fost reclasificat. Restul dansează în jurul stelei.',
-          failLine: 'Opt acum, copile. Pluto a fost cândva a noua, dar nu mai este socotită planetă.',
+
+          domain: 'spatiu',
           vfx: 'flash',
         },
         {
@@ -254,11 +239,8 @@ const PACK: StoryPack = {
           id: 'v2-09',
           intro: 'Vader se adăpostește în spatele unui cristal uriaș care vibrează la fiecare lovitură.',
           shapeKey: 'energybarrier',
-          prompt: 'Cristalul este ca un scut natural. Spune-mi, găurile negre din spațiu înghit lumina sau o creează?',
-          options: ['O creează', 'O înghit', 'O reflectă'],
-          correctIndex: 1,
-          successLine: 'O înghit. Nici lumina nu poate scăpa de gravitația lor. Sunt mormintele galaxiei.',
-          failLine: 'O înghit, copile. Sunt atât de masive încât nici lumina nu poate să scape.',
+
+          domain: 'spatiu',
           vfx: 'shake',
         },
         {
@@ -272,11 +254,8 @@ const PACK: StoryPack = {
           id: 'v2-11',
           intro: 'Drumul coboară într-o vale plină de meteoriți care plutesc. Trebuie să-i ocolească cu grijă.',
           shapeKey: 'asteroid',
-          prompt: 'Meteoriții nu cad, ci plutesc. Oare de ce, fiindcă nu există gravitație sau fiindcă sunt prea departe de planete?',
-          options: ['Fără gravitație', 'Sunt departe', 'Sunt prea ușori'],
-          correctIndex: 1,
-          successLine: 'Sunt departe. Gravitația există peste tot, dar slăbește cu distanța. Așa plutesc.',
-          failLine: 'Fiindcă sunt departe. Gravitația există, doar că este foarte slabă la distanță.',
+
+          domain: 'spatiu',
           vfx: 'meteor',
         },
         {
@@ -301,11 +280,8 @@ const PACK: StoryPack = {
           id: 'v2-15',
           intro: 'Un al doilea satelit, mai mic, se aprinde și scanează relicva. Pare s-o protejeze.',
           shapeKey: 'satellite',
-          prompt: 'Satelitul vrea să mă încerce înainte să ating relicva. Știi, luna primește lumină de la soare sau o creează singură?',
-          options: ['O creează', 'O primește', 'Amândouă'],
-          correctIndex: 1,
-          successLine: 'O primește. Luna reflectă lumina soarelui. De aceea strălucește pe cerul nostru.',
-          failLine: 'O primește, copile. Luna nu are foc, doar oglindește soarele.',
+
+          domain: 'spatiu',
           vfx: 'glow-pulse',
         },
         {

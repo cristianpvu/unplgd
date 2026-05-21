@@ -64,13 +64,14 @@ export type ScenePetSays = {
 export type SceneChallenge = {
   kind: 'challenge';
   id: string;
+  // Narator inainte de obstacol (acelasi pentru toata lumea).
   intro: string;
+  // Forma vizuala in WorldPack.obstacles (rock, asteroid, palm_log, etc.).
   shapeKey: string;
-  prompt: string;
-  options: string[];
-  correctIndex: number;
-  successLine: string;
-  failLine: string;
+  // Domeniul intrebarii — engine cere intrebari random de la backend pe acest
+  // domain, filtrate dupa varsta copilului. Asa intrebarile difera intre copii.
+  // Valori uzuale: 'spatiu' | 'ocean' | 'padure' | 'desert' | 'oras' | 'general'.
+  domain: string;
   vfx?: SceneVfx;
 };
 
