@@ -1285,7 +1285,19 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
           include: {
             members: {
               include: {
-                user: { select: { id: true, name: true, avatar: { select: { svg: true } } } },
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    avatar: { select: { svg: true } },
+                    pet: {
+                      select: {
+                        name: true,
+                        species: { select: { imagePath: true } },
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -1344,18 +1356,25 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
       sessionId: id,
       startedAt: refreshed.startedAt,
       endedAt: refreshed.endedAt,
-      teams: session.teams.map((t, idx) => ({
-        rank: idx + 1,
-        id: t.id,
-        name: t.name,
-        score: t.score,
-        monstersDefeated: t.monstersDefeated,
-        members: t.members.map((m) => ({
-          id: m.userId,
-          name: m.user.name,
-          avatarSvg: m.user.avatar?.svg ?? null,
+      teams: await Promise.all(
+        session.teams.map(async (t, idx) => ({
+          rank: idx + 1,
+          id: t.id,
+          name: t.name,
+          score: t.score,
+          monstersDefeated: t.monstersDefeated,
+          members: await Promise.all(
+            t.members.map(async (m) => ({
+              id: m.userId,
+              name: m.user.name,
+              avatarSvg: m.user.avatar?.svg ?? null,
+              petImageUrl: m.user.pet
+                ? await resolvePetImagePath(m.user.pet.species.imagePath)
+                : null,
+            })),
+          ),
         })),
-      })),
+      ),
       myXp: xpAwards
         .filter((a) => a.userId === me)
         .map((a) => ({ amount: a.amount, rank: a.rank }))[0] ?? null,
