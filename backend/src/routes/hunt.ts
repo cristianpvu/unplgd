@@ -31,6 +31,7 @@ import { createDevHereSession } from '../lib/hunt/devSession.js';
 import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
 import { generateHuntHints, type HintRun } from '../lib/ai/huntHint.js';
 import { resolvePetImagePath } from '../lib/petImage.js';
+import { awardBondXp, bondXpToLevel, BOND_REWARDS } from '../lib/pet/bond.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -839,6 +840,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
                       select: {
                         id: true,
                         name: true,
+                        bondXp: true,
                         species: {
                           select: {
                             name: true,
@@ -1031,6 +1033,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
           runId: r.id,
           prompt: r.challenge.prompt,
           options: r.challenge.options ? r.challenge.options.split('|').filter(Boolean) : null,
+          difficulty: r.challenge.difficulty,
         }));
 
         const hints = await generateHuntHints(
@@ -1042,6 +1045,7 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
             tone: sp.tone,
             catchphrases: sp.catchphrases,
             childName: chosen.user.name,
+            bondLevel: bondXpToLevel(pet.bondXp),
           },
           monster.name,
           monsterDomain,
@@ -1091,6 +1095,10 @@ huntRouter.post('/sessions/:id/monsters/:mid/engage', async (req, res, next) => 
 // in faza 4 cu vision API.
 const answerSchema = z.object({
   answer: z.string().trim().min(1).max(500),
+  // `usedHint` e setat de UI cand user-ul a tap-uit pet-ul si a vazut hint-ul
+  // inainte sa raspunda. Servesste DOAR la acordarea bond xp — judecarea
+  // raspunsului nu depinde de el. Daca lipseste presupunem false.
+  usedHint: z.boolean().optional(),
 });
 
 huntRouter.post(
@@ -1100,7 +1108,7 @@ huntRouter.post(
       const me = req.userId!;
       const { id, mid, runId } = req.params;
       if (!id || !mid || !runId) throw badRequest('missing_id', 'id-uri lipsa');
-      const { answer } = answerSchema.parse(req.body);
+      const { answer, usedHint } = answerSchema.parse(req.body);
 
       const run = await prisma.huntChallengeRun.findUnique({
         where: { id: runId },
@@ -1158,6 +1166,20 @@ huntRouter.post(
           finishedAt: now,
         },
       });
+
+      // Pet bonding: daca runul avea un pet asociat (domain match → hint generat),
+      // user-ul a tap-uit pet-ul ca sa vada hint-ul si a raspuns corect, atunci
+      // pet-ul primeste bond xp. Idempotent prin BondXpTransaction unique
+      // (petId, 'hunt_hint', runId) — re-answer accidental nu dubleaza.
+      if (result.correct && usedHint && run.petHintPetId) {
+        await awardBondXp(
+          run.petHintPetId,
+          BOND_REWARDS.HUNT_HINT_USED_CORRECT,
+          'hunt_hint',
+          runId,
+          `Hint folosit corect in lupta cu monstru ${mid}`,
+        );
+      }
 
       emitHuntUpdate(id, 'run_answered');
       res.json({

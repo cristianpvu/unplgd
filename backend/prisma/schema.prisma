@@ -323,7 +323,26 @@ model Pet {
   user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   species PetSpecies @relation(fields: [speciesId], references: [id])
 
-  huntHints HuntChallengeRun[]
+  huntHints       HuntChallengeRun[]
+  bondTransactions BondXpTransaction[]
+}
+
+// Acordare bond XP idempotenta — analog cu XpTransaction. Unicitate pe
+// (petId, sourceType, sourceId) => acelasi run/event nu poate fi rasplatit
+// de doua ori (re-engage / re-answer cu acelasi runId returneaza no-op).
+model BondXpTransaction {
+  id          String   @id @default(cuid())
+  petId       String
+  amount      Int
+  sourceType  String
+  sourceId    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  pet Pet @relation(fields: [petId], references: [id], onDelete: Cascade)
+
+  @@unique([petId, sourceType, sourceId])
+  @@index([petId, createdAt])
 }
 
 // Card NFC fizic colectabil. UID-ul e hardcodat de fabrica si unic global.

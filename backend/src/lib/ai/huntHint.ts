@@ -13,6 +13,7 @@ export type HintRun = {
   runId: string;
   prompt: string;
   options: string[] | null; // null pentru ne-MCQ (counting)
+  difficulty: number; // 1-5, citit din HuntChallenge.difficulty
 };
 
 export type HintPet = {
@@ -23,6 +24,34 @@ export type HintPet = {
   tone: string;
   catchphrases: string[];
   childName: string; // numele copilului care detine pet-ul
+  bondLevel: number; // 1-10, calculat din pet.bondXp via bondXpToLevel
+};
+
+// Precizia hint-ului scaleaza cu bond level → cu cat foloseste copilul pet-ul
+// mai mult, cu atat hint-urile devin mai utile. Insa NU scaleaza cu difficulty
+// monstrului: la intrebari grele (diff >= 4) hint-ul ramane vag indiferent de
+// bond → nu trivializam continutul greu. Asa kid-ul tot trebuie sa gandeasca.
+function precisionTier(bondLevel: number, difficulty: number): 'vague' | 'medium' | 'sharp' {
+  // Floor pe difficulty: intrebari grele (4-5) max 'medium', orice bond level.
+  // Intrebari medii (3) pot ajunge 'sharp' la bondLevel 5+.
+  // Intrebari usoare (1-2) urca direct cu bond level.
+  if (difficulty >= 4) {
+    return bondLevel >= 5 ? 'medium' : 'vague';
+  }
+  if (difficulty === 3) {
+    return bondLevel >= 5 ? 'sharp' : bondLevel >= 2 ? 'medium' : 'vague';
+  }
+  // Easy
+  return bondLevel >= 3 ? 'sharp' : bondLevel >= 1 ? 'medium' : 'vague';
+}
+
+const PRECISION_GUIDE: Record<'vague' | 'medium' | 'sharp', string> = {
+  vague:
+    'INDICIUL e foarte indirect: o asociere larga, o intrebare retorica, o amintire ca sa stimuleze gandirea. NU exclude variante. Copilul trebuie sa lege singur de raspuns.',
+  medium:
+    'INDICIUL e moderat: strecoara o regula sau un detaliu specific care exclude UNA dintre variantele gresite. Lasa copilul sa aleaga intre celelalte.',
+  sharp:
+    'INDICIUL e clar: contureaza puternic raspunsul corect printr-un detaliu definitor, dar nu pronunta cuvantul/numarul exact. Copilul ar trebui sa stie deja dupa indiciu.',
 };
 
 export type HintResult = {
@@ -55,11 +84,18 @@ TON DE VOCE: ${pet.tone}.
 ${catchphrasesBlock}
 CONTEXT: Un grup de copii (in care e si ${pet.childName}) se lupta cu un monstru pe nume "${monsterName}". Liderul echipei raspunde la cateva intrebari pe ecranul telefonului. Domeniul intrebarilor: ${monsterDomain}. ASTA E DOMENIUL TAU DE EXPERTIZA — de asta tu esti pet-ul care soptesste hint, nu altul.
 
-TASK: Pentru FIECARE intrebare primita, scrie un HINT SUBTIL — o singura propozitie scurta (max 18 cuvinte) care:
-- NU spune raspunsul direct.
-- Strecoara un indiciu (o asociere, o regula, un detaliu care exclude o varianta gresita din MCQ).
+NIVEL DE LEGATURA CU ${pet.childName}: ${pet.bondLevel}/10. Cu cat e mai mare, cu atat il cunosti mai bine si poti formula indicii mai precise — dar pentru intrebarile grele NU ai voie sa fii foarte explicit indiferent de nivel.
+
+TASK: Pentru FIECARE intrebare primita, scrie un HINT — o singura propozitie scurta (max 18 cuvinte) care:
+- NU spune raspunsul direct (nu numele/numarul exact din variante).
+- Respecta NIVELUL DE PRECIZIE indicat per intrebare (vezi campul "precision" — "vague" / "medium" / "sharp").
 - Suna in vocea TA: tonul, catchphrases-urile, lumea ta.
 - E adresat afectuos lui ${pet.childName} (folosindu-i numele sau in stilul tau natural).
+
+GHID DE PRECIZIE:
+- vague: ${PRECISION_GUIDE.vague}
+- medium: ${PRECISION_GUIDE.medium}
+- sharp: ${PRECISION_GUIDE.sharp}
 
 OUTPUT — JSON array curat, fara backticks, fara text in jur, in ordinea primita:
 [{"runId":"id-1","hint":"propozitia ta"},{"runId":"id-2","hint":"..."}]
@@ -79,7 +115,12 @@ export async function generateHuntHints(
   const userMessage = `Intrebari de generat hint (raspunde DOAR cu JSON array):
 
 ${JSON.stringify(
-  runs.map((r) => ({ runId: r.runId, prompt: r.prompt, options: r.options })),
+  runs.map((r) => ({
+    runId: r.runId,
+    prompt: r.prompt,
+    options: r.options,
+    precision: precisionTier(pet.bondLevel, r.difficulty),
+  })),
   null,
   2,
 )}`;

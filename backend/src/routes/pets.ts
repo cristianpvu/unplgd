@@ -16,6 +16,7 @@ import {
   loadChatHistory,
 } from '../lib/ai/chatContext.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
+import { bondProgress } from '../lib/pet/bond.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -98,6 +99,7 @@ petsRouter.get('/me', async (req, res, next) => {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
+        bond: bondProgress(pet.bondXp),
         species: petSpecies,
       },
       defaultSpecies: defaultSpeciesDto,
@@ -174,6 +176,7 @@ petsRouter.post('/scan', async (req, res, next) => {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
+        bond: bondProgress(pet.bondXp),
         species: petSpecies,
       },
       card: {
@@ -219,6 +222,7 @@ petsRouter.post('/equip-default', async (req, res, next) => {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
+        bond: bondProgress(pet.bondXp),
         species: await speciesDto(pet.species),
       },
     });
@@ -265,6 +269,7 @@ petsRouter.post('/equip', async (req, res, next) => {
         id: pet.id,
         name: pet.name,
         bondXp: pet.bondXp,
+        bond: bondProgress(pet.bondXp),
         species: petSpecies,
       },
       card: {
