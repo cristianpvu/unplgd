@@ -769,6 +769,51 @@ async function backfillUserItems() {
   }
 }
 
+// Lumile story-adventure se seed-uiesc MEREU (idempotent prin upsert pe slug),
+// nu sub skip guard-ul de catalog — altfel lumi noi nu apar la rebuild fara
+// FORCE_SEED. Fundalurile NU se ating (le populeaza user-ul manual).
+async function seedAdventureWorlds() {
+  for (const w of ADVENTURE_WORLDS) {
+    await prisma.adventureWorld.upsert({
+      where: { slug: w.slug },
+      create: {
+        slug: w.slug,
+        speciesSlug: w.speciesSlug,
+        domain: w.domain,
+        name: w.name,
+        lore: w.lore,
+        bossName: w.bossName,
+        bossLore: w.bossLore,
+        accentColor: w.accentColor,
+        bgColor: w.bgColor,
+        obstacleStyle: w.obstacleStyle,
+        sortOrder: w.sortOrder,
+        active: true,
+      },
+      update: {
+        speciesSlug: w.speciesSlug,
+        domain: w.domain,
+        name: w.name,
+        lore: w.lore,
+        bossName: w.bossName,
+        bossLore: w.bossLore,
+        accentColor: w.accentColor,
+        bgColor: w.bgColor,
+        obstacleStyle: w.obstacleStyle,
+        sortOrder: w.sortOrder,
+        active: true,
+      },
+    });
+  }
+  // Dezactiveaza lumi scoase din lista (audit-friendly, ca la monstri).
+  const allWorldSlugs = ADVENTURE_WORLDS.map((w) => w.slug);
+  await prisma.adventureWorld.updateMany({
+    where: { slug: { notIn: allWorldSlugs } },
+    data: { active: false },
+  });
+  console.log(`seedAdventureWorlds: ${ADVENTURE_WORLDS.length} lumi`);
+}
+
 async function main() {
   // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
   // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
@@ -777,6 +822,9 @@ async function main() {
   // Slot "holding" se evolueaza des — upsert mereu + cleanup orphan items.
   await seedHoldingAlways();
   await cleanupOrphanHolding();
+
+  // Lumile de aventura ruleaza mereu (nu sub skip guard).
+  await seedAdventureWorlds();
 
   // Cleanup ownership orphan + Backfill UserItem (idempotent) — pt useri existenti.
   await cleanupOrphanUserItems();
@@ -910,50 +958,9 @@ async function main() {
     data: { active: false },
   });
 
-  // Story-adventure: lumi (data-driven, cheie pe speciesSlug). Fundalurile NU
-  // se seed-uiesc — le populeaza user-ul manual cu imageUrl static.
-  for (const w of ADVENTURE_WORLDS) {
-    await prisma.adventureWorld.upsert({
-      where: { slug: w.slug },
-      create: {
-        slug: w.slug,
-        speciesSlug: w.speciesSlug,
-        domain: w.domain,
-        name: w.name,
-        lore: w.lore,
-        bossName: w.bossName,
-        bossLore: w.bossLore,
-        accentColor: w.accentColor,
-        bgColor: w.bgColor,
-        obstacleStyle: w.obstacleStyle,
-        sortOrder: w.sortOrder,
-        active: true,
-      },
-      update: {
-        speciesSlug: w.speciesSlug,
-        domain: w.domain,
-        name: w.name,
-        lore: w.lore,
-        bossName: w.bossName,
-        bossLore: w.bossLore,
-        accentColor: w.accentColor,
-        bgColor: w.bgColor,
-        obstacleStyle: w.obstacleStyle,
-        sortOrder: w.sortOrder,
-        active: true,
-      },
-    });
-  }
-  // Dezactiveaza lumi scoase din lista (audit-friendly, ca la monstri).
-  const allWorldSlugs = ADVENTURE_WORLDS.map((w) => w.slug);
-  await prisma.adventureWorld.updateMany({
-    where: { slug: { notIn: allWorldSlugs } },
-    data: { active: false },
-  });
-
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates, ${ADVENTURE_WORLDS.length} adventure worlds`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates`,
   );
 }
 

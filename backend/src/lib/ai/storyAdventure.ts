@@ -70,7 +70,10 @@ export type StoryArc = {
   outro: string; // pet-ul incheie dupa victorie
 };
 
-const STORY_TIMEOUT_MS = 12000; // mai mare ca hint — generam tot arcul o data
+// Generam tot arcul intr-un apel (intro + noduri + boss + outro). In romana,
+// ~1500-2000 tokeni output = realist 15-25s pe Haiku. Timeout generos pentru ca
+// runul se cache-uieste (se intampla o singura data per playthrough).
+const STORY_TIMEOUT_MS = 35000;
 
 function buildSystemPrompt(pet: StoryPet, world: StoryWorldConfig): string {
   const catchphrasesBlock =
@@ -102,19 +105,21 @@ ROL CRUCIAL — RASTOARNA DINAMICA: TU esti cel care are nevoie de ajutor, NU ${
 
 TASK: Genereaza o aventura completa prin lumea ta, in ${world.nodeCount} noduri + un boss final pe nume "${world.bossName}". ${world.bossLore}
 
-Reguli pt FIECARE nod:
-- narrative: 2-3 propozitii scurte care avanseaza povestea si te aduc la un obstacol.
-- obstacle.prompt: TU ceri ajutor in-world (legat de obstacol), strecurand subtil o intrebare de ${world.domain}.
-- obstacle.options: exact 3 variante plauzibile, scurte.
-- obstacle.correctIndex: indexul (0-2) variantei corecte.
-- obstacle.successLine: reactia ta bucuroasa cand copilul te ajuta corect (obstacolul se rezolva).
-- obstacle.failLine: cand greseste — NICIODATA critica. Razi cald, re-explica simplu adevarul, incurajeaza sa reincerce.
-- obstacle.fact: nuggetul de cunostinte invatat (o propozitie clara).
+FII CONCIS — propozitii scurte, fara umplutura. Conteaza ritmul, nu lungimea.
 
-Boss "${world.bossName}":
-- boss.intro: aparitia dramatica dar prietenoasa a boss-ului.
-- boss.questions: ${world.nodeCount} intrebari care RECAPITULEAZA faptele din noduri (rephrase, nu copy-paste). Fiecare are recapNodeIndex = indexul nodului recapitulat (0-based).
-- boss.victoryLine: reactia ta triumfatoare cand boss-ul e invins.
+Reguli pt FIECARE nod:
+- narrative: 1-2 propozitii scurte care avanseaza povestea spre un obstacol.
+- obstacle.prompt: o singura propozitie — TU ceri ajutor in-world, strecurand subtil o intrebare de ${world.domain}.
+- obstacle.options: exact 3 variante scurte (1-3 cuvinte fiecare).
+- obstacle.correctIndex: indexul (0-2) variantei corecte.
+- obstacle.successLine: o propozitie scurta, bucuroasa, cand copilul te ajuta.
+- obstacle.failLine: o propozitie — NICIODATA critica. Cald, re-explica simplu, incurajeaza.
+- obstacle.fact: o propozitie clara cu ce s-a invatat.
+
+Boss "${world.bossName}" (scurt si la obiect):
+- boss.intro: o propozitie — aparitia dramatica dar prietenoasa a boss-ului.
+- boss.questions: ${world.nodeCount} intrebari scurte care RECAPITULEAZA faptele din noduri (rephrase, nu copy-paste), fiecare cu 3 optiuni scurte. Fiecare are recapNodeIndex = indexul nodului recapitulat (0-based).
+- boss.victoryLine: o propozitie triumfatoare cand boss-ul e invins.
 
 ADAPTARE VARSTA/NIVEL: nivelul vostru de prietenie e ${pet.bondLevel}/10. La nivel mic foloseste cuvinte simple si fapte de baza; la nivel mare poti fi mai nuantat. Mereu potrivit pt copii 6-14 ani.
 
