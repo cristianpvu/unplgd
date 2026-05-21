@@ -227,18 +227,24 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
     ]).start();
   }, [step, chars, stepDelay, charsDelay]);
 
-  // Inaltimi trepte clasice + dimensiuni caracter scalate cu rank-ul (1 mai
-  // mare ca sa iasa in evidenta).
+  // Inaltimi trepte clasice + dimensiuni caracter + coronita scalate cu rank-ul.
   const heights: Record<number, number> = { 1: 110, 2: 78, 3: 52 };
-  const charSizes: Record<number, { char: number; pet: number }> = {
-    1: { char: 92, pet: 40 },
-    2: { char: 78, pet: 34 },
-    3: { char: 70, pet: 30 },
+  const charSizes: Record<number, { char: number; pet: number; crown: number }> = {
+    1: { char: 92, pet: 40, crown: 28 },
+    2: { char: 78, pet: 34, crown: 22 },
+    3: { char: 70, pet: 30, crown: 20 },
   };
   const stepH = heights[team.rank] ?? 40;
-  const sz = charSizes[team.rank] ?? { char: 64, pet: 28 };
+  const sz = charSizes[team.rank] ?? { char: 64, pet: 28, crown: 18 };
   const color = RANK_COLOR[team.rank] ?? colors.cardAlt;
-  const isFirst = team.rank === 1;
+
+  // Coronita SVG colorata per rank — fiecare caracter de pe podium poarta una.
+  const crownSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 28">
+    <path d="M4 22 L4 10 L12 16 L20 4 L28 16 L36 10 L36 22 Z" fill="${color}" stroke="#FFFFFF" stroke-width="1.5"/>
+    <circle cx="4" cy="8" r="2.5" fill="${color}"/>
+    <circle cx="20" cy="2" r="2.5" fill="${color}"/>
+    <circle cx="36" cy="8" r="2.5" fill="${color}"/>
+  </svg>`;
 
   const stepTranslateY = step.interpolate({
     inputRange: [0, 1],
@@ -269,30 +275,25 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
           },
         ]}
       >
-        {/* Coronita SVG mica deasupra grupului pt locul 1 */}
-        {isFirst && (
-          <View style={styles.podiumCrownWrap}>
-            <SvgXml
-              xml={`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 28">
-                <path d="M4 22 L4 10 L12 16 L20 4 L28 16 L36 10 L36 22 Z" fill="${RANK_COLOR[1]}" stroke="#FFFFFF" stroke-width="1.5"/>
-                <circle cx="4" cy="8" r="2.5" fill="${RANK_COLOR[1]}"/>
-                <circle cx="20" cy="2" r="2.5" fill="${RANK_COLOR[1]}"/>
-                <circle cx="36" cy="8" r="2.5" fill="${RANK_COLOR[1]}"/>
-              </svg>`}
-              width={36}
-              height={26}
-            />
-          </View>
-        )}
-
         <View style={styles.podiumLineup}>
           {visible.map((m) => (
             <View key={m.id} style={styles.podiumMember}>
-              {m.avatarSvg ? (
-                <SvgXml xml={m.avatarSvg} width={charW} height={charH} />
-              ) : (
-                <View style={[styles.charFallback, { width: charW, height: charH }]} />
-              )}
+              <View style={styles.podiumCharCol}>
+                {/* Coronita individuala deasupra fiecarui caracter, colorata
+                    cu rank-ul echipei (aur / argint / bronz). */}
+                <View style={styles.podiumCrownOnHead}>
+                  <SvgXml
+                    xml={crownSvg}
+                    width={sz.crown}
+                    height={Math.round(sz.crown * 0.7)}
+                  />
+                </View>
+                {m.avatarSvg ? (
+                  <SvgXml xml={m.avatarSvg} width={charW} height={charH} />
+                ) : (
+                  <View style={[styles.charFallback, { width: charW, height: charH }]} />
+                )}
+              </View>
               {m.petImageUrl && (
                 <View style={[styles.podiumPet, { width: sz.pet, height: sz.pet }]}>
                   <Image
@@ -396,7 +397,12 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingBottom: 4,
   },
-  podiumCrownWrap: {
+  // Coloana caracter + crown pe cap. Crown overlap-uieste varful avatarului
+  // cu marginBottom negativ ca sa stea efectiv "pe par", nu deasupra.
+  podiumCharCol: {
+    alignItems: 'center',
+  },
+  podiumCrownOnHead: {
     marginBottom: -6,
     zIndex: 2,
   },
