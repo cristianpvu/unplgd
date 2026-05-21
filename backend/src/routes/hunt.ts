@@ -1374,6 +1374,7 @@ const RUN_INCLUDE = {
       id: true,
       name: true,
       user: { select: { name: true } },
+      species: { select: { imagePath: true } },
     },
   },
 } as const satisfies Prisma.HuntChallengeRunInclude;
@@ -1400,6 +1401,7 @@ function buildRunDto(run: RunWithChallenge, me: string) {
           text: run.petHint,
           petName: run.petHintPet.name,
           ownerName: run.petHintPet.user.name,
+          petImagePath: run.petHintPet.species.imagePath,
         }
       : null;
   return {
