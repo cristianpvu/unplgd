@@ -156,39 +156,37 @@ function TeamNamingView({
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
       <ScrollView contentContainerStyle={styles.namingScroll}>
-        <View style={styles.namingHero}>
-          <Text style={styles.namingEmoji}>🎯</Text>
-          <Text style={styles.namingTitle}>Esti liderul echipei!</Text>
+        <View style={styles.namingHeader}>
+          <Text style={styles.namingTag}>LIDER</Text>
+          <Text style={styles.namingTitle}>Numeste echipa ta</Text>
           <Text style={styles.namingSub}>
-            Da-i un nume echipei tale. Apoi pornim vanatoarea — restul copiilor
-            stau langa tine si raspundeti impreuna.
+            Restul copiilor stau langa tine si raspundeti impreuna pe telefonul tau.
           </Text>
         </View>
 
-        <View style={styles.namingCard}>
-          <Text style={styles.namingLabel}>Numele echipei</Text>
+        <View style={styles.namingInputWrap}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="ex. Vulturii, Echipa Norilor..."
+            placeholder="ex. Vulturii"
             placeholderTextColor={colors.textMuted}
             maxLength={30}
             autoFocus
             style={styles.namingInput}
           />
-          <Text style={styles.namingHint}>{trimmed.length}/30</Text>
+          <Text style={styles.namingCount}>{trimmed.length}/30</Text>
         </View>
 
         <Pressable
           onPress={() => canSubmit && mut.mutate(trimmed)}
           disabled={!canSubmit}
           style={({ pressed }) => [
-            styles.namingBtn,
-            !canSubmit && styles.namingBtnDisabled,
+            styles.primaryBtn,
+            !canSubmit && styles.primaryBtnDisabled,
             pressed && styles.btnPressed,
           ]}
         >
-          <Text style={styles.namingBtnText}>
+          <Text style={styles.primaryBtnText}>
             {mut.isPending ? 'Salvez...' : 'Confirma si porneste'}
           </Text>
         </Pressable>
@@ -221,50 +219,42 @@ function MemberWaitingView({
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
       <ScrollView contentContainerStyle={styles.memberScroll}>
-        <View style={styles.memberHero}>
-          <Text style={styles.memberHeroEmoji}>👀</Text>
-          <Text style={styles.memberHeroTitle}>
-            Stai langa {session.myTeamLeader?.name ?? 'liderul echipei'}!
-          </Text>
-          {myTeam && !myTeam.nameSet ? (
-            <Text style={styles.memberHeroSub}>
-              {session.myTeamLeader?.name ?? 'Liderul'} alege un nume pentru
-              echipa voastra. Asteapta-l langa el.
-            </Text>
-          ) : (
-            <Text style={styles.memberHeroSub}>
-              Vanatoarea se joaca pe telefonul lui. Ajutati-l sa raspunda la
-              intrebari — discutati impreuna ce varianta alege.
-            </Text>
-          )}
-          <View style={styles.memberTimerPill}>
-            <Text style={styles.memberTimerLabel}>Timp ramas</Text>
-            <Text style={styles.memberTimerText}>{formatTime(timeRemaining)}</Text>
-          </View>
+        {/* Timer mare in centru — atentia principala */}
+        <View style={styles.memberTimerWrap}>
+          <Text style={styles.memberTimerNum}>{formatTime(timeRemaining)}</Text>
+          <Text style={styles.memberTimerLabel}>timp ramas</Text>
         </View>
 
-        <View style={styles.memberLeaderCard}>
-          <Text style={styles.leaderTitle}>Clasament</Text>
+        {/* Leader compact */}
+        <View style={styles.memberLeaderRow}>
+          <View style={styles.memberLeaderLabel}>
+            <Text style={styles.memberLeaderLabelText}>LIDER</Text>
+          </View>
+          <Text style={styles.memberLeaderName}>
+            {session.myTeamLeader?.name ?? 'echipa ta'}
+          </Text>
+        </View>
+
+        <Text style={styles.memberInstruction}>
+          {myTeam && !myTeam.nameSet
+            ? 'Asteapta langa lider sa numeasca echipa voastra.'
+            : 'Stai langa lider. Discutati impreuna raspunsurile.'}
+        </Text>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Clasament</Text>
           {rankedTeams.map((t, idx) => {
             const mine = t.id === myTeam?.id;
             return (
               <View
                 key={t.id}
-                style={[styles.leaderRow, mine && styles.leaderRowMine]}
+                style={[styles.memberLeaderRowItem, mine && styles.memberLeaderRowMine]}
               >
-                <Text style={[styles.leaderRank, mine && styles.leaderRankMine]}>
-                  #{idx + 1}
-                </Text>
-                <Text
-                  style={[styles.leaderName, mine && styles.leaderNameMine]}
-                  numberOfLines={1}
-                >
+                <Text style={styles.memberLeaderRowRank}>{idx + 1}</Text>
+                <Text style={styles.memberLeaderRowName} numberOfLines={1}>
                   {t.name}
-                  {mine ? ' (echipa ta)' : ''}
                 </Text>
-                <Text style={[styles.leaderScore, mine && styles.leaderScoreMine]}>
-                  {t.score}
-                </Text>
+                <Text style={styles.memberLeaderRowScore}>{t.score}</Text>
               </View>
             );
           })}
@@ -316,60 +306,54 @@ function LobbyView({
   });
 
   const canStart = session.canStart && !startMut.isPending;
+  const ready = session.playersNeeded === 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
 
       <ScrollView contentContainerStyle={styles.lobbyScroll}>
-        {/* Hero — count mare + park name + status pulsant */}
-        <View style={styles.lobbyHero}>
-          <LobbyHeroEmoji emoji="🎒" style={styles.lobbyHeroEmojiL} delay={0} />
-          <LobbyHeroEmoji emoji="🗺️" style={styles.lobbyHeroEmojiR} delay={500} />
-          <Text style={styles.lobbyHeroTag}>LOBBY</Text>
-          <View style={styles.lobbyCountWrap}>
-            <Text style={styles.lobbyCountBig}>{session.lobby.length}</Text>
-            <Text style={styles.lobbyCountWord}>
+        {/* Hero compact — numar mare + status pe linie */}
+        <View style={styles.lobbyHeroCompact}>
+          <View>
+            <Text style={styles.lobbyHeroNum}>{session.lobby.length}</Text>
+            <Text style={styles.lobbyHeroNumLabel}>
               {session.lobby.length === 1 ? 'jucator' : 'jucatori'}
             </Text>
           </View>
-          <Text style={styles.lobbyHeroPark}>🌳 {session.park.name}</Text>
-          <View style={styles.lobbyHeroPillRow}>
-            <View style={styles.lobbyHeroPill}>
-              <Text style={styles.lobbyHeroPillText}>
-                ⏱ {Math.floor(session.durationSec / 60)} min
+          <View style={styles.lobbyHeroDivider} />
+          <View style={{ flex: 1, gap: 6 }}>
+            <View style={styles.lobbyStatusRow}>
+              <View style={[styles.statusDot, { backgroundColor: ready ? colors.success : colors.accent }]} />
+              <Text style={styles.lobbyStatusText}>
+                {ready ? 'Gata de start' : `Mai trebuie ${session.playersNeeded}`}
               </Text>
             </View>
-            {session.playersNeeded > 0 ? (
-              <View style={[styles.lobbyHeroPill, styles.lobbyHeroPillWarn]}>
-                <Text style={styles.lobbyHeroPillTextWarn}>
-                  +{session.playersNeeded} de jucatori
-                </Text>
-              </View>
-            ) : (
-              <View style={[styles.lobbyHeroPill, styles.lobbyHeroPillReady]}>
-                <Text style={styles.lobbyHeroPillTextReady}>✓ Gata!</Text>
-              </View>
-            )}
+            <Text style={styles.lobbyHeroSub}>
+              {Math.floor(session.durationSec / 60)} minute
+            </Text>
           </View>
         </View>
 
-        {/* Player grid — fiecare avatar bounce-in cu stagger */}
-        <View style={styles.playerGrid}>
-          {session.lobby.map((m, idx) => (
-            <PlayerTile key={m.userId} member={m} index={idx} />
-          ))}
-          {/* Slot-uri goale pulsing pt jucatori inca neveniti */}
-          {Array.from({ length: session.playersNeeded }).map((_, i) => (
-            <PendingSlot key={`pending-${i}`} delay={i * 200} />
-          ))}
+        {/* Lista jucatori — compacta, fara cards individuale colorate */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>In lobby</Text>
+          <View style={styles.playerList}>
+            {session.lobby.map((m, idx) => (
+              <PlayerRow key={m.userId} member={m} index={idx} />
+            ))}
+            {Array.from({ length: session.playersNeeded }).map((_, i) => (
+              <PendingRow key={`pending-${i}`} delay={i * 200} />
+            ))}
+          </View>
         </View>
 
         {session.isHost ? (
-          <>
+          <View style={styles.bottomActions}>
             <LobbyStartButton
               ready={canStart}
               loading={startMut.isPending}
+              fullReady={ready}
               onPress={() => startMut.mutate()}
             />
             <Pressable
@@ -387,12 +371,12 @@ function LobbyView({
             >
               <Text style={styles.cancelText}>Anuleaza lobby</Text>
             </Pressable>
-          </>
+          </View>
         ) : (
-          <>
-            <View style={styles.waitingCard}>
+          <View style={styles.bottomActions}>
+            <View style={styles.waitingRow}>
               <WaitingDots />
-              <Text style={styles.waitingText}>Asteptam liderul sa porneasca...</Text>
+              <Text style={styles.waitingText}>Asteptam liderul sa porneasca</Text>
             </View>
             <Pressable
               onPress={() => leaveMut.mutate()}
@@ -400,59 +384,15 @@ function LobbyView({
             >
               <Text style={styles.cancelText}>Iesi din lobby</Text>
             </Pressable>
-          </>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Emoji care plutesc in hero-ul lobby.
-function LobbyHeroEmoji({
-  emoji,
-  style,
-  delay,
-}: {
-  emoji: string;
-  style: any;
-  delay: number;
-}) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 1800,
-          delay,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(anim, {
-          toValue: 0,
-          duration: 1800,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [anim, delay]);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -8] });
-  const rotate = anim.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '5deg'] });
-  return (
-    <Animated.Text
-      style={[style, { transform: [{ translateY }, { rotate }] }]}
-      pointerEvents="none"
-    >
-      {emoji}
-    </Animated.Text>
-  );
-}
-
-// Card pt fiecare jucator in lobby — bounce-in cu stagger.
-function PlayerTile({
+// Rand jucator — avatar mic + nume + level pe dreapta. Stagger fade-in.
+function PlayerRow({
   member,
   index,
 }: {
@@ -461,20 +401,20 @@ function PlayerTile({
 }) {
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.spring(enter, {
+    Animated.timing(enter, {
       toValue: 1,
-      friction: 6,
-      tension: 140,
-      delay: index * 90,
+      duration: 260,
+      delay: index * 60,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   }, [enter, index]);
-  const scale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
+  const translateX = enter.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] });
   return (
-    <Animated.View style={[styles.playerTile, { opacity: enter, transform: [{ scale }] }]}>
-      <View style={styles.playerAvatarRing}>
+    <Animated.View style={[styles.playerRow, { opacity: enter, transform: [{ translateX }] }]}>
+      <View style={styles.playerAvatar}>
         {member.avatarSvg ? (
-          <SvgXml xml={member.avatarSvg} width={56} height={56} />
+          <SvgXml xml={member.avatarSvg} width={36} height={36} />
         ) : (
           <View style={styles.avatarFallback} />
         )}
@@ -482,29 +422,27 @@ function PlayerTile({
       <Text style={styles.playerName} numberOfLines={1}>
         {member.name}
       </Text>
-      <View style={styles.playerLevelPill}>
-        <Text style={styles.playerLevelText}>L{member.level}</Text>
-      </View>
+      <Text style={styles.playerLevel}>L{member.level}</Text>
     </Animated.View>
   );
 }
 
-// Slot gol pulsing pt fiecare jucator de care mai e nevoie.
-function PendingSlot({ delay }: { delay: number }) {
+// Slot gol — placeholder pulsing pt jucator inca nevenit.
+function PendingRow({ delay }: { delay: number }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(anim, {
           toValue: 1,
-          duration: 900,
+          duration: 1000,
           delay,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(anim, {
           toValue: 0,
-          duration: 900,
+          duration: 1000,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -513,28 +451,30 @@ function PendingSlot({ delay }: { delay: number }) {
     loop.start();
     return () => loop.stop();
   }, [anim, delay]);
-  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] });
+  const opacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.7] });
   return (
-    <Animated.View style={[styles.pendingTile, { opacity }]}>
-      <Text style={styles.pendingMark}>?</Text>
-      <Text style={styles.pendingLabel}>asteptam</Text>
+    <Animated.View style={[styles.pendingRow, { opacity }]}>
+      <View style={styles.pendingAvatar} />
+      <Text style={styles.pendingLabel}>asteptam jucator</Text>
     </Animated.View>
   );
 }
 
-// Buton START mare cu pulse cand ready.
+// Buton START — primary cu pulse subtil cand toata lumea e aici.
 function LobbyStartButton({
   ready,
+  fullReady,
   loading,
   onPress,
 }: {
   ready: boolean;
+  fullReady: boolean;
   loading: boolean;
   onPress: () => void;
 }) {
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!ready) {
+    if (!fullReady || !ready) {
       pulse.setValue(0);
       return;
     }
@@ -542,13 +482,13 @@ function LobbyStartButton({
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 850,
+          duration: 1100,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: 850,
+          duration: 1100,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -556,29 +496,28 @@ function LobbyStartButton({
     );
     loop.start();
     return () => loop.stop();
-  }, [ready, pulse]);
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
+  }, [ready, fullReady, pulse]);
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
   return (
-    <Animated.View style={{ transform: [{ scale }], marginTop: 16 }}>
+    <Animated.View style={{ transform: [{ scale }] }}>
       <Pressable
         onPress={onPress}
         disabled={!ready}
         style={({ pressed }) => [
-          styles.lobbyStartBtn,
-          !ready && styles.lobbyStartBtnDisabled,
+          styles.primaryBtn,
+          !ready && styles.primaryBtnDisabled,
           pressed && styles.btnPressed,
         ]}
       >
-        <Text style={styles.lobbyStartEmoji}>{ready ? '🚀' : '⏳'}</Text>
-        <Text style={styles.lobbyStartText}>
-          {loading ? 'Pornim...' : ready ? 'START VANATOARE!' : 'Asteptam jucatori'}
+        <Text style={styles.primaryBtnText}>
+          {loading ? 'Pornim...' : ready ? 'Porneste vanatoarea' : 'Asteptam jucatori'}
         </Text>
       </Pressable>
     </Animated.View>
   );
 }
 
-// 3 puncte care pulseaza in valuri — "asteptam liderul".
+// 3 puncte care pulseaza in valuri.
 function WaitingDots() {
   const a = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -874,178 +813,237 @@ const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 14 },
   error: { color: colors.danger, textAlign: 'center', marginTop: 24 },
 
-  lobbyScroll: { padding: 16, gap: 14, paddingBottom: 32 },
+  lobbyScroll: { padding: 16, gap: 18, paddingBottom: 32 },
 
-  // Hero lobby — contor mare + park + status pill
-  lobbyHero: {
-    backgroundColor: colors.accent,
-    borderRadius: 24,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    overflow: 'hidden',
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  lobbyHeroTag: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
+  section: { gap: 8 },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 3,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
-  lobbyCountWrap: { alignItems: 'center', marginTop: 4 },
-  lobbyCountBig: {
-    color: '#FFFFFF',
-    fontSize: 70,
-    fontWeight: '900',
-    lineHeight: 76,
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 3 },
-    textShadowRadius: 6,
-  },
-  lobbyCountWord: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  lobbyHeroPark: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 10,
-    textAlign: 'center',
-  },
-  lobbyHeroPillRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  lobbyHeroPill: {
-    backgroundColor: 'rgba(255,255,255,0.22)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-  },
-  lobbyHeroPillText: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
-  lobbyHeroPillWarn: { backgroundColor: 'rgba(255,255,255,0.95)' },
-  lobbyHeroPillTextWarn: { color: colors.danger, fontWeight: '900', fontSize: 12 },
-  lobbyHeroPillReady: { backgroundColor: '#2ECC71' },
-  lobbyHeroPillTextReady: { color: '#FFFFFF', fontWeight: '900', fontSize: 12 },
-  lobbyHeroEmojiL: { position: 'absolute', top: 12, left: 16, fontSize: 28 },
-  lobbyHeroEmojiR: { position: 'absolute', top: 14, right: 18, fontSize: 28 },
 
-  // Player grid — 3 coloane
-  playerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 6,
-  },
-  playerTile: {
+  // Hero compact — un singur rand: numar mare + status + durata
+  lobbyHeroCompact: {
     backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 12,
+    borderRadius: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
     alignItems: 'center',
-    width: '31.5%',
-    shadowColor: colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-    gap: 6,
+    gap: 16,
   },
-  playerAvatarRing: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    borderWidth: 3,
-    borderColor: colors.secondary,
+  lobbyHeroNum: {
+    color: colors.text,
+    fontSize: 52,
+    fontWeight: '900',
+    lineHeight: 56,
+  },
+  lobbyHeroNumLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  lobbyHeroDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+  },
+  lobbyStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  lobbyStatusText: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  lobbyHeroSub: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+
+  // Player rows — compact, inline
+  playerList: { gap: 4 },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+  },
+  playerAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.cardAlt,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  playerName: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: '900',
-    textAlign: 'center',
-    maxWidth: '100%',
-  },
-  playerLevelPill: {
-    backgroundColor: colors.bgAlt,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  playerLevelText: { color: colors.text, fontSize: 11, fontWeight: '900' },
+  playerName: { color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 },
+  playerLevel: { color: colors.textMuted, fontSize: 12, fontWeight: '800' },
 
-  pendingTile: {
-    width: '31.5%',
-    backgroundColor: colors.cardAlt,
-    borderRadius: 18,
-    padding: 12,
+  pendingRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    borderWidth: 2,
+    gap: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    borderWidth: 1,
     borderColor: colors.border,
     borderStyle: 'dashed',
-    minHeight: 116,
-    justifyContent: 'center',
   },
-  pendingMark: {
-    fontSize: 36,
-    color: colors.textMuted,
-    fontWeight: '900',
+  pendingAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.cardAlt,
   },
-  pendingLabel: { color: colors.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
+  pendingLabel: { color: colors.textMuted, fontSize: 13, fontWeight: '700' },
 
-  // Buton START mare
-  lobbyStartBtn: {
+  // Buton primary universal (folosit in lobby + naming + altele)
+  primaryBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  primaryBtnDisabled: { opacity: 0.4 },
+  primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900', letterSpacing: 0.3 },
+
+  bottomActions: { gap: 10, marginTop: 4 },
+
+  // Waiting (non-host)
+  waitingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-    backgroundColor: colors.success,
-    borderRadius: 22,
-    paddingVertical: 22,
-    paddingHorizontal: 18,
-    shadowColor: '#000000',
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    paddingVertical: 14,
   },
-  lobbyStartBtnDisabled: { backgroundColor: colors.border, opacity: 0.75 },
-  lobbyStartEmoji: { fontSize: 28 },
-  lobbyStartText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '900',
-    letterSpacing: 0.6,
-    textShadowColor: 'rgba(0,0,0,0.2)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+  waitingDotsRow: { flexDirection: 'row', gap: 6 },
+  waitingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  waitingText: { color: colors.textMuted, fontWeight: '700', fontSize: 14 },
+
+  avatarFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.border,
   },
 
-  // Waiting card (non-host)
-  waitingCard: {
+  // Team naming — minimalist, fara hero card
+  namingScroll: { padding: 16, gap: 18, paddingBottom: 32 },
+  namingHeader: { gap: 6, marginTop: 8 },
+  namingTag: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 2,
+  },
+  namingTitle: { color: colors.text, fontSize: 26, fontWeight: '900', letterSpacing: -0.3 },
+  namingSub: { color: colors.textMuted, fontSize: 14, lineHeight: 20, fontWeight: '600' },
+
+  namingInputWrap: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  namingInput: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    paddingVertical: 8,
+  },
+  namingCount: { color: colors.textMuted, fontSize: 11, fontWeight: '700', textAlign: 'right' },
+
+  // Member waiting — timer mare in centru
+  memberScroll: { padding: 16, gap: 18, paddingBottom: 32 },
+  memberTimerWrap: {
+    alignItems: 'center',
+    paddingVertical: 28,
     backgroundColor: colors.card,
     borderRadius: 18,
-    padding: 16,
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 10,
   },
-  waitingDotsRow: { flexDirection: 'row', gap: 8 },
-  waitingDot: {
-    width: 12,
-    height: 12,
+  memberTimerNum: {
+    color: colors.text,
+    fontSize: 56,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -1,
+  },
+  memberTimerLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginTop: 2,
+  },
+  memberLeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 4,
+  },
+  memberLeaderLabel: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
     backgroundColor: colors.accent,
   },
-  waitingText: { color: colors.text, fontWeight: '800', fontSize: 14 },
-
-  avatarFallback: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.cardAlt,
+  memberLeaderLabelText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+  },
+  memberLeaderName: { color: colors.text, fontSize: 16, fontWeight: '800', flex: 1 },
+  memberInstruction: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
+  memberLeaderRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  memberLeaderRowMine: {
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+  },
+  memberLeaderRowRank: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '900',
+    width: 18,
+  },
+  memberLeaderRowName: { color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 },
+  memberLeaderRowScore: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
   },
 
   cancelBtn: {
@@ -1188,119 +1186,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   leaderScoreMine: { color: '#7DCEA0' },
-
-  // Team naming view — liderul alege numele echipei dupa Start.
-  namingScroll: { padding: 16, gap: 16 },
-  namingHero: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 22,
-    alignItems: 'center',
-    gap: 6,
-  },
-  namingEmoji: { fontSize: 44 },
-  namingTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  namingSub: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  namingCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: 16,
-    gap: 8,
-  },
-  namingLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  namingInput: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  namingHint: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: 'right',
-    fontWeight: '600',
-  },
-  namingBtn: {
-    backgroundColor: colors.accent,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  namingBtnDisabled: { opacity: 0.4 },
-  namingBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-
-  // Member waiting view — telefonul kid-ului care e langa team-leader.
-  memberScroll: { padding: 16, gap: 16 },
-  memberHero: {
-    backgroundColor: colors.card,
-    borderRadius: 20,
-    padding: 22,
-    alignItems: 'center',
-    gap: 8,
-  },
-  memberHeroEmoji: { fontSize: 48 },
-  memberHeroTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '900',
-    textAlign: 'center',
-  },
-  memberHeroSub: {
-    color: colors.textMuted,
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  memberTimerPill: {
-    marginTop: 14,
-    backgroundColor: colors.cardAlt,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 22,
-    alignItems: 'center',
-  },
-  memberTimerLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  memberTimerText: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: '900',
-    fontVariant: ['tabular-nums'],
-    marginTop: 2,
-  },
-  memberLeaderCard: {
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 4,
-  },
 
   endBtn: {
     backgroundColor: 'rgba(231,76,60,0.95)',

@@ -5,6 +5,7 @@ import { prisma } from '../prisma.js';
 import { splitPolygonIntoZones, zoneAreaSqm } from './zones.js';
 import { assignTeamsRandomly } from './teamAssign.js';
 import { generateSpawns, loadActiveTemplates } from './spawn.js';
+import { ensureDefaultAvatar } from '../avatar/defaults.js';
 
 const DEMO_PASSWORD_PLAIN = 'TestHunt!1234';
 const DEFAULT_DEMO_COUNT = 3;
@@ -13,7 +14,12 @@ const DEFAULT_DURATION_SEC = 1800;
 async function ensureDemoUser(i: number): Promise<{ id: string }> {
   const email = `hunt-demo-${i}@unplgd.test`;
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { id: existing.id };
+  if (existing) {
+    // Demo users vechi posibil n-au avatar (au fost creati inainte sa adaug
+    // backfill-ul); ensureDefaultAvatar e idempotent.
+    await ensureDefaultAvatar(existing.id);
+    return { id: existing.id };
+  }
   const passwordHash = await hash(DEMO_PASSWORD_PLAIN, 10);
   const user = await prisma.user.create({
     data: {
@@ -23,6 +29,7 @@ async function ensureDemoUser(i: number): Promise<{ id: string }> {
       birthDate: new Date('2014-01-01'),
     },
   });
+  await ensureDefaultAvatar(user.id);
   return { id: user.id };
 }
 

@@ -160,6 +160,7 @@ export default function HuntEntry() {
   });
 
   const startReady = !!selectedParkId && !createMut.isPending;
+  const hasNearby = (lobbiesQuery.data?.lobbies.length ?? 0) > 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -167,6 +168,7 @@ export default function HuntEntry() {
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>
         </Pressable>
+        <Text style={styles.headerTitle}>Vanatoare</Text>
         {devEnabledQuery.data?.enabled ? (
           <Pressable
             onPress={() => setDevMode((v) => !v)}
@@ -181,93 +183,79 @@ export default function HuntEntry() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Hero — banner mare cu monstri plutitori + titlu jucaus */}
-        <View style={styles.hero}>
-          <FloatingEmoji emoji="🐲" style={styles.heroEmojiTL} delay={0} />
-          <FloatingEmoji emoji="👻" style={styles.heroEmojiTR} delay={400} />
-          <FloatingEmoji emoji="🌳" style={styles.heroEmojiBL} delay={800} />
-          <FloatingEmoji emoji="👹" style={styles.heroEmojiBR} delay={1200} />
-          <Text style={styles.heroBigEmoji}>🏆</Text>
-          <Text style={styles.heroTitle}>Vanatoare in parc</Text>
-          <Text style={styles.heroSub}>Prinde monstri cu prietenii!</Text>
-        </View>
-
         {devMode && (
-          <Section title="Mod test" emoji="🧪">
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Mod test</Text>
             {locError ? (
               <Text style={styles.error}>{locError}</Text>
             ) : !coords ? (
               <ActivityIndicator color={colors.accent} />
             ) : (
-              <AnimatedBigButton
+              <PulseButton
                 label={devQuickMut.isPending ? 'Se creeaza...' : 'Start rapid aici'}
-                emoji="⚡"
                 ready={!devQuickMut.isPending}
                 onPress={() => devQuickMut.mutate()}
-                tone="secondary"
+                variant="ghost"
               />
             )}
-          </Section>
+          </View>
         )}
 
-        <Section title="Lobby-uri din jur" emoji="📡">
-          {bleTokens.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyEmoji}>📶</Text>
-              <Text style={styles.emptyTitle}>Bluetooth scaneaza...</Text>
-              <Text style={styles.emptySub}>
-                Cand un prieten porneste o vanatoare langa tine, apare aici.
-              </Text>
-            </View>
-          ) : lobbiesQuery.isPending ? (
-            <ActivityIndicator color={colors.accent} />
-          ) : lobbiesQuery.data && lobbiesQuery.data.lobbies.length > 0 ? (
-            lobbiesQuery.data.lobbies.map((l) => (
-              <LobbyCard
-                key={l.sessionId}
-                lobby={l}
-                onJoin={() => joinMut.mutate(l.sessionId)}
-                disabled={joinMut.isPending}
-              />
-            ))
-          ) : (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyEmoji}>🔍</Text>
-              <Text style={styles.emptyTitle}>Niciun lobby activ</Text>
-              <Text style={styles.emptySub}>Niciun prieten n-a pornit o vanatoare in jurul tau.</Text>
-            </View>
-          )}
-        </Section>
+        {/* Lobby-uri — afisate doar daca avem ceva sa aratam */}
+        {(bleTokens.length > 0 || hasNearby) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>In jurul tau</Text>
+            {lobbiesQuery.isPending ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : hasNearby ? (
+              lobbiesQuery.data!.lobbies.map((l) => (
+                <LobbyCard
+                  key={l.sessionId}
+                  lobby={l}
+                  onJoin={() => joinMut.mutate(l.sessionId)}
+                  disabled={joinMut.isPending}
+                />
+              ))
+            ) : (
+              <Text style={styles.muted}>Nimeni n-a pornit inca o vanatoare.</Text>
+            )}
+          </View>
+        )}
 
-        <Section title="Porneste tu o vanatoare" emoji="🚀">
+        {/* Creeaza tu — sectiunea principala */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Porneste tu</Text>
           {locError ? (
             <Text style={styles.error}>{locError}</Text>
           ) : !coords ? (
             <ActivityIndicator color={colors.accent} />
           ) : (
             <>
-              <Text style={styles.label}>🌳 Alege parcul</Text>
               {parksQuery.isPending ? (
                 <ActivityIndicator color={colors.accent} />
               ) : parksQuery.data && parksQuery.data.parks.length > 0 ? (
-                parksQuery.data.parks.map((p, idx) => (
-                  <ParkRow
-                    key={p.id}
-                    park={p}
-                    selected={selectedParkId === p.id}
-                    onPress={() => setSelectedParkId(p.id)}
-                    index={idx}
-                  />
-                ))
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.parkScroll}
+                  decelerationRate="fast"
+                  snapToInterval={132}
+                  snapToAlignment="start"
+                >
+                  {parksQuery.data.parks.map((p, idx) => (
+                    <ParkCard
+                      key={p.id}
+                      park={p}
+                      selected={selectedParkId === p.id}
+                      onPress={() => setSelectedParkId(p.id)}
+                      index={idx}
+                    />
+                  ))}
+                </ScrollView>
               ) : (
-                <View style={styles.emptyCard}>
-                  <Text style={styles.emptyEmoji}>🗺️</Text>
-                  <Text style={styles.emptyTitle}>Niciun parc aproape</Text>
-                  <Text style={styles.emptySub}>Apropie-te de un parc (max 5km).</Text>
-                </View>
+                <Text style={styles.muted}>Niciun parc in raza de 5km.</Text>
               )}
 
-              <Text style={[styles.label, { marginTop: 18 }]}>⏱️ Durata</Text>
               <View style={styles.durationRow}>
                 {DURATION_OPTIONS.map((d) => (
                   <Pressable
@@ -291,83 +279,36 @@ export default function HuntEntry() {
                 ))}
               </View>
 
-              <AnimatedBigButton
-                label={createMut.isPending ? 'Se porneste...' : 'Porneste vanatoarea!'}
-                emoji="🎯"
+              <PulseButton
+                label={createMut.isPending ? 'Se porneste...' : 'Porneste vanatoarea'}
                 ready={startReady}
                 onPress={() => createMut.mutate()}
-                tone="accent"
+                variant="primary"
               />
             </>
           )}
-        </Section>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-// Emoji care plutesc in hero — bob lent + rotatie subtila. Un offset prin
-// `delay` ca sa nu se miste in sincron toate.
-function FloatingEmoji({
-  emoji,
-  style,
-  delay,
-}: {
-  emoji: string;
-  style: any;
-  delay: number;
-}) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 2200,
-          delay,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-        Animated.timing(anim, {
-          toValue: 0,
-          duration: 2200,
-          easing: Easing.inOut(Easing.sin),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [anim, delay]);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, -10] });
-  const rotate = anim.interpolate({ inputRange: [0, 1], outputRange: ['-6deg', '6deg'] });
-  return (
-    <Animated.Text
-      style={[style, { transform: [{ translateY }, { rotate }] }]}
-      pointerEvents="none"
-    >
-      {emoji}
-    </Animated.Text>
-  );
-}
-
-// Buton mare CTA care pulseaza subtil cand e ready (scale 1→1.04, glow).
-function AnimatedBigButton({
+// Buton primary cu pulse subtil cand e ready (scale 1→1.025). Variant ghost
+// fara fill — pt actiuni secundare (test mode).
+function PulseButton({
   label,
-  emoji,
   ready,
   onPress,
-  tone,
+  variant,
 }: {
   label: string;
-  emoji: string;
   ready: boolean;
   onPress: () => void;
-  tone: 'accent' | 'secondary';
+  variant: 'primary' | 'ghost';
 }) {
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!ready) {
+    if (!ready || variant !== 'primary') {
       pulse.setValue(0);
       return;
     }
@@ -375,13 +316,13 @@ function AnimatedBigButton({
       Animated.sequence([
         Animated.timing(pulse, {
           toValue: 1,
-          duration: 900,
+          duration: 1100,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(pulse, {
           toValue: 0,
-          duration: 900,
+          duration: 1100,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -389,45 +330,24 @@ function AnimatedBigButton({
     );
     loop.start();
     return () => loop.stop();
-  }, [ready, pulse]);
-  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] });
-  const bg = tone === 'accent' ? colors.accent : colors.secondary;
+  }, [ready, pulse, variant]);
+  const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
   return (
-    <Animated.View style={{ transform: [{ scale }], marginTop: 18 }}>
+    <Animated.View style={{ transform: [{ scale }], marginTop: 12 }}>
       <Pressable
         onPress={onPress}
         disabled={!ready}
         style={({ pressed }) => [
-          styles.bigBtn,
-          { backgroundColor: bg },
-          !ready && styles.bigBtnDisabled,
+          variant === 'primary' ? styles.primaryBtn : styles.ghostBtn,
+          !ready && styles.btnDisabled,
           pressed && styles.btnPressed,
         ]}
       >
-        <Text style={styles.bigBtnEmoji}>{emoji}</Text>
-        <Text style={styles.bigBtnText}>{label}</Text>
+        <Text style={variant === 'primary' ? styles.primaryBtnText : styles.ghostBtnText}>
+          {label}
+        </Text>
       </Pressable>
     </Animated.View>
-  );
-}
-
-function Section({
-  title,
-  emoji,
-  children,
-}: {
-  title: string;
-  emoji?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>
-        {emoji ? `${emoji}  ` : ''}
-        {title}
-      </Text>
-      {children}
-    </View>
   );
 }
 
@@ -442,48 +362,43 @@ function LobbyCard({
 }) {
   return (
     <View style={styles.lobbyCard}>
-      <View style={styles.lobbyHeader}>
-        <View style={styles.lobbyAvatarRing}>
-          {lobby.host.avatarSvg ? (
-            <SvgXml xml={lobby.host.avatarSvg} width={48} height={48} />
-          ) : (
-            <View style={styles.avatarFallback} />
-          )}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.lobbyHost} numberOfLines={1}>
-            {lobby.host.name}
-          </Text>
-          <Text style={styles.lobbySub} numberOfLines={1}>
-            🌳 {lobby.parkName}
-          </Text>
-          <View style={styles.lobbyMetaRow}>
-            <View style={styles.lobbyPill}>
-              <Text style={styles.lobbyPillText}>⏱ {Math.floor(lobby.durationSec / 60)}min</Text>
-            </View>
-            <View style={styles.lobbyPill}>
-              <Text style={styles.lobbyPillText}>👥 {lobby.playerCount}</Text>
-            </View>
-          </View>
-        </View>
-        <Pressable
-          onPress={onJoin}
-          disabled={disabled || lobby.joined}
-          style={({ pressed }) => [
-            styles.joinBtn,
-            lobby.joined && styles.joinBtnInside,
-            disabled && styles.joinBtnDisabled,
-            pressed && styles.btnPressed,
-          ]}
-        >
-          <Text style={styles.joinText}>{lobby.joined ? '✓ Intrat' : 'Intra'}</Text>
-        </Pressable>
+      <View style={styles.lobbyAvatarRing}>
+        {lobby.host.avatarSvg ? (
+          <SvgXml xml={lobby.host.avatarSvg} width={40} height={40} />
+        ) : (
+          <View style={styles.avatarFallback} />
+        )}
       </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.lobbyHost} numberOfLines={1}>
+          {lobby.host.name}
+        </Text>
+        <Text style={styles.lobbySub} numberOfLines={1}>
+          {lobby.parkName} · {Math.floor(lobby.durationSec / 60)}min · {lobby.playerCount} jucatori
+        </Text>
+      </View>
+      <Pressable
+        onPress={onJoin}
+        disabled={disabled || lobby.joined}
+        style={({ pressed }) => [
+          styles.joinBtn,
+          lobby.joined && styles.joinBtnInside,
+          disabled && styles.joinBtnDisabled,
+          pressed && styles.btnPressed,
+        ]}
+      >
+        <Text style={[styles.joinText, lobby.joined && { color: colors.success }]}>
+          {lobby.joined ? 'Intrat' : 'Intra'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
 
-function ParkRow({
+// Park card pt scroll orizontal — distanta MARE in top (kids respond to scale),
+// nume + suprafata jos. Silueta abstracta din 3 "munti" SVG ca decor — nu emoji,
+// nu generic icon. Selected: border accent + lift subtil + accent bg tint.
+function ParkCard({
   park,
   selected,
   onPress,
@@ -494,41 +409,54 @@ function ParkRow({
   onPress: () => void;
   index: number;
 }) {
-  // Stagger fade-in pe parcuri — fiecare card pop-in cu offset.
   const enter = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(enter, {
       toValue: 1,
-      duration: 350,
-      delay: index * 60,
+      duration: 280,
+      delay: index * 40,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
   }, [enter, index]);
-  const translateY = enter.interpolate({ inputRange: [0, 1], outputRange: [12, 0] });
+  const translateY = enter.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
 
-  // Selected = scale-up subtil via spring.
+  // Selected = scale spring + lift
   const sel = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.spring(sel, {
       toValue: selected ? 1 : 0,
       friction: 6,
-      tension: 160,
+      tension: 180,
       useNativeDriver: true,
     }).start();
   }, [selected, sel]);
-  const scale = sel.interpolate({ inputRange: [0, 1], outputRange: [1, 1.02] });
+  const scale = sel.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] });
 
-  // Distance — afisaj prietenos.
-  const distLabel =
-    park.distanceM < 100
-      ? 'foarte aproape!'
-      : park.distanceM < 1000
-        ? `${park.distanceM}m`
-        : `${(park.distanceM / 1000).toFixed(1)}km`;
+  // Distanta — afisaj kid-friendly: numar mare + unitate mica
+  const isClose = park.distanceM < 100;
+  const distNum = isClose
+    ? '<100'
+    : park.distanceM < 1000
+      ? `${park.distanceM}`
+      : `${(park.distanceM / 1000).toFixed(1)}`;
+  const distUnit = park.distanceM < 1000 ? 'm' : 'km';
+
+  // Silueta abstracta — 3 munti/copaci stilizati. Forma generata o data, nu
+  // randomizata per park (consistent visual).
+  const decorationSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40">
+    <path d="M0 40 L20 12 L34 28 L52 4 L72 24 L90 14 L108 30 L120 18 L120 40 Z"
+      fill="${selected ? '#FFFFFF' : colors.bgAlt}" opacity="${selected ? '0.35' : '1'}"/>
+    <circle cx="100" cy="10" r="3.5" fill="${selected ? '#FFFFFF' : colors.accent}" opacity="${selected ? '0.5' : '0.4'}"/>
+  </svg>`;
 
   return (
-    <Animated.View style={{ opacity: enter, transform: [{ translateY }, { scale }] }}>
+    <Animated.View
+      style={{
+        opacity: enter,
+        transform: [{ translateY }, { scale }],
+      }}
+    >
       <Pressable
         onPress={onPress}
         style={({ pressed }) => [
@@ -537,24 +465,26 @@ function ParkRow({
           pressed && styles.btnPressed,
         ]}
       >
-        <View style={[styles.parkIconBox, selected && styles.parkIconBoxSelected]}>
-          <Text style={styles.parkIconEmoji}>🌳</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.parkName} numberOfLines={1}>
-            {park.name}
+        <View style={styles.parkDistRow}>
+          <Text style={[styles.parkDistNum, selected && styles.parkDistNumSelected]}>
+            {distNum}
           </Text>
-          <View style={styles.parkPillRow}>
-            <View style={styles.parkPill}>
-              <Text style={styles.parkPillText}>🚶 {distLabel}</Text>
-            </View>
-            <View style={styles.parkPill}>
-              <Text style={styles.parkPillText}>📐 {(park.areaSqm / 10_000).toFixed(1)} ha</Text>
-            </View>
-          </View>
+          <Text style={[styles.parkDistUnit, selected && styles.parkDistUnitSelected]}>
+            {distUnit}
+          </Text>
         </View>
-        <View style={[styles.parkCheck, selected && styles.parkCheckSelected]}>
-          {selected && <Text style={styles.parkCheckMark}>✓</Text>}
+        <Text
+          style={[styles.parkName, selected && styles.parkNameSelected]}
+          numberOfLines={2}
+        >
+          {park.name}
+        </Text>
+        <Text style={[styles.parkArea, selected && styles.parkAreaSelected]}>
+          {(park.areaSqm / 10_000).toFixed(1)} ha
+        </Text>
+        {/* Decor in bottom — silueta abstracta */}
+        <View style={styles.parkDecor} pointerEvents="none">
+          <SvgXml xml={decorationSvg} width={120} height={40} />
         </View>
       </Pressable>
     </Animated.View>
@@ -567,23 +497,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 8,
   },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
   },
   back: { color: colors.text, fontSize: 22, fontWeight: '900' },
+  headerTitle: { color: colors.text, fontSize: 16, fontWeight: '800' },
 
   devToggle: {
     width: 44,
@@ -599,215 +525,143 @@ const styles = StyleSheet.create({
   devToggleText: { color: colors.textMuted, fontSize: 11, fontWeight: '900', letterSpacing: 0.6 },
   devToggleTextOn: { color: '#FFFFFF' },
 
-  scroll: { padding: 16, paddingBottom: 32, gap: 18 },
+  scroll: { padding: 16, paddingBottom: 32, gap: 22 },
 
-  // Hero banner mare cu monstri plutitori — primul impact pe ecran.
-  hero: {
-    backgroundColor: colors.accent,
-    borderRadius: 24,
-    paddingVertical: 28,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    minHeight: 180,
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-  },
-  heroBigEmoji: { fontSize: 56, marginBottom: 6 },
-  heroTitle: {
-    color: '#FFFFFF',
-    fontSize: 28,
+  section: { gap: 10 },
+  sectionLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
     fontWeight: '900',
-    letterSpacing: 0.3,
-    textShadowColor: 'rgba(0,0,0,0.18)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  heroSub: {
-    color: 'rgba(255,255,255,0.92)',
-    fontSize: 14,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  heroEmojiTL: { position: 'absolute', top: 14, left: 18, fontSize: 32 },
-  heroEmojiTR: { position: 'absolute', top: 18, right: 22, fontSize: 28 },
-  heroEmojiBL: { position: 'absolute', bottom: 12, left: 24, fontSize: 26 },
-  heroEmojiBR: { position: 'absolute', bottom: 14, right: 18, fontSize: 30 },
-
-  section: { gap: 12 },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-    marginLeft: 4,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
   },
   muted: { color: colors.textMuted, fontSize: 14 },
-  error: { color: colors.danger, fontSize: 14, textAlign: 'center' },
-  label: { color: colors.text, fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  error: { color: colors.danger, fontSize: 14 },
 
-  // Empty state — card cu emoji mare in loc de text plat.
-  emptyCard: {
-    backgroundColor: colors.cardAlt,
-    borderRadius: 18,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.border,
-    borderStyle: 'dashed',
-  },
-  emptyEmoji: { fontSize: 40, marginBottom: 8 },
-  emptyTitle: { color: colors.text, fontSize: 15, fontWeight: '900' },
-  emptySub: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-
-  // Lobby card — avatar in ring + pills cu meta.
+  // Lobby card — minimalist, fara meta colorate
   lobbyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 14,
-    shadowColor: colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
-  lobbyHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   lobbyAvatarRing: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 3,
-    borderColor: colors.secondary,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.cardAlt,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  lobbyHost: { color: colors.text, fontSize: 16, fontWeight: '900' },
-  lobbySub: { color: colors.textMuted, fontSize: 13, marginTop: 2, fontWeight: '700' },
-  lobbyMetaRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  lobbyPill: {
-    backgroundColor: colors.bgAlt,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  lobbyPillText: { color: colors.text, fontSize: 11, fontWeight: '800' },
-  avatarFallback: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.border },
+  lobbyHost: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  lobbySub: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+  avatarFallback: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.border },
   joinBtn: {
     backgroundColor: colors.accent,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  joinBtnInside: { backgroundColor: colors.success },
-  joinBtnDisabled: { opacity: 0.5 },
-  joinText: { color: '#FFFFFF', fontWeight: '900', fontSize: 14 },
-
-  // Park card — icon mare verde + pills cu distanta/suprafata + check.
-  parkCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 12,
-    gap: 12,
-    marginBottom: 8,
-    borderWidth: 3,
-    borderColor: 'transparent',
-    shadowColor: colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
-  parkCardSelected: { borderColor: colors.accent, backgroundColor: '#FFF4EE' },
-  parkIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: '#D4F2D4',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  parkIconBoxSelected: { backgroundColor: '#FFE0D2' },
-  parkIconEmoji: { fontSize: 28 },
-  parkName: { color: colors.text, fontSize: 16, fontWeight: '900' },
-  parkPillRow: { flexDirection: 'row', gap: 6, marginTop: 6 },
-  parkPill: {
-    backgroundColor: colors.bgAlt,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 10,
   },
-  parkPillText: { color: colors.text, fontSize: 11, fontWeight: '800' },
-  parkCheck: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  parkCheckSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
-  parkCheckMark: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  joinBtnInside: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.success },
+  joinBtnDisabled: { opacity: 0.5 },
+  joinText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 
-  durationRow: { flexDirection: 'row', gap: 10 },
+  // Park scroll — orizontal, snappable, fiecare card 124px wide
+  parkScroll: { gap: 10, paddingRight: 4, paddingBottom: 4 },
+  parkCard: {
+    width: 124,
+    height: 132,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 0,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  parkCardSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  parkDistRow: { flexDirection: 'row', alignItems: 'baseline' },
+  parkDistNum: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -1.2,
+    lineHeight: 34,
+  },
+  parkDistNumSelected: { color: '#FFFFFF' },
+  parkDistUnit: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '900',
+    marginLeft: 2,
+    letterSpacing: 0.5,
+  },
+  parkDistUnitSelected: { color: '#FFFFFF', opacity: 0.85 },
+  parkName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 16,
+    marginTop: 4,
+    minHeight: 32,
+  },
+  parkNameSelected: { color: '#FFFFFF' },
+  parkArea: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  parkAreaSelected: { color: 'rgba(255,255,255,0.8)' },
+  parkDecor: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+
+  durationRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   durationChip: {
     flex: 1,
     backgroundColor: colors.card,
-    paddingVertical: 14,
-    borderRadius: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
-    borderWidth: 3,
-    borderColor: 'transparent',
-    shadowColor: colors.shadow,
-    shadowOpacity: 1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
   },
-  durationChipActive: {
-    borderColor: colors.accent,
-    backgroundColor: colors.accent,
-  },
-  durationText: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  durationChipActive: { backgroundColor: colors.accent },
+  durationText: { color: colors.text, fontSize: 14, fontWeight: '800' },
   durationTextActive: { color: '#FFFFFF' },
 
-  // Buton CTA mare cu emoji + text + pulse animat (cand ready).
-  bigBtn: {
-    flexDirection: 'row',
+  // CTA primary — un singur dreptunghi solid, fara umbra agresiva
+  primaryBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    borderRadius: 18,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    shadowColor: '#000000',
-    shadowOpacity: 0.22,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
   },
-  bigBtnDisabled: { opacity: 0.45 },
-  bigBtnEmoji: { fontSize: 24 },
-  bigBtnText: {
+  primaryBtnText: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
-
-  btnPressed: { transform: [{ scale: 0.98 }], opacity: 0.88 },
+  // CTA ghost — fara fill, doar border (pt actiuni secundare)
+  ghostBtn: {
+    borderWidth: 1.5,
+    borderColor: colors.text,
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  ghostBtnText: { color: colors.text, fontSize: 15, fontWeight: '800' },
+  btnDisabled: { opacity: 0.4 },
+  btnPressed: { transform: [{ scale: 0.99 }], opacity: 0.88 },
 });

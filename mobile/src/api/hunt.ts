@@ -157,7 +157,14 @@ export type HuntResultsResponse = {
     name: string;
     score: number;
     monstersDefeated: number;
-    members: { id: string; name: string; avatarSvg: string | null }[];
+    members: {
+      id: string;
+      name: string;
+      avatarSvg: string | null;
+      // URL semnat (GCS / static / extern) la imaginea speciei pet-ului
+      // echipat. NULL daca user n-are pet sau specia n-are imagine.
+      petImageUrl: string | null;
+    }[];
   }>;
   myXp: { amount: number; rank: number } | null;
 };
