@@ -300,6 +300,41 @@ type SeedMonsterTemplate = {
   loreShort: string;
 };
 
+// Lumi pentru story-adventure. Cheie pe speciesSlug (legatura libera la
+// PetSpecies.slug). Data-driven: adaugare lume = entry aici (sau direct INSERT).
+// FUNDALURILE nu se seed-uiesc — le populeaza user-ul manual (imageUrl static).
+type SeedAdventureWorld = {
+  slug: string;
+  speciesSlug: string;
+  domain: string;
+  name: string;
+  lore: string;
+  bossName: string;
+  bossLore: string;
+  accentColor: string;
+  bgColor: string;
+  obstacleStyle: string;
+  sortOrder: number;
+};
+
+const ADVENTURE_WORLDS: SeedAdventureWorld[] = [
+  // groot — stiinte-naturii, geografie
+  { slug: 'groot-padure', speciesSlug: 'groot', domain: 'stiinte-naturii', name: 'Padurea Fermecata', lore: 'O padure veche unde fiecare copac are o poveste.', bossName: 'Ursul Strabun', bossLore: 'Pazitorul intelept al padurii.', accentColor: '#2ECC71', bgColor: '#0E2A1A', obstacleStyle: 'bridge', sortOrder: 0 },
+  { slug: 'groot-tinuturi', speciesSlug: 'groot', domain: 'geografie', name: 'Tinuturile Necunoscute', lore: 'Munti, rauri si tari de descoperit.', bossName: 'Vulturul Cartograf', bossLore: 'Stie fiecare colt al lumii.', accentColor: '#27AE60', bgColor: '#13301F', obstacleStyle: 'bridge', sortOrder: 1 },
+  // stitch — spatiu, fizica-chimie
+  { slug: 'stitch-galaxie', speciesSlug: 'stitch', domain: 'spatiu', name: 'Galaxia Albastra', lore: 'Stele, planete si mistere cosmice.', bossName: 'Cometa Furioasa', bossLore: 'Strabate cerul cu coada de foc.', accentColor: '#5BCEFA', bgColor: '#0B1437', obstacleStyle: 'constellation', sortOrder: 0 },
+  { slug: 'stitch-laborator', speciesSlug: 'stitch', domain: 'fizica-chimie', name: 'Laboratorul Cosmic', lore: 'Experimente nazdravane si forte ascunse.', bossName: 'Reactorul Nazdravan', bossLore: 'Bolboroseste formule si scantei.', accentColor: '#48C9B0', bgColor: '#0A2A28', obstacleStyle: 'door', sortOrder: 1 },
+  // baby-yoda — istorie, literatura
+  { slug: 'yoda-temple', speciesSlug: 'baby-yoda', domain: 'istorie', name: 'Templele Uitate', lore: 'Ruine antice pline de amintiri.', bossName: 'Strajerul Antic', bossLore: 'Pazeste secretele trecutului.', accentColor: '#D4AC0D', bgColor: '#2A1E08', obstacleStyle: 'door', sortOrder: 0 },
+  { slug: 'yoda-biblioteca', speciesSlug: 'baby-yoda', domain: 'literatura', name: 'Biblioteca Fermecata', lore: 'Carti vii si povesti nesfarsite.', bossName: 'Cartea Vorbitoare', bossLore: 'Recita versuri si ghicitori.', accentColor: '#BB8FCE', bgColor: '#211433', obstacleStyle: 'door', sortOrder: 1 },
+  // dog — corp-uman, viata-cotidiana
+  { slug: 'dog-corp', speciesSlug: 'dog', domain: 'corp-uman', name: 'Calatoria prin Corp', lore: 'O aventura prin corpul omenesc.', bossName: 'Inima Uriasa', bossLore: 'Bate ritmic si te invata sa fii sanatos.', accentColor: '#EC7063', bgColor: '#2A1212', obstacleStyle: 'door', sortOrder: 0 },
+  { slug: 'dog-oras', speciesSlug: 'dog', domain: 'viata-cotidiana', name: 'Orasul Aventurii', lore: 'Strazi, reguli si intamplari de zi cu zi.', bossName: 'Semaforul Sef', bossLore: 'Tine ordinea in oras.', accentColor: '#F39C12', bgColor: '#2A1E08', obstacleStyle: 'door', sortOrder: 1 },
+  // darth-vader — spatiu, istorie (tematic Star Wars)
+  { slug: 'vader-galaxie', speciesSlug: 'darth-vader', domain: 'spatiu', name: 'Galaxia Imperiala', lore: 'O galaxie vasta plina de stele si nave.', bossName: 'Steaua Mortii', bossLore: 'Statie de lupta gigantica.', accentColor: '#E74C3C', bgColor: '#120A0A', obstacleStyle: 'constellation', sortOrder: 0 },
+  { slug: 'vader-cronici', speciesSlug: 'darth-vader', domain: 'istorie', name: 'Cronicile Imperiului', lore: 'Batalii si imparati din vremuri trecute.', bossName: 'Imparatul Umbrelor', bossLore: 'Conduce din umbra istoria.', accentColor: '#922B21', bgColor: '#1A0808', obstacleStyle: 'door', sortOrder: 1 },
+];
+
 // Bestiar pentru hunt. Spawn-ul filtreaza pe `tier`, `domain` decide pool-ul
 // de intrebari trase la engage si ce pet din party poate sa "soptesste" hint
 // (cel cu `domain` ∈ expertiseDomains). Slug-uri stabile pt seed idempotent.
@@ -875,9 +910,50 @@ async function main() {
     data: { active: false },
   });
 
+  // Story-adventure: lumi (data-driven, cheie pe speciesSlug). Fundalurile NU
+  // se seed-uiesc — le populeaza user-ul manual cu imageUrl static.
+  for (const w of ADVENTURE_WORLDS) {
+    await prisma.adventureWorld.upsert({
+      where: { slug: w.slug },
+      create: {
+        slug: w.slug,
+        speciesSlug: w.speciesSlug,
+        domain: w.domain,
+        name: w.name,
+        lore: w.lore,
+        bossName: w.bossName,
+        bossLore: w.bossLore,
+        accentColor: w.accentColor,
+        bgColor: w.bgColor,
+        obstacleStyle: w.obstacleStyle,
+        sortOrder: w.sortOrder,
+        active: true,
+      },
+      update: {
+        speciesSlug: w.speciesSlug,
+        domain: w.domain,
+        name: w.name,
+        lore: w.lore,
+        bossName: w.bossName,
+        bossLore: w.bossLore,
+        accentColor: w.accentColor,
+        bgColor: w.bgColor,
+        obstacleStyle: w.obstacleStyle,
+        sortOrder: w.sortOrder,
+        active: true,
+      },
+    });
+  }
+  // Dezactiveaza lumi scoase din lista (audit-friendly, ca la monstri).
+  const allWorldSlugs = ADVENTURE_WORLDS.map((w) => w.slug);
+  await prisma.adventureWorld.updateMany({
+    where: { slug: { notIn: allWorldSlugs } },
+    data: { active: false },
+  });
+
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates, ${ADVENTURE_WORLDS.length} adventure worlds`,
   );
 }
 

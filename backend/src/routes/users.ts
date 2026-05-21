@@ -23,12 +23,22 @@ usersRouter.get('/:id', async (req, res, next) => {
         xp: true,
         level: true,
         createdAt: true,
+        selectedBackgroundKey: true,
         avatar: { select: { svg: true, svgBlink: true } },
       },
     });
     if (!user) throw notFound('user_not_found', 'Utilizator inexistent');
 
     const pet = await getPetSummaryByUserId(user.id);
+
+    // Fundalul de profil selectat (deblocat din story-adventure) — vizibil de
+    // oricine intra pe profil. NULL daca nu si-a setat unul / nu mai e activ.
+    const background = user.selectedBackgroundKey
+      ? await prisma.profileBackground.findFirst({
+          where: { key: user.selectedBackgroundKey, active: true },
+          select: { key: true, name: true, imageUrl: true, tier: true },
+        })
+      : null;
 
     res.json({
       id: user.id,
@@ -39,6 +49,7 @@ usersRouter.get('/:id', async (req, res, next) => {
       avatarSvg: user.avatar?.svg ?? null,
       avatarSvgBlink: user.avatar?.svgBlink ?? null,
       pet,
+      background,
     });
   } catch (e) {
     next(e);

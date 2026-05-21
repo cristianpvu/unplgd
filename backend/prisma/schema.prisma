@@ -23,6 +23,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Cheia fundalului de profil selectat (din ProfileBackground.key, deblocat
+  // prin story-adventure). Vizibil de ceilalti pe profil. NULL = default.
+  selectedBackgroundKey String?
+
   friendshipsSent         Friendship[]           @relation("FriendshipRequester")
   friendshipsReceived     Friendship[]           @relation("FriendshipReceiver")
   interactionsAsA         DailyInteraction[]     @relation("InteractionUser")
@@ -44,6 +48,8 @@ model User {
   phoneDownParticipations PhoneDownParticipant[]
   chests                  Chest[]
   ownedItems              UserItem[]
+  adventureRuns           AdventureRun[]
+  backgroundUnlocks       UserBackground[]
 
   @@index([email])
 }
@@ -343,6 +349,98 @@ model BondXpTransaction {
 
   @@unique([petId, sourceType, sourceId])
   @@index([petId, createdAt])
+}
+
+// ===== STORY-ADVENTURE (joc: pet-ul te poarta printr-o lume pe o harta cu
+// noduri + boss final, intrebari deghizate ca obstacole, deblochezi fundaluri).
+//
+// PRINCIPIU MODULAR: totul e data-driven. Adaugare lume noua / fundal nou =
+// INSERT in DB, fara modificari de cod. `speciesSlug`, `domain`, `obstacleStyle`,
+// paleta — string-uri libere. Generatorul AI citeste lumea + specia generic.
+
+// O "lume" = harta tematica legata de o specie de pet + un domeniu de cunostinte.
+// Un pet cu 2 expertiseDomains poate avea 2 lumi. Vizualul (paleta, stilul de
+// obstacol) e stocat aici ca date, nu hardcodat in cod.
+model AdventureWorld {
+  id          String  @id @default(cuid())
+  slug        String  @unique // ex. "groot-padure"
+  speciesSlug String // legatura libera la PetSpecies.slug — fara FK ca sa ramana modular
+  domain      String // domeniul intrebarilor (ex. "stiinte-naturii")
+  name        String // ex. "Padurea Fermecata"
+  lore        String  @default("") // descriere scurta de atmosfera
+  bossName    String // ex. "Ursul Strabun"
+  bossLore    String  @default("")
+  nodeCount   Int     @default(4) // cate noduri de poveste inainte de boss
+  // Config vizual ca date — UI-ul mobile mapeaza aceste chei la stiluri.
+  // Adaugi un stil nou de obstacol = string nou aici + handling generic in UI.
+  accentColor   String @default("#2ECC71")
+  bgColor       String @default("#0E2A1A")
+  obstacleStyle String @default("bridge") // "bridge" | "door" | "constellation" | ...
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
+
+  backgrounds ProfileBackground[]
+  runs        AdventureRun[]
+
+  @@index([speciesSlug, active])
+}
+
+// Un playthrough al unei lumi de catre un user. Continutul (poveste + checkpoint
+// + intrebari boss) e generat O DATA de AI si cache-uit in `contentJson` ca
+// refresh-ul sa nu regenereze. `answersJson` tine ce a raspuns (pt boss adaptive
+// recall + acordare reward la final).
+model AdventureRun {
+  id        String   @id @default(cuid())
+  userId    String
+  worldSlug String
+  status    String   @default("IN_PROGRESS") // IN_PROGRESS | COMPLETED | ABANDONED
+  // Arcul generat de AI (capitole + obstacole + boss) ca JSON. Sursa de adevar
+  // a continutului pe durata run-ului.
+  contentJson  Json
+  // Progres + raspunsuri: { nodeIndex, nodeAnswers: [{nodeId, correct}], bossDefeated }
+  progressJson Json     @default("{}")
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  world AdventureWorld @relation(fields: [worldSlug], references: [slug])
+
+  @@index([userId, status])
+  @@index([userId, worldSlug])
+}
+
+// Fundal de profil deblocabil. STATIC — `imageUrl` populat manual de admin/user
+// in DB. Legat de o lume; deblocat cand user-ul bate boss-ul lumii (eventual de
+// `requiredCompletions` ori pt tier-uri superioare).
+model ProfileBackground {
+  id        String  @id @default(cuid())
+  key       String  @unique // ex. "groot-padure-zori"
+  worldSlug String
+  name      String
+  imageUrl  String // populat de user; static
+  tier      Int     @default(1) // 1=bronze, 2=argint, 3=aur — pt extindere viitoare
+  requiredCompletions Int @default(1) // cate victorii la boss ca sa deblochezi
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  world    AdventureWorld   @relation(fields: [worldSlug], references: [slug])
+  unlocks  UserBackground[]
+
+  @@index([worldSlug, active])
+}
+
+// Deblocare fundal de catre user — idempotent prin unique (userId, backgroundKey).
+model UserBackground {
+  id            String   @id @default(cuid())
+  userId        String
+  backgroundKey String
+  unlockedAt    DateTime @default(now())
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  background ProfileBackground @relation(fields: [backgroundKey], references: [key], onDelete: Cascade)
+
+  @@unique([userId, backgroundKey])
+  @@index([userId])
 }
 
 // Card NFC fizic colectabil. UID-ul e hardcodat de fabrica si unic global.

@@ -40,6 +40,8 @@ export function bondProgress(xp: number) {
 export const BOND_REWARDS = {
   // Hint revelat + raspuns corect (set in hunt /answer cand usedHint=true).
   HUNT_HINT_USED_CORRECT: 12,
+  // Completare aventura story (boss invins). Idempotent pe runId.
+  ADVENTURE_COMPLETE: 40,
   // Daily login (planificat — vezi suggestions).
   DAILY_LOGIN: 5,
 } as const;
