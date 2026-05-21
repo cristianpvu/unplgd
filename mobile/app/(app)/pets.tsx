@@ -219,9 +219,35 @@ export default function Pets() {
           </View>
           <Text style={styles.heroName}>{pet.name}</Text>
           <Text style={styles.heroSpecies}>{pet.species.name}</Text>
-          <View style={styles.heroBondRow}>
-            <Text style={styles.heroBondStar}>★</Text>
-            <Text style={styles.heroBondText}>{pet.bondXp} XP legatura</Text>
+          <View style={styles.bondCard}>
+            <View style={styles.bondHeader}>
+              <View style={styles.bondLevelBadge}>
+                <Text style={styles.bondLevelBadgeText}>Lv {pet.bond.level}</Text>
+              </View>
+              <Text style={styles.bondTitle}>Legatura cu {pet.name}</Text>
+            </View>
+            <View style={styles.bondBar}>
+              <View
+                style={[
+                  styles.bondBarFill,
+                  {
+                    width: `${
+                      pet.bond.xpForNextLevel > 0
+                        ? Math.min(
+                            100,
+                            Math.round((pet.bond.xpIntoLevel / pet.bond.xpForNextLevel) * 100),
+                          )
+                        : 100
+                    }%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.bondMeta}>
+              {pet.bond.xpForNextLevel > 0
+                ? `${pet.bond.xpIntoLevel} / ${pet.bond.xpForNextLevel} XP pana la Lv ${pet.bond.level + 1}`
+                : `${pet.bond.xp} XP total`}
+            </Text>
           </View>
           {heroCatchphrase && (
             <View style={styles.bubble}>
@@ -463,18 +489,41 @@ const styles = StyleSheet.create({
   heroEmoji: { fontSize: 80 },
   heroName: { color: colors.text, fontSize: 26, fontWeight: '800', marginTop: 4 },
   heroSpecies: { color: colors.textMuted, fontSize: 14, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  heroBondRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    backgroundColor: colors.bgAlt,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
+  bondCard: {
+    marginTop: 12,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    width: '100%',
+    gap: 8,
   },
-  heroBondStar: { color: colors.accent, fontSize: 14, fontWeight: '800' },
-  heroBondText: { color: colors.text, fontSize: 13, fontWeight: '800' },
+  bondHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bondLevelBadge: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  bondLevelBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  bondTitle: { color: colors.text, fontSize: 13, fontWeight: '800', flex: 1 },
+  bondBar: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.bgAlt,
+    overflow: 'hidden',
+  },
+  bondBarFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 5,
+  },
+  bondMeta: { color: colors.textMuted, fontSize: 11, fontWeight: '700' },
   bubble: {
     marginTop: 12,
     backgroundColor: colors.bgAlt,

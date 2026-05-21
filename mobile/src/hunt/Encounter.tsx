@@ -57,6 +57,9 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
   const [draftAnswer, setDraftAnswer] = useState('');
   const [now, setNow] = useState(Date.now());
   const sttBaseRef = useRef('');
+  // Tracking per-run: cand user-ul a tap-uit pet-ul ca sa vada hint-ul. Trimis
+  // la backend ca sa acorde bond xp doar daca a fost vazut (nu doar generat).
+  const usedHintRunsRef = useRef<Set<string>>(new Set());
 
   // Auto-engage la deschidere — backend-ul valideaza distanta.
   const engageMut = useMutation({
@@ -91,7 +94,7 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
 
   const answerMut = useMutation({
     mutationFn: ({ runId, answer }: { runId: string; answer: string }) =>
-      answerRun(sessionId, monsterId, runId, answer),
+      answerRun(sessionId, monsterId, runId, answer, usedHintRunsRef.current.has(runId)),
     onSuccess: (resp, vars) => {
       if (!engaged) return;
       // Optimistic update pe run-ul propriu.
@@ -193,7 +196,12 @@ export function Encounter({ sessionId, monsterId, myCoords, monsterCoords, onClo
 
         {currentRun?.petHint && (
           <View style={styles.petHintRow} pointerEvents="box-none">
-            <PetHintBadge petHint={currentRun.petHint} />
+            <PetHintBadge
+              petHint={currentRun.petHint}
+              onReveal={() => {
+                usedHintRunsRef.current.add(currentRun.id);
+              }}
+            />
           </View>
         )}
 
@@ -354,7 +362,13 @@ function ChallengePanel({
 // ca sa primeasca hint-ul (intentional — friction step). Cand revealed, bubble
 // "Psst!" se transforma intr-o speech bubble cu hint text + comic tail, cu
 // pop-in animation. Reset la schimbarea runului.
-function PetHintBadge({ petHint }: { petHint: NonNullable<ChallengeRunDto['petHint']> }) {
+function PetHintBadge({
+  petHint,
+  onReveal,
+}: {
+  petHint: NonNullable<ChallengeRunDto['petHint']>;
+  onReveal: () => void;
+}) {
   const [revealed, setRevealed] = useState(false);
   // Cat timp NU revealed: wiggle (rotation) + bob (translateY) pe pet + pulse
   // pe bubble Psst. Cand revealed: pop-in scale spring pe bubble.
@@ -433,7 +447,15 @@ function PetHintBadge({ petHint }: { petHint: NonNullable<ChallengeRunDto['petHi
 
   return (
     <View style={styles.petWrap}>
-      <Pressable onPress={() => setRevealed((s) => !s)} style={styles.petPressable}>
+      <Pressable
+        onPress={() => {
+          setRevealed((s) => {
+            if (!s) onReveal();
+            return !s;
+          });
+        }}
+        style={styles.petPressable}
+      >
         {/* Caracter raw, fara cerc/ring — doar PNG-ul cu wiggle + bob. Shadow
             pe wrapper ca sa-l detaseze de fundal. */}
         <Animated.View

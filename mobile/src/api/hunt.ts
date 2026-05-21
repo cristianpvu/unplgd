@@ -243,10 +243,11 @@ export function answerRun(
   monsterId: string,
   runId: string,
   answer: string,
+  usedHint = false,
 ) {
   return api<{ correct: boolean; feedback: string }>(
     `/hunt/sessions/${sessionId}/monsters/${monsterId}/runs/${runId}/answer`,
-    { method: 'POST', body: { answer } },
+    { method: 'POST', body: { answer, usedHint } },
   );
 }
 

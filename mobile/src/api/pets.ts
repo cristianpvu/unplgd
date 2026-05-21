@@ -10,10 +10,18 @@ export type PetSpeciesDto = {
   interests: string[];
 };
 
+export type PetBondProgress = {
+  level: number;
+  xp: number;
+  xpIntoLevel: number;
+  xpForNextLevel: number;
+};
+
 export type PetDto = {
   id: string;
   name: string;
   bondXp: number;
+  bond: PetBondProgress;
   species: PetSpeciesDto;
 };
 
