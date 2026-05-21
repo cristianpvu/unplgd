@@ -1,6 +1,7 @@
 import {
   ActivityIndicator,
   Image,
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -71,19 +72,41 @@ export default function ProfileScreen() {
 
       {u && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {/* Stage cu avatar + pet la picioare, exact ca pe homepage. */}
-          <View style={styles.avatarStage}>
-            <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
-            {u.pet?.imageUrl && (
-              <View style={styles.profilePetContainer} pointerEvents="none">
-                <Image
-                  source={{ uri: u.pet.imageUrl }}
-                  style={styles.profilePetImage}
-                  resizeMode="contain"
-                />
+          {/* Stage cu avatar + pet la picioare, exact ca pe homepage. Fundalul
+              deblocat (daca exista) e randat in spate — vizibil de oricine. */}
+          {u.background?.imageUrl ? (
+            <ImageBackground
+              source={{ uri: u.background.imageUrl }}
+              style={styles.avatarStageFramed}
+              imageStyle={styles.avatarStageBgImg}
+            >
+              <View style={styles.avatarStage}>
+                <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
+                {u.pet?.imageUrl && (
+                  <View style={styles.profilePetContainer} pointerEvents="none">
+                    <Image
+                      source={{ uri: u.pet.imageUrl }}
+                      style={styles.profilePetImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                )}
               </View>
-            )}
-          </View>
+            </ImageBackground>
+          ) : (
+            <View style={styles.avatarStage}>
+              <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
+              {u.pet?.imageUrl && (
+                <View style={styles.profilePetContainer} pointerEvents="none">
+                  <Image
+                    source={{ uri: u.pet.imageUrl }}
+                    style={styles.profilePetImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+            </View>
+          )}
 
           <Text style={styles.name}>{u.name}</Text>
 
@@ -210,6 +233,17 @@ const styles = StyleSheet.create({
   // pet-ul absolut sa se ancoreze de aici. alignSelf center ca sa nu se
   // intinda pe toata latimea ScrollView-ului si sa pozitioneze pet-ul corect.
   avatarStage: { position: 'relative', alignSelf: 'center' },
+  // Cand exista fundal deblocat: il randam ca un cadru rotunjit in spatele
+  // avatarului, full-width, cu avatarul centrat deasupra.
+  avatarStageFramed: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingTop: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  avatarStageBgImg: { borderRadius: 20 },
   // Pet la dreapta-jos peste picioarele avatarului — overlap usor ca sa para
   // ca stau impreuna pe podea, scalat dupa avatar 280 (homepage are 420 cu
   // pet 120 → ratio ~0.28; aici 280×0.28 = 80).
