@@ -1,10 +1,44 @@
-// Stitch — extraterestru pe insula tropicala (Hawaii). Plaja cu palmieri,
-// vulcani in spate, ocean orizont. Vibe: jucaus, soare, valuri.
+// stitch — plaja tropicala. Ocean cu gradient + valuri, palmieri curbati cu
+// frunze ce cad, insule in zare, nisip cu scoici. Forme cu curbe smooth (Path)
+// si gradienturi, palmier cazut realist.
 
-import Svg, { Circle, Polygon, Rect } from 'react-native-svg';
+import { View } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  Ellipse,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { registerWorld } from './registry';
 import { shade } from './util';
 import type { WorldPack } from './types';
+
+// Coroana de palmier — frunze curbate care cad in jurul unui punct.
+function palmCrown(cx: number, cy: number, r: number, color: string) {
+  const dark = shade(color, -0.2);
+  const frond = (angle: number, len: number, c: string) => {
+    const rad = (angle * Math.PI) / 180;
+    const ex = cx + Math.cos(rad) * len;
+    const ey = cy + Math.sin(rad) * len;
+    // Punct de control care lasa frunza sa se arcuiasca in jos.
+    const mx = cx + Math.cos(rad) * len * 0.5;
+    const my = cy + Math.sin(rad) * len * 0.5 - len * 0.25;
+    return `M${cx},${cy} Q${mx},${my} ${ex},${ey}`;
+  };
+  return (
+    <>
+      <Path d={frond(200, r, color)} stroke={color} strokeWidth={r * 0.28} fill="none" strokeLinecap="round" />
+      <Path d={frond(160, r, color)} stroke={color} strokeWidth={r * 0.28} fill="none" strokeLinecap="round" />
+      <Path d={frond(235, r * 0.9, dark)} stroke={dark} strokeWidth={r * 0.26} fill="none" strokeLinecap="round" />
+      <Path d={frond(305, r * 0.9, dark)} stroke={dark} strokeWidth={r * 0.26} fill="none" strokeLinecap="round" />
+      <Path d={frond(270, r * 0.7, color)} stroke={color} strokeWidth={r * 0.24} fill="none" strokeLinecap="round" />
+      <Circle cx={cx} cy={cy} r={r * 0.16} fill={dark} />
+    </>
+  );
+}
 
 const PACK: WorldPack = {
   slug: 'stitch',
@@ -13,34 +47,40 @@ const PACK: WorldPack = {
     {
       key: 'noon',
       name: 'Plaja insorita',
-      skyColor: '#5BC0EB',
-      midColor: '#2D8C5F',
-      groundColor: '#E8C97A',
+      skyColor: '#6CC5E8',
+      midColor: '#2E9C6A',
+      groundColor: '#EACF86',
       accent: '#FF6B9D',
-      celestial: { shape: 'sun', color: '#FFEB6B', position: [0.72, 0.12], size: 90 },
     },
     {
       key: 'sunset',
       name: 'Apus pe plaja',
-      skyColor: '#FF9B6A',
-      midColor: '#1F5A3F',
-      groundColor: '#C9A55F',
+      skyColor: '#FF9F6A',
+      midColor: '#1F6A48',
+      groundColor: '#D2A862',
       accent: '#FFEB6B',
-      celestial: { shape: 'sun', color: '#FF5A3F', position: [0.88, 0.5], size: 110 },
     },
   ],
   obstacles: [
     {
       key: 'coconut',
       render: ({ width: W, height: H, color }) => {
-        const dark = shade('#5C3A1F', -0.1);
+        const husk = '#7A4A28';
         return (
           <Svg width={W} height={H}>
-            <Circle cx={W * 0.5} cy={H * 0.55} r={W * 0.32} fill={dark} />
-            <Circle cx={W * 0.4} cy={H * 0.45} r={W * 0.06} fill={shade(dark, -0.2)} />
-            <Circle cx={W * 0.55} cy={H * 0.55} r={W * 0.06} fill={shade(dark, -0.2)} />
-            <Circle cx={W * 0.48} cy={H * 0.65} r={W * 0.06} fill={shade(dark, -0.2)} />
-            <Rect x={W * 0.45} y={H * 0.15} width={W * 0.1} height={H * 0.15} fill={color} opacity={0.7} />
+            <Defs>
+              <LinearGradient id="stCoco" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={shade(husk, 0.18)} />
+                <Stop offset="1" stopColor={shade(husk, -0.2)} />
+              </LinearGradient>
+            </Defs>
+            <Circle cx={W * 0.5} cy={H * 0.6} r={W * 0.33} fill="url(#stCoco)" />
+            {/* Cele 3 puncte */}
+            <Circle cx={W * 0.42} cy={H * 0.52} r={W * 0.05} fill={shade(husk, -0.35)} />
+            <Circle cx={W * 0.56} cy={H * 0.55} r={W * 0.05} fill={shade(husk, -0.35)} />
+            <Circle cx={W * 0.48} cy={H * 0.66} r={W * 0.05} fill={shade(husk, -0.35)} />
+            {/* Reflexie */}
+            <Ellipse cx={W * 0.4} cy={H * 0.45} rx={W * 0.07} ry={W * 0.04} fill="rgba(255,255,255,0.3)" />
           </Svg>
         );
       },
@@ -48,15 +88,25 @@ const PACK: WorldPack = {
     {
       key: 'palm_log',
       render: ({ width: W, height: H, color }) => {
-        const dark = shade('#6B4A2A', -0.1);
+        const trunk = '#9A6B3C';
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.05} y={H * 0.5} width={W * 0.9} height={H * 0.4} rx={H * 0.1} fill={dark} />
-            <Rect x={W * 0.1} y={H * 0.6} width={W * 0.8} height={H * 0.05} fill={shade(dark, 0.15)} opacity={0.7} />
-            <Rect x={W * 0.1} y={H * 0.75} width={W * 0.8} height={H * 0.05} fill={shade(dark, 0.15)} opacity={0.7} />
-            <Circle cx={W * 0.3} cy={H * 0.4} r={W * 0.12} fill={color} />
-            <Circle cx={W * 0.5} cy={H * 0.35} r={W * 0.14} fill={color} />
-            <Circle cx={W * 0.7} cy={H * 0.4} r={W * 0.12} fill={color} />
+            <Defs>
+              <LinearGradient id="stTrunk" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(trunk, 0.15)} />
+                <Stop offset="1" stopColor={shade(trunk, -0.2)} />
+              </LinearGradient>
+            </Defs>
+            {/* Trunchi cazut, usor curbat */}
+            <Path
+              d={`M${W * 0.02},${H * 0.72} Q${W * 0.5},${H * 0.55} ${W * 0.98},${H * 0.7} L${W * 0.98},${H * 0.86} Q${W * 0.5},${H * 0.7} ${W * 0.02},${H * 0.88} Z`}
+              fill="url(#stTrunk)"
+            />
+            {/* Inele de scoarta */}
+            <Path d={`M${W * 0.3},${H * 0.63} L${W * 0.3},${H * 0.81}`} stroke={shade(trunk, -0.3)} strokeWidth={2} opacity={0.5} />
+            <Path d={`M${W * 0.55},${H * 0.61} L${W * 0.55},${H * 0.79}`} stroke={shade(trunk, -0.3)} strokeWidth={2} opacity={0.5} />
+            {/* Coroana la capatul drept */}
+            {palmCrown(W * 0.92, H * 0.6, W * 0.22, '#2E9C6A')}
           </Svg>
         );
       },
@@ -64,14 +114,22 @@ const PACK: WorldPack = {
     {
       key: 'surfboard',
       render: ({ width: W, height: H, color }) => {
-        const stripe = shade(color, 0.3);
+        const board = color;
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.5},${H * 0.05} ${W * 0.65},${H * 0.2} ${W * 0.65},${H * 0.9} ${W * 0.5},${H} ${W * 0.35},${H * 0.9} ${W * 0.35},${H * 0.2}`}
-              fill={color}
+            <Defs>
+              <LinearGradient id="stBoard" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(board, 0.2)} />
+                <Stop offset="1" stopColor={shade(board, -0.15)} />
+              </LinearGradient>
+            </Defs>
+            {/* Placa infipta in nisip, forma de migdala */}
+            <Path
+              d={`M${W * 0.5},${H * 0.04} Q${W * 0.72},${H * 0.4} ${W * 0.58},${H * 0.96} L${W * 0.42},${H * 0.96} Q${W * 0.28},${H * 0.4} ${W * 0.5},${H * 0.04} Z`}
+              fill="url(#stBoard)"
             />
-            <Rect x={W * 0.48} y={H * 0.15} width={W * 0.04} height={H * 0.8} fill={stripe} opacity={0.7} />
+            {/* Dunga centrala */}
+            <Path d={`M${W * 0.5},${H * 0.1} L${W * 0.5},${H * 0.92}`} stroke={shade(board, 0.35)} strokeWidth={2.5} opacity={0.7} />
           </Svg>
         );
       },
@@ -79,44 +137,52 @@ const PACK: WorldPack = {
     {
       key: 'crab',
       render: ({ width: W, height: H, color }) => {
-        const dark = shade(color, -0.2);
+        const body = color;
+        const dark = shade(body, -0.25);
         return (
           <Svg width={W} height={H}>
-            <Polygon points={`${W * 0.1},${H * 0.7} ${W * 0.25},${H * 0.55}`} stroke={dark} strokeWidth={3} fill="none" />
-            <Polygon points={`${W * 0.9},${H * 0.7} ${W * 0.75},${H * 0.55}`} stroke={dark} strokeWidth={3} fill="none" />
-            <Circle cx={W * 0.5} cy={H * 0.65} r={W * 0.32} fill={color} />
-            <Circle cx={W * 0.4} cy={H * 0.58} r={W * 0.05} fill="#FFFFFF" />
-            <Circle cx={W * 0.6} cy={H * 0.58} r={W * 0.05} fill="#FFFFFF" />
-            <Circle cx={W * 0.4} cy={H * 0.58} r={W * 0.02} fill="#000" />
-            <Circle cx={W * 0.6} cy={H * 0.58} r={W * 0.02} fill="#000" />
-            <Polygon points={`${W * 0.15},${H * 0.5} ${W * 0.25},${H * 0.6} ${W * 0.2},${H * 0.65}`} fill={dark} />
-            <Polygon points={`${W * 0.85},${H * 0.5} ${W * 0.75},${H * 0.6} ${W * 0.8},${H * 0.65}`} fill={dark} />
+            <Defs>
+              <LinearGradient id="stCrab" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(body, 0.18)} />
+                <Stop offset="1" stopColor={shade(body, -0.18)} />
+              </LinearGradient>
+            </Defs>
+            {/* Picioare */}
+            <Path d={`M${W * 0.3},${H * 0.7} L${W * 0.12},${H * 0.6} M${W * 0.32},${H * 0.78} L${W * 0.14},${H * 0.78} M${W * 0.7},${H * 0.7} L${W * 0.88},${H * 0.6} M${W * 0.68},${H * 0.78} L${W * 0.86},${H * 0.78}`} stroke={dark} strokeWidth={3} strokeLinecap="round" />
+            {/* Clesti */}
+            <Circle cx={W * 0.16} cy={H * 0.5} r={W * 0.09} fill={dark} />
+            <Circle cx={W * 0.84} cy={H * 0.5} r={W * 0.09} fill={dark} />
+            {/* Corp */}
+            <Ellipse cx={W * 0.5} cy={H * 0.62} rx={W * 0.3} ry={W * 0.22} fill="url(#stCrab)" />
+            {/* Ochi */}
+            <Circle cx={W * 0.42} cy={H * 0.46} r={W * 0.06} fill="#FFF" />
+            <Circle cx={W * 0.58} cy={H * 0.46} r={W * 0.06} fill="#FFF" />
+            <Circle cx={W * 0.42} cy={H * 0.46} r={W * 0.025} fill="#000" />
+            <Circle cx={W * 0.58} cy={H * 0.46} r={W * 0.025} fill="#000" />
           </Svg>
         );
       },
     },
   ],
   ambient: [
-    // Pescarusi care planeaza peste mare.
     {
       key: 'seagull',
       layer: 'back',
       density: 2,
-      yRange: [0.1, 0.3],
+      yRange: [0.1, 0.28],
       sizeRange: [14, 22],
       speedRange: [-55, -30],
       render: ({ size }) => (
         <Svg width={size} height={size * 0.4}>
-          <Polygon
-            points={`0,${size * 0.3} ${size * 0.25},${size * 0.1} ${size * 0.5},${size * 0.25} ${size * 0.75},${size * 0.1} ${size},${size * 0.3}`}
-            fill="#FFFFFF"
-            stroke="rgba(0,0,0,0.4)"
-            strokeWidth={1}
+          <Path
+            d={`M0,${size * 0.3} Q${size * 0.25},${size * 0.03} ${size * 0.5},${size * 0.28} Q${size * 0.75},${size * 0.03} ${size},${size * 0.3}`}
+            stroke="rgba(255,255,255,0.85)"
+            strokeWidth={2.5}
+            fill="none"
           />
         </Svg>
       ),
     },
-    // Petale de hibiscus care plutesc.
     {
       key: 'petal',
       layer: 'fore',
@@ -129,115 +195,118 @@ const PACK: WorldPack = {
           <Circle cx={size * 0.5} cy={size * 0.3} r={size * 0.22} fill="#FF6B9D" opacity={0.85} />
           <Circle cx={size * 0.3} cy={size * 0.5} r={size * 0.22} fill="#FF6B9D" opacity={0.85} />
           <Circle cx={size * 0.7} cy={size * 0.5} r={size * 0.22} fill="#FF6B9D" opacity={0.85} />
-          <Circle cx={size * 0.5} cy={size * 0.5} r={size * 0.15} fill="#FFEB6B" />
+          <Circle cx={size * 0.5} cy={size * 0.5} r={size * 0.13} fill="#FFEB6B" />
         </Svg>
       ),
     },
-    // Strop sclipitor de la valuri (departe in spate).
     {
       key: 'sparkle',
       layer: 'mid',
-      density: 4,
-      yRange: [0.45, 0.55],
+      density: 5,
+      yRange: [0.46, 0.56],
       sizeRange: [3, 6],
-      speedRange: [-30, -15],
+      speedRange: [-26, -12],
       render: ({ size }) => (
         <Svg width={size} height={size}>
-          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="#FFFFFF" opacity={0.9} />
+          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="rgba(255,255,255,0.9)" />
         </Svg>
       ),
     },
   ],
-  // Mid layer = vulcani + ocean orizont. Seamless: incepe/se termina la H*0.65 (back) si H*0.85 (front).
-  renderMidLayer: ({ width: W, height: H, color }) => {
-    const darker = shade(color, -0.2);
-    const backTopY = H * 0.65;
-    const frontTopY = H * 0.85;
-    // Linia oceanului — orizont alb-albastru in spatele vulcanilor.
-    const oceanColor = '#3DA9C7';
-    return (
-      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        {/* Ocean stripe in spate */}
-        <Rect x={0} y={H * 0.7} width={W} height={H * 0.1} fill={oceanColor} opacity={0.5} />
-        {/* Vulcani in spate */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${backTopY}`,
-            `${W * 0.2},${H * 0.4}`,
-            `${W * 0.32},${H * 0.2}`,
-            `${W * 0.45},${H * 0.42}`,
-            `${W * 0.62},${H * 0.25}`,
-            `${W * 0.78},${H * 0.5}`,
-            `${W},${backTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={darker}
-        />
-        {/* Jungla in fata */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${frontTopY}`,
-            `${W * 0.15},${H * 0.65}`,
-            `${W * 0.3},${H * 0.78}`,
-            `${W * 0.5},${H * 0.6}`,
-            `${W * 0.7},${H * 0.72}`,
-            `${W * 0.88},${H * 0.62}`,
-            `${W},${frontTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={color}
-        />
-      </Svg>
-    );
-  },
-  // Sol = nisip + scoici. Decoratiuni in 12%-85%.
-  renderGroundLayer: ({ width: W, height: H, color }) => {
-    const lighter = shade(color, 0.12);
-    const seashell = '#FFE3D6';
-    return (
-      <Svg width={W} height={H}>
-        <Rect x={0} y={0} width={W} height={H} fill={color} />
-        {/* Valuri pe nisip umed */}
-        <Rect x={0} y={0} width={W} height={H * 0.15} fill={shade(color, -0.08)} opacity={0.5} />
-        {/* Scoici */}
-        <Circle cx={W * 0.18} cy={H * 0.5} r={5} fill={seashell} />
-        <Circle cx={W * 0.4} cy={H * 0.65} r={4} fill={seashell} />
-        <Circle cx={W * 0.6} cy={H * 0.45} r={6} fill={seashell} />
-        <Circle cx={W * 0.78} cy={H * 0.6} r={5} fill={lighter} />
-      </Svg>
-    );
-  },
-  // Back layer — alte insule pe orizont, foarte mici si pale.
-  renderBackLayer: ({ width: W, height: H }) => {
-    return (
-      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        {/* Insula 1 */}
-        <Polygon
-          points={`${W * 0.1},${H} ${W * 0.13},${H * 0.7} ${W * 0.2},${H * 0.5} ${W * 0.3},${H * 0.55} ${W * 0.35},${H * 0.78} ${W * 0.4},${H}`}
-          fill="#3A6A8A"
-          opacity={0.45}
-        />
-        {/* Insula 2 */}
-        <Polygon
-          points={`${W * 0.55},${H} ${W * 0.6},${H * 0.65} ${W * 0.7},${H * 0.45} ${W * 0.78},${H * 0.5} ${W * 0.85},${H * 0.7} ${W * 0.88},${H}`}
-          fill="#3A6A8A"
-          opacity={0.45}
-        />
-      </Svg>
-    );
-  },
+  // Cloud layer = nori tropicali pufosi.
   renderCloudsLayer: ({ width: W }) => {
     const H = 70;
-    // Nori grasi tropicali.
     return (
       <Svg width={W} height={H}>
-        <Circle cx={W * 0.18} cy={28} r={22} fill="rgba(255,255,255,0.85)" />
-        <Circle cx={W * 0.27} cy={36} r={18} fill="rgba(255,255,255,0.85)" />
-        <Circle cx={W * 0.5} cy={22} r={20} fill="rgba(255,255,255,0.8)" />
-        <Circle cx={W * 0.58} cy={32} r={24} fill="rgba(255,255,255,0.8)" />
-        <Circle cx={W * 0.82} cy={26} r={20} fill="rgba(255,255,255,0.85)" />
+        <Ellipse cx={W * 0.22} cy={32} rx={42} ry={20} fill="rgba(255,255,255,0.85)" />
+        <Ellipse cx={W * 0.3} cy={38} rx={30} ry={16} fill="rgba(255,255,255,0.8)" />
+        <Ellipse cx={W * 0.62} cy={28} rx={38} ry={18} fill="rgba(255,255,255,0.8)" />
+        <Ellipse cx={W * 0.82} cy={34} rx={32} ry={16} fill="rgba(255,255,255,0.85)" />
+      </Svg>
+    );
+  },
+  // Back layer = alte insule + ocean orizont, foarte pale.
+  renderBackLayer: ({ width: W, height: H }) => {
+    const ocean = '#3DA9C7';
+    const isle = '#4E8C6A';
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        <Defs>
+          <LinearGradient id="stOcean" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(ocean, 0.15)} />
+            <Stop offset="1" stopColor={shade(ocean, -0.1)} />
+          </LinearGradient>
+        </Defs>
+        {/* Banda de ocean */}
+        <Rect x={0} y={H * 0.55} width={W} height={H * 0.45} fill="url(#stOcean)" opacity={0.6} />
+        {/* Insule mici */}
+        <Path d={`M${W * 0.12},${H * 0.6} Q${W * 0.22},${H * 0.32} ${W * 0.34},${H * 0.6} Z`} fill={isle} opacity={0.5} />
+        <Path d={`M${W * 0.62},${H * 0.6} Q${W * 0.74},${H * 0.38} ${W * 0.86},${H * 0.6} Z`} fill={isle} opacity={0.5} />
+      </Svg>
+    );
+  },
+  // Mid layer = jungla + palmieri curbati. SVG-ul se extinde IN SUS cu extraTop
+  // (overflow visible pe wrapper) ca varful coroanelor sa NU se mai taie sus.
+  // Coordonatele continue sa fie raportate la H = slot original; lucram intr-un
+  // sistem mai inalt, dar pozitia top a Svg-ului e shiftata in sus cu extraTop.
+  renderMidLayer: ({ width: W, height: H, color }) => {
+    const jungle = color;
+    const trunk = '#8A5E34';
+    const frontTopY = H * 0.78;
+    // Cat sa extindem in sus. H * 0.6 e suficient sa cuprinda coroanele.
+    const extraTop = H * 0.6;
+    const svgH = H + extraTop;
+    // Helper care shifteaza y-ul cu extraTop, ca toate coordonatele de mai jos
+    // sa fie raportate la SVG-ul extins.
+    const Y = (y: number) => y + extraTop;
+    return (
+      <View style={{ width: W, height: H, overflow: 'visible' }}>
+        <Svg
+          width={W}
+          height={svgH}
+          style={{ position: 'absolute', top: -extraTop, left: 0 }}
+        >
+          <Defs>
+            <LinearGradient id="stJungle" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0" stopColor={shade(jungle, 0.15)} />
+              <Stop offset="1" stopColor={shade(jungle, -0.15)} />
+            </LinearGradient>
+          </Defs>
+          {/* Palmier stanga — trunchi curbat + coroana sus, complet vizibila */}
+          <Path d={`M${W * 0.1},${Y(H)} Q${W * 0.06},${Y(H * 0.5)} ${W * 0.14},${Y(H * 0.28)}`} stroke={trunk} strokeWidth={W * 0.025} fill="none" strokeLinecap="round" />
+          {palmCrown(W * 0.14, Y(H * 0.26), W * 0.13, jungle)}
+          {/* Palmier dreapta */}
+          <Path d={`M${W * 0.86},${Y(H)} Q${W * 0.92},${Y(H * 0.5)} ${W * 0.84},${Y(H * 0.3)}`} stroke={trunk} strokeWidth={W * 0.025} fill="none" strokeLinecap="round" />
+          {palmCrown(W * 0.84, Y(H * 0.28), W * 0.12, jungle)}
+          {/* Tufa de jungla in fata (seamless) */}
+          <Path
+            d={`M0,${Y(H)} L0,${Y(frontTopY)} Q${W * 0.25},${Y(H * 0.6)} ${W * 0.5},${Y(H * 0.76)} Q${W * 0.72},${Y(H * 0.88)} ${W},${Y(frontTopY)} L${W},${Y(H)} Z`}
+            fill="url(#stJungle)"
+          />
+        </Svg>
+      </View>
+    );
+  },
+  // Sol = nisip + linie de apa umeda + scoici.
+  renderGroundLayer: ({ width: W, height: H, color }) => {
+    const sand = color;
+    return (
+      <Svg width={W} height={H}>
+        <Defs>
+          <LinearGradient id="stSand" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(sand, 0.1)} />
+            <Stop offset="1" stopColor={shade(sand, -0.12)} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={W} height={H} fill="url(#stSand)" />
+        {/* Linie de apa umeda sus, cu spuma */}
+        <Path d={`M0,${H * 0.16} Q${W * 0.25},${H * 0.1} ${W * 0.5},${H * 0.16} T${W},${H * 0.16}`} stroke="rgba(255,255,255,0.5)" strokeWidth={3} fill="none" />
+        <Rect x={0} y={0} width={W} height={H * 0.13} fill={shade(sand, -0.08)} opacity={0.4} />
+        {/* Scoici */}
+        <Path d={`M${W * 0.2},${H * 0.55} q${W * 0.04},-${W * 0.04} ${W * 0.08},0 Z`} fill="#FFE3D6" />
+        <Circle cx={W * 0.45} cy={H * 0.68} r={4} fill="#FFE3D6" />
+        <Circle cx={W * 0.7} cy={H * 0.5} r={5} fill={shade(sand, 0.18)} />
+        <Circle cx={W * 0.85} cy={H * 0.7} r={3.5} fill="#FFE3D6" />
       </Svg>
     );
   },

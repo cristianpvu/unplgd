@@ -1,7 +1,17 @@
-// Dog — parc urban familiar. Cer albastru, banci, hidranti, garduri, panza
-// orasului in spate. Vibe: prietenos, jucaus, "dupa scoala".
+// dog — parc urban cu loc de joaca. Blocuri cu geamuri in zare, tobogan +
+// leagan + balansoar in plan mediu, alee + iarba + flori. Forme rafinate cu
+// gradienturi, nu crude.
 
-import Svg, { Circle, Polygon, Rect } from 'react-native-svg';
+import { View } from 'react-native';
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Line,
+  Path,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { registerWorld } from './registry';
 import { shade } from './util';
 import type { WorldPack } from './types';
@@ -13,36 +23,47 @@ const PACK: WorldPack = {
     {
       key: 'noon',
       name: 'Dupa-amiaza in parc',
-      skyColor: '#87CEEB',
-      midColor: '#6B8B5A',
-      groundColor: '#5A8A4A',
+      skyColor: '#9FD4E8',
+      midColor: '#6FAE54',
+      groundColor: '#6BA84A',
       accent: '#FF6B6B',
-      celestial: { shape: 'sun', color: '#FFE876', position: [0.75, 0.12], size: 80 },
     },
     {
       key: 'evening',
       name: 'Apus in parc',
-      skyColor: '#FFB07A',
-      midColor: '#4A5A50',
-      groundColor: '#4A6A3A',
+      skyColor: '#FFB174',
+      midColor: '#5A7A4A',
+      groundColor: '#577A3C',
       accent: '#FFD93D',
-      celestial: { shape: 'sun', color: '#FF6B3F', position: [0.88, 0.5], size: 95 },
     },
   ],
   obstacles: [
     {
       key: 'hydrant',
       render: ({ width: W, height: H, color }) => {
-        const dark = shade(color, -0.2);
-        const cap = shade(color, -0.4);
+        const red = color;
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.32} y={H * 0.25} width={W * 0.36} height={H * 0.7} fill={color} />
-            <Rect x={W * 0.28} y={H * 0.2} width={W * 0.44} height={H * 0.1} fill={dark} />
-            <Circle cx={W * 0.5} cy={H * 0.15} r={W * 0.12} fill={cap} />
-            <Rect x={W * 0.15} y={H * 0.45} width={W * 0.17} height={H * 0.12} fill={dark} />
-            <Rect x={W * 0.68} y={H * 0.45} width={W * 0.17} height={H * 0.12} fill={dark} />
-            <Circle cx={W * 0.5} cy={H * 0.5} r={W * 0.05} fill={dark} />
+            <Defs>
+              <LinearGradient id="dogHyd" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={shade(red, -0.2)} />
+                <Stop offset="0.5" stopColor={shade(red, 0.18)} />
+                <Stop offset="1" stopColor={shade(red, -0.25)} />
+              </LinearGradient>
+            </Defs>
+            {/* Corp hidrant rotunjit */}
+            <Path
+              d={`M${W * 0.34},${H * 0.95} L${W * 0.34},${H * 0.4} Q${W * 0.34},${H * 0.24} ${W * 0.5},${H * 0.24} Q${W * 0.66},${H * 0.24} ${W * 0.66},${H * 0.4} L${W * 0.66},${H * 0.95} Z`}
+              fill="url(#dogHyd)"
+            />
+            {/* Capac dom */}
+            <Path d={`M${W * 0.4},${H * 0.26} Q${W * 0.5},${H * 0.1} ${W * 0.6},${H * 0.26} Z`} fill={shade(red, -0.3)} />
+            <Circle cx={W * 0.5} cy={H * 0.16} r={W * 0.05} fill={shade(red, 0.1)} />
+            {/* Brate laterale */}
+            <Rect x={W * 0.16} y={H * 0.46} width={W * 0.2} height={H * 0.12} rx={H * 0.04} fill={shade(red, -0.15)} />
+            <Rect x={W * 0.64} y={H * 0.46} width={W * 0.2} height={H * 0.12} rx={H * 0.04} fill={shade(red, -0.15)} />
+            {/* Baza */}
+            <Rect x={W * 0.28} y={H * 0.92} width={W * 0.44} height={H * 0.08} rx={3} fill={shade(red, -0.35)} />
           </Svg>
         );
       },
@@ -50,75 +71,102 @@ const PACK: WorldPack = {
     {
       key: 'bench',
       render: ({ width: W, height: H, color }) => {
-        const wood = '#8B6B4A';
-        const metal = shade(color, -0.4);
+        const wood = '#A6743C';
+        const metal = '#4A5560';
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.1} y={H * 0.55} width={W * 0.8} height={H * 0.08} fill={wood} />
-            <Rect x={W * 0.1} y={H * 0.7} width={W * 0.8} height={H * 0.08} fill={wood} />
-            <Rect x={W * 0.1} y={H * 0.85} width={W * 0.8} height={H * 0.08} fill={wood} />
-            <Rect x={W * 0.15} y={H * 0.55} width={W * 0.06} height={H * 0.45} fill={metal} />
-            <Rect x={W * 0.79} y={H * 0.55} width={W * 0.06} height={H * 0.45} fill={metal} />
+            <Defs>
+              <LinearGradient id="dogWood" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(wood, 0.15)} />
+                <Stop offset="1" stopColor={shade(wood, -0.15)} />
+              </LinearGradient>
+            </Defs>
+            {/* Spatar */}
+            <Rect x={W * 0.1} y={H * 0.4} width={W * 0.8} height={H * 0.1} rx={4} fill="url(#dogWood)" />
+            <Rect x={W * 0.1} y={H * 0.54} width={W * 0.8} height={H * 0.1} rx={4} fill="url(#dogWood)" />
+            {/* Sezut */}
+            <Rect x={W * 0.1} y={H * 0.68} width={W * 0.8} height={H * 0.1} rx={4} fill="url(#dogWood)" />
+            {/* Picioare */}
+            <Rect x={W * 0.16} y={H * 0.4} width={W * 0.05} height={H * 0.55} fill={metal} />
+            <Rect x={W * 0.79} y={H * 0.4} width={W * 0.05} height={H * 0.55} fill={metal} />
           </Svg>
         );
       },
     },
     {
       key: 'fence',
-      render: ({ width: W, height: H }) => {
-        const wood = '#A88A60';
-        const dark = shade(wood, -0.25);
+      render: ({ width: W, height: H, color }) => {
+        const wood = '#B08A52';
+        const dark = shade(wood, -0.22);
+        const picket = (x: number) => (
+          <Path
+            key={x}
+            d={`M${x},${H * 0.95} L${x},${H * 0.4} L${x + W * 0.06},${H * 0.3} L${x + W * 0.12},${H * 0.4} L${x + W * 0.12},${H * 0.95} Z`}
+            fill={wood}
+            stroke={dark}
+            strokeWidth={1}
+          />
+        );
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.05} y={H * 0.55} width={W * 0.9} height={H * 0.04} fill={wood} />
-            <Rect x={W * 0.05} y={H * 0.75} width={W * 0.9} height={H * 0.04} fill={wood} />
-            <Polygon points={`${W * 0.1},${H * 0.4} ${W * 0.18},${H * 0.32} ${W * 0.26},${H * 0.4} ${W * 0.26},${H * 0.95} ${W * 0.1},${H * 0.95}`} fill={dark} />
-            <Polygon points={`${W * 0.3},${H * 0.4} ${W * 0.38},${H * 0.32} ${W * 0.46},${H * 0.4} ${W * 0.46},${H * 0.95} ${W * 0.3},${H * 0.95}`} fill={dark} />
-            <Polygon points={`${W * 0.5},${H * 0.4} ${W * 0.58},${H * 0.32} ${W * 0.66},${H * 0.4} ${W * 0.66},${H * 0.95} ${W * 0.5},${H * 0.95}`} fill={dark} />
-            <Polygon points={`${W * 0.7},${H * 0.4} ${W * 0.78},${H * 0.32} ${W * 0.86},${H * 0.4} ${W * 0.86},${H * 0.95} ${W * 0.7},${H * 0.95}`} fill={dark} />
+            {picket(W * 0.06)}
+            {picket(W * 0.28)}
+            {picket(W * 0.5)}
+            {picket(W * 0.72)}
+            {/* Sipci orizontale */}
+            <Rect x={0} y={H * 0.55} width={W} height={H * 0.06} fill={dark} opacity={0.85} />
+            <Rect x={0} y={H * 0.78} width={W} height={H * 0.06} fill={dark} opacity={0.85} />
           </Svg>
         );
       },
     },
     {
       key: 'trashbin',
-      render: ({ width: W, height: H }) => {
-        const metal = '#5A6B6F';
-        const dark = shade(metal, -0.25);
+      render: ({ width: W, height: H, color }) => {
+        const metal = '#3E6B52';
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.25},${H * 0.2} ${W * 0.75},${H * 0.2} ${W * 0.8},${H * 0.95} ${W * 0.2},${H * 0.95}`}
-              fill={metal}
+            <Defs>
+              <LinearGradient id="dogBin" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={shade(metal, -0.2)} />
+                <Stop offset="0.5" stopColor={shade(metal, 0.15)} />
+                <Stop offset="1" stopColor={shade(metal, -0.25)} />
+              </LinearGradient>
+            </Defs>
+            {/* Cos usor conic */}
+            <Path
+              d={`M${W * 0.28},${H * 0.28} L${W * 0.72},${H * 0.28} L${W * 0.78},${H * 0.95} L${W * 0.22},${H * 0.95} Z`}
+              fill="url(#dogBin)"
             />
-            <Rect x={W * 0.2} y={H * 0.15} width={W * 0.6} height={H * 0.08} fill={dark} />
-            <Rect x={W * 0.3} y={H * 0.35} width={W * 0.04} height={H * 0.5} fill={dark} opacity={0.5} />
-            <Rect x={W * 0.5} y={H * 0.35} width={W * 0.04} height={H * 0.5} fill={dark} opacity={0.5} />
-            <Rect x={W * 0.7} y={H * 0.35} width={W * 0.04} height={H * 0.5} fill={dark} opacity={0.5} />
+            {/* Capac */}
+            <Rect x={W * 0.22} y={H * 0.2} width={W * 0.56} height={H * 0.1} rx={4} fill={shade(metal, -0.3)} />
+            <Rect x={W * 0.46} y={H * 0.1} width={W * 0.08} height={H * 0.1} fill={shade(metal, -0.2)} />
+            {/* Simbol reciclare */}
+            <Path d={`M${W * 0.42},${H * 0.5} l${W * 0.08},0 l-${W * 0.04},${H * 0.08} Z`} fill={shade(metal, 0.3)} opacity={0.8} />
           </Svg>
         );
       },
     },
   ],
   ambient: [
-    // Pasari care zboara peste oras.
     {
       key: 'bird',
       layer: 'back',
       density: 2,
       yRange: [0.12, 0.3],
       sizeRange: [12, 20],
-      speedRange: [-55, -28],
+      speedRange: [-50, -28],
       render: ({ size }) => (
         <Svg width={size} height={size * 0.4}>
-          <Polygon
-            points={`0,${size * 0.3} ${size * 0.25},${size * 0.1} ${size * 0.5},${size * 0.25} ${size * 0.75},${size * 0.1} ${size},${size * 0.3}`}
-            fill="rgba(45, 42, 74, 0.65)"
+          <Path
+            d={`M0,${size * 0.3} Q${size * 0.25},${size * 0.05} ${size * 0.5},${size * 0.28} Q${size * 0.75},${size * 0.05} ${size},${size * 0.3}`}
+            stroke="rgba(45,42,74,0.6)"
+            strokeWidth={2.5}
+            fill="none"
           />
         </Svg>
       ),
     },
-    // Frunze galbene cazand.
     {
       key: 'leaf',
       layer: 'fore',
@@ -128,111 +176,184 @@ const PACK: WorldPack = {
       speedRange: [-65, -35],
       render: ({ size }) => (
         <Svg width={size} height={size}>
-          <Polygon
-            points={`${size * 0.5},0 ${size * 0.85},${size * 0.4} ${size * 0.5},${size} ${size * 0.15},${size * 0.4}`}
+          <Path
+            d={`M${size * 0.5},0 Q${size},${size * 0.3} ${size * 0.5},${size} Q0,${size * 0.3} ${size * 0.5},0 Z`}
             fill="#E8A848"
             opacity={0.9}
           />
         </Svg>
       ),
     },
-    // Mingi/baloane care zboara — element de joaca.
     {
-      key: 'ball',
+      key: 'balloon',
       layer: 'mid',
       density: 1,
-      yRange: [0.3, 0.55],
-      sizeRange: [14, 22],
-      speedRange: [-90, -50],
+      yRange: [0.2, 0.45],
+      sizeRange: [16, 24],
+      speedRange: [-40, -22],
       render: ({ size }) => (
-        <Svg width={size} height={size}>
-          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="#FF6B6B" opacity={0.9} />
-          <Circle cx={size * 0.35} cy={size * 0.35} r={size * 0.18} fill="rgba(255,255,255,0.5)" />
+        <Svg width={size} height={size * 1.3}>
+          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="#FF6B6B" />
+          <Circle cx={size * 0.36} cy={size * 0.36} r={size * 0.14} fill="rgba(255,255,255,0.5)" />
+          <Line x1={size / 2} y1={size} x2={size / 2} y2={size * 1.3} stroke="rgba(0,0,0,0.3)" strokeWidth={1} />
         </Svg>
       ),
     },
   ],
-  // Mid layer = silueta oras + copaci de parc in fata.
+  // Back layer = blocuri de locuinte cu geamuri aprinse. SVG-ul are height
+  // MULT mai mare decat slot-ul stratului (cu position:absolute si overflow
+  // visible pe wrapper) ca sa cladirile sa coboare clar in jos prin mid +
+  // ground, nu sa ramana suspendate.
+  renderBackLayer: ({ width: W, height: H }) => {
+    const block = '#8C97A8';
+    const win = '#FFE7A8';
+    const blockColors = [shade(block, 0.05), shade(block, -0.1), shade(block, 0.12), shade(block, -0.05)];
+    const blocks = [
+      { x: 0.02, w: 0.16, h: 0.55, c: blockColors[0] },
+      { x: 0.2, w: 0.13, h: 0.75, c: blockColors[1] },
+      { x: 0.35, w: 0.15, h: 0.45, c: blockColors[2] },
+      { x: 0.52, w: 0.14, h: 0.65, c: blockColors[3] },
+      { x: 0.68, w: 0.16, h: 0.5, c: blockColors[0] },
+      { x: 0.86, w: 0.12, h: 0.7, c: blockColors[1] },
+    ];
+    // SVG ocupa height + extensie in jos. Wrapper-ul View are overflow visible
+    // si height = H (cat slot-ul) → SVG-ul depaseste si elementele de jos
+    // raman vizibile pe deasupra straturilor de mai jos.
+    const extraDown = H * 3.5;
+    const svgH = H + extraDown;
+    return (
+      <View style={{ width: W, height: H, overflow: 'visible' }}>
+        <Svg
+          width={W}
+          height={svgH}
+          style={{ position: 'absolute', top: 0, left: 0 }}
+        >
+          {blocks.flatMap((b, i) => {
+            const bx = W * b.x;
+            const bw = W * b.w;
+            const visibleH = H * b.h;
+            const by = H - visibleH; // varful in interiorul slot-ului
+            const totalH = visibleH + extraDown; // pana jos
+            const elems = [
+              <Rect
+                key={`b-${i}`}
+                x={bx}
+                y={by}
+                width={bw}
+                height={totalH}
+                fill={b.c}
+                opacity={0.85}
+              />,
+            ];
+            const cols = 3;
+            const rows = Math.max(2, Math.round(b.h * 6));
+            for (let r = 0; r < rows; r++) {
+              for (let c = 0; c < cols; c++) {
+                const lit = (r + c + i) % 3 === 0;
+                elems.push(
+                  <Rect
+                    key={`w-${i}-${r}-${c}`}
+                    x={bx + bw * (0.18 + c * 0.28)}
+                    y={by + visibleH * (0.1 + r * (0.85 / rows))}
+                    width={bw * 0.14}
+                    height={visibleH * (0.5 / rows)}
+                    fill={lit ? win : 'rgba(40,50,70,0.4)'}
+                    opacity={0.85}
+                  />,
+                );
+              }
+            }
+            return elems;
+          })}
+        </Svg>
+      </View>
+    );
+  },
+  // Mid layer = loc de joaca: tobogan + leagan + balansoar, intre copaci.
   renderMidLayer: ({ width: W, height: H, color }) => {
-    const buildings = shade(color, -0.35);
-    const window_glow = '#FFE3A8';
-    const backTopY = H * 0.45;
-    const frontTopY = H * 0.78;
+    const grass = color;
+    const metal = '#C0504D';
+    const yellow = '#F2C14E';
+    const blue = '#4E8FD6';
+    const frontTopY = H * 0.82;
     return (
       <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        {/* Silueta oras in spate — incepe/termina la backTopY */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${backTopY}`,
-            `${W * 0.08},${backTopY}`,
-            `${W * 0.08},${H * 0.3}`,
-            `${W * 0.18},${H * 0.3}`,
-            `${W * 0.18},${H * 0.2}`,
-            `${W * 0.25},${H * 0.2}`,
-            `${W * 0.25},${H * 0.35}`,
-            `${W * 0.4},${H * 0.35}`,
-            `${W * 0.4},${H * 0.15}`,
-            `${W * 0.5},${H * 0.15}`,
-            `${W * 0.5},${H * 0.35}`,
-            `${W * 0.62},${H * 0.35}`,
-            `${W * 0.62},${H * 0.25}`,
-            `${W * 0.72},${H * 0.25}`,
-            `${W * 0.72},${H * 0.3}`,
-            `${W * 0.85},${H * 0.3}`,
-            `${W * 0.85},${backTopY}`,
-            `${W},${backTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={buildings}
-        />
-        {/* Geamuri luminate */}
-        <Rect x={W * 0.1} y={H * 0.32} width={3} height={3} fill={window_glow} />
-        <Rect x={W * 0.14} y={H * 0.36} width={3} height={3} fill={window_glow} />
-        <Rect x={W * 0.42} y={H * 0.18} width={3} height={3} fill={window_glow} />
-        <Rect x={W * 0.46} y={H * 0.22} width={3} height={3} fill={window_glow} />
-        <Rect x={W * 0.65} y={H * 0.28} width={3} height={3} fill={window_glow} />
-        {/* Iarba parc in fata */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${frontTopY}`,
-            `${W * 0.3},${H * 0.62}`,
-            `${W * 0.55},${H * 0.72}`,
-            `${W * 0.8},${H * 0.62}`,
-            `${W},${frontTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={color}
+        <Defs>
+          <LinearGradient id="dogTree" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(grass, 0.2)} />
+            <Stop offset="1" stopColor={shade(grass, -0.1)} />
+          </LinearGradient>
+        </Defs>
+
+        {/* Copac stanga */}
+        <Rect x={W * 0.04} y={H * 0.45} width={W * 0.03} height={H * 0.4} fill="#7A5232" />
+        <Circle cx={W * 0.055} cy={H * 0.4} r={W * 0.07} fill="url(#dogTree)" />
+
+        {/* TOBOGAN */}
+        {/* scara */}
+        <Rect x={W * 0.16} y={H * 0.42} width={W * 0.02} height={H * 0.42} fill={metal} />
+        <Rect x={W * 0.215} y={H * 0.42} width={W * 0.02} height={H * 0.42} fill={metal} />
+        <Line x1={W * 0.16} y1={H * 0.52} x2={W * 0.235} y2={H * 0.52} stroke={metal} strokeWidth={2} />
+        <Line x1={W * 0.16} y1={H * 0.62} x2={W * 0.235} y2={H * 0.62} stroke={metal} strokeWidth={2} />
+        <Line x1={W * 0.16} y1={H * 0.72} x2={W * 0.235} y2={H * 0.72} stroke={metal} strokeWidth={2} />
+        {/* platforma sus */}
+        <Rect x={W * 0.16} y={H * 0.4} width={W * 0.09} height={H * 0.03} fill={yellow} />
+        {/* panta tobogan */}
+        <Path d={`M${W * 0.235},${H * 0.43} L${W * 0.33},${H * 0.83} L${W * 0.3},${H * 0.83} L${W * 0.21},${H * 0.45} Z`} fill={blue} />
+
+        {/* LEAGAN — cadru A pe ambele parti + bara orizontala sus */}
+        {/* picioare stanga (V) spre coltul stang al barei */}
+        <Line x1={W * 0.4} y1={H * 0.84} x2={W * 0.45} y2={H * 0.42} stroke={metal} strokeWidth={3} strokeLinecap="round" />
+        <Line x1={W * 0.46} y1={H * 0.84} x2={W * 0.45} y2={H * 0.42} stroke={metal} strokeWidth={3} strokeLinecap="round" />
+        {/* picioare dreapta (V) spre coltul drept al barei */}
+        <Line x1={W * 0.6} y1={H * 0.84} x2={W * 0.55} y2={H * 0.42} stroke={metal} strokeWidth={3} strokeLinecap="round" />
+        <Line x1={W * 0.54} y1={H * 0.84} x2={W * 0.55} y2={H * 0.42} stroke={metal} strokeWidth={3} strokeLinecap="round" />
+        {/* bara orizontala de sus */}
+        <Line x1={W * 0.44} y1={H * 0.42} x2={W * 0.56} y2={H * 0.42} stroke={metal} strokeWidth={3} strokeLinecap="round" />
+        {/* doua lanturi care atarna din bara, centrate */}
+        <Line x1={W * 0.485} y1={H * 0.42} x2={W * 0.485} y2={H * 0.66} stroke="#555" strokeWidth={1.5} />
+        <Line x1={W * 0.515} y1={H * 0.42} x2={W * 0.515} y2={H * 0.66} stroke="#555" strokeWidth={1.5} />
+        {/* scaun */}
+        <Rect x={W * 0.475} y={H * 0.66} width={W * 0.05} height={H * 0.025} rx={2} fill={yellow} />
+
+        {/* BALANSOAR */}
+        <Circle cx={W * 0.72} cy={H * 0.78} r={W * 0.015} fill={metal} />
+        <Rect x={W * 0.62} y={H * 0.7} width={W * 0.2} height={H * 0.025} rx={3} fill={blue} transform={`rotate(-8 ${W * 0.72} ${H * 0.71})`} />
+
+        {/* Copac dreapta */}
+        <Rect x={W * 0.92} y={H * 0.45} width={W * 0.03} height={H * 0.4} fill="#7A5232" />
+        <Circle cx={W * 0.935} cy={H * 0.4} r={W * 0.08} fill="url(#dogTree)" />
+
+        {/* Linie de iarba in fata (seamless la frontTopY) */}
+        <Path
+          d={`M0,${H} L0,${frontTopY} Q${W * 0.5},${H * 0.76} ${W},${frontTopY} L${W},${H} Z`}
+          fill={shade(grass, -0.05)}
         />
       </Svg>
     );
   },
+  // Sol = alee de parc + iarba + flori.
   renderGroundLayer: ({ width: W, height: H, color }) => {
-    const path = '#B8A878';
-    const flower = '#FFC9D9';
+    const grass = color;
+    const path = '#C9B486';
     return (
       <Svg width={W} height={H}>
-        <Rect x={0} y={0} width={W} height={H} fill={color} />
-        {/* Cararea de parc */}
-        <Rect x={0} y={H * 0.45} width={W} height={H * 0.18} fill={path} opacity={0.7} />
-        {/* Florile */}
-        <Circle cx={W * 0.18} cy={H * 0.75} r={3} fill={flower} />
-        <Circle cx={W * 0.42} cy={H * 0.78} r={3} fill={flower} />
-        <Circle cx={W * 0.6} cy={H * 0.75} r={3} fill={flower} />
-        <Circle cx={W * 0.78} cy={H * 0.8} r={3} fill={flower} />
-      </Svg>
-    );
-  },
-  renderCloudsLayer: ({ width: W }) => {
-    const H = 70;
-    return (
-      <Svg width={W} height={H}>
-        <Circle cx={W * 0.2} cy={26} r={22} fill="rgba(255,255,255,0.8)" />
-        <Circle cx={W * 0.3} cy={36} r={18} fill="rgba(255,255,255,0.8)" />
-        <Circle cx={W * 0.55} cy={22} r={20} fill="rgba(255,255,255,0.75)" />
-        <Circle cx={W * 0.64} cy={32} r={24} fill="rgba(255,255,255,0.75)" />
-        <Circle cx={W * 0.82} cy={28} r={20} fill="rgba(255,255,255,0.8)" />
+        <Defs>
+          <LinearGradient id="dogGround" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(grass, 0.1)} />
+            <Stop offset="1" stopColor={shade(grass, -0.12)} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={W} height={H} fill="url(#dogGround)" />
+        {/* Alee */}
+        <Rect x={0} y={H * 0.4} width={W} height={H * 0.22} fill={path} opacity={0.85} />
+        <Path d={`M0,${H * 0.51} L${W},${H * 0.51}`} stroke={shade(path, -0.12)} strokeWidth={1.5} strokeDasharray="10 8" opacity={0.5} />
+        {/* Flori */}
+        <Circle cx={W * 0.16} cy={H * 0.78} r={3.5} fill="#FFC9D9" />
+        <Circle cx={W * 0.16} cy={H * 0.78} r={1.5} fill="#FFE876" />
+        <Circle cx={W * 0.4} cy={H * 0.82} r={3.5} fill="#C9D9FF" />
+        <Circle cx={W * 0.62} cy={H * 0.78} r={3.5} fill="#FFC9D9" />
+        <Circle cx={W * 0.84} cy={H * 0.82} r={3.5} fill="#D9FFC9" />
       </Svg>
     );
   },

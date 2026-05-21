@@ -9,10 +9,10 @@
 // merge prin lume fara obstacole/encounters.
 
 import './darth-vader';
-// import './stitch';   // exemplu pentru cand creezi fisierul
-// import './yoda';
-// import './groot';
-// import './dog';
+import './stitch';
+import './yoda';
+import './groot';
+import './dog';
 
 export { getStoryForPet, listStorySlugs } from './registry';
 export type {

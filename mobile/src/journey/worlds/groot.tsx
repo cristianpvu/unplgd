@@ -1,7 +1,16 @@
-// Groot — padure alien luxurianta cu bioluminescenta. Copaci uriasi, plante
-// stralucitoare, spori care plutesc. Vibe: verde adanc, magic, viu.
+// groot — padure alien luxurianta, bioluminescenta noaptea. Copaci uriasi cu
+// trunchiuri inalte si canopy stratificat, ferigi, plante stralucitoare.
+// Forme organice cu curbe smooth (Path) si gradienturi.
 
-import Svg, { Circle, Polygon, Rect } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  Ellipse,
+  LinearGradient,
+  Path,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { registerWorld } from './registry';
 import { shade } from './util';
 import type { WorldPack } from './types';
@@ -13,40 +22,41 @@ const PACK: WorldPack = {
     {
       key: 'day',
       name: 'Padurea adanca',
-      skyColor: '#87C9C5',
+      skyColor: '#8FCFC2',
       midColor: '#4A8C3A',
       groundColor: '#2E5C28',
       accent: '#FF6B9D',
-      celestial: { shape: 'sun', color: '#FFE876', position: [0.72, 0.16], size: 80 },
     },
     {
       key: 'night',
       name: 'Padurea stralucitoare',
-      skyColor: '#1A2D3D',
-      midColor: '#2E5A4A',
-      groundColor: '#1F3025',
+      skyColor: '#162A3A',
+      midColor: '#23503E',
+      groundColor: '#19281E',
       accent: '#9BFFB8',
-      celestial: { shape: 'moon', color: '#D8FFE5', position: [0.6, 0.1], size: 90 },
     },
   ],
   obstacles: [
     {
       key: 'giant_root',
-      render: ({ width: W, height: H }) => {
+      render: ({ width: W, height: H, color }) => {
         const wood = '#6B4A2A';
-        const dark = shade(wood, -0.2);
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.05},${H} ${W * 0.1},${H * 0.6} ${W * 0.35},${H * 0.3} ${W * 0.65},${H * 0.3} ${W * 0.9},${H * 0.6} ${W * 0.95},${H}`}
-              fill={wood}
+            <Defs>
+              <LinearGradient id="grRoot" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(wood, 0.18)} />
+                <Stop offset="1" stopColor={shade(wood, -0.22)} />
+              </LinearGradient>
+            </Defs>
+            {/* Radacina arcuita care iese si reintra in pamant */}
+            <Path
+              d={`M${W * 0.05},${H} Q${W * 0.15},${H * 0.3} ${W * 0.5},${H * 0.28} Q${W * 0.85},${H * 0.3} ${W * 0.95},${H} L${W * 0.78},${H} Q${W * 0.7},${H * 0.5} ${W * 0.5},${H * 0.48} Q${W * 0.3},${H * 0.5} ${W * 0.22},${H} Z`}
+              fill="url(#grRoot)"
             />
-            <Polygon
-              points={`${W * 0.25},${H * 0.95} ${W * 0.3},${H * 0.55} ${W * 0.5},${H * 0.4} ${W * 0.7},${H * 0.55} ${W * 0.75},${H * 0.95}`}
-              fill={dark}
-              opacity={0.6}
-            />
-            <Circle cx={W * 0.5} cy={H * 0.45} r={W * 0.06} fill="#1F3025" />
+            {/* Noduri */}
+            <Ellipse cx={W * 0.5} cy={H * 0.36} rx={W * 0.06} ry={W * 0.04} fill={shade(wood, -0.3)} />
+            <Circle cx={W * 0.3} cy={H * 0.62} r={W * 0.03} fill={shade(wood, -0.3)} />
           </Svg>
         );
       },
@@ -54,18 +64,24 @@ const PACK: WorldPack = {
     {
       key: 'mushroom',
       render: ({ width: W, height: H, color }) => {
-        const stem = '#E8DCC5';
-        const bright = shade(color, 0.3);
+        const cap = color;
+        const stem = '#EDE3CC';
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.4} y={H * 0.4} width={W * 0.2} height={H * 0.6} fill={stem} />
-            <Polygon
-              points={`${W * 0.1},${H * 0.5} ${W * 0.5},${H * 0.05} ${W * 0.9},${H * 0.5} ${W * 0.7},${H * 0.5} ${W * 0.3},${H * 0.5}`}
-              fill={color}
-            />
-            <Circle cx={W * 0.35} cy={H * 0.3} r={W * 0.06} fill={bright} />
-            <Circle cx={W * 0.55} cy={H * 0.25} r={W * 0.05} fill={bright} />
-            <Circle cx={W * 0.7} cy={H * 0.35} r={W * 0.05} fill={bright} />
+            <Defs>
+              <LinearGradient id="grCap" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(cap, 0.22)} />
+                <Stop offset="1" stopColor={shade(cap, -0.12)} />
+              </LinearGradient>
+            </Defs>
+            {/* Picior */}
+            <Path d={`M${W * 0.4},${H * 0.45} Q${W * 0.38},${H * 0.9} ${W * 0.42},${H} L${W * 0.58},${H} Q${W * 0.62},${H * 0.9} ${W * 0.6},${H * 0.45} Z`} fill={stem} />
+            {/* Palarie boltita */}
+            <Path d={`M${W * 0.12},${H * 0.46} Q${W * 0.5},${H * 0.0} ${W * 0.88},${H * 0.46} Q${W * 0.5},${H * 0.56} ${W * 0.12},${H * 0.46} Z`} fill="url(#grCap)" />
+            {/* Buline */}
+            <Circle cx={W * 0.35} cy={H * 0.3} r={W * 0.05} fill={shade(cap, 0.35)} />
+            <Circle cx={W * 0.55} cy={H * 0.24} r={W * 0.045} fill={shade(cap, 0.35)} />
+            <Circle cx={W * 0.68} cy={H * 0.34} r={W * 0.04} fill={shade(cap, 0.35)} />
           </Svg>
         );
       },
@@ -73,16 +89,16 @@ const PACK: WorldPack = {
     {
       key: 'vine',
       render: ({ width: W, height: H, color }) => {
-        const dark = shade(color, -0.3);
+        const leaf = color;
+        const stem = shade('#3A6B2A', 0);
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.5},${H * 0.05} ${W * 0.6},${H * 0.05} ${W * 0.4},${H * 0.3} ${W * 0.55},${H * 0.5} ${W * 0.35},${H * 0.7} ${W * 0.5},${H * 0.9} ${W * 0.4},${H * 0.9} ${W * 0.3},${H * 0.7} ${W * 0.45},${H * 0.5} ${W * 0.3},${H * 0.3}`}
-              fill={dark}
-            />
-            <Circle cx={W * 0.4} cy={H * 0.3} r={W * 0.07} fill={color} />
-            <Circle cx={W * 0.55} cy={H * 0.5} r={W * 0.08} fill={color} />
-            <Circle cx={W * 0.35} cy={H * 0.7} r={W * 0.07} fill={color} />
+            {/* Liana care atarna serpuit */}
+            <Path d={`M${W * 0.5},0 Q${W * 0.3},${H * 0.3} ${W * 0.55},${H * 0.5} Q${W * 0.78},${H * 0.72} ${W * 0.45},${H}`} stroke={stem} strokeWidth={W * 0.04} fill="none" strokeLinecap="round" />
+            {/* Frunze in forma de inima de-a lungul */}
+            <Path d={`M${W * 0.4},${H * 0.28} q-${W * 0.08},-${W * 0.06} 0,-${W * 0.12} q${W * 0.08},${W * 0.06} 0,${W * 0.12} Z`} fill={leaf} />
+            <Path d={`M${W * 0.6},${H * 0.5} q${W * 0.08},-${W * 0.06} 0,-${W * 0.12} q-${W * 0.08},${W * 0.06} 0,${W * 0.12} Z`} fill={leaf} />
+            <Path d={`M${W * 0.55},${H * 0.74} q-${W * 0.08},-${W * 0.06} 0,-${W * 0.12} q${W * 0.08},${W * 0.06} 0,${W * 0.12} Z`} fill={leaf} />
           </Svg>
         );
       },
@@ -90,39 +106,46 @@ const PACK: WorldPack = {
     {
       key: 'bloom',
       render: ({ width: W, height: H, color }) => {
-        const bright = shade(color, 0.3);
+        const petal = color;
         const stem = '#3A6B2A';
         return (
           <Svg width={W} height={H}>
+            <Defs>
+              <LinearGradient id="grBloom" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(petal, 0.2)} />
+                <Stop offset="1" stopColor={shade(petal, -0.1)} />
+              </LinearGradient>
+            </Defs>
+            {/* Tulpina */}
             <Rect x={W * 0.46} y={H * 0.5} width={W * 0.08} height={H * 0.5} fill={stem} />
-            <Circle cx={W * 0.5} cy={H * 0.4} r={W * 0.25} fill={color} />
-            <Circle cx={W * 0.3} cy={H * 0.35} r={W * 0.18} fill={color} />
-            <Circle cx={W * 0.7} cy={H * 0.35} r={W * 0.18} fill={color} />
-            <Circle cx={W * 0.35} cy={H * 0.55} r={W * 0.18} fill={color} />
-            <Circle cx={W * 0.65} cy={H * 0.55} r={W * 0.18} fill={color} />
-            <Circle cx={W * 0.5} cy={H * 0.42} r={W * 0.1} fill={bright} />
+            {/* 5 petale via elipse rotite in jurul centrului */}
+            {[0, 72, 144, 216, 288].map((a) => {
+              const rad = (a * Math.PI) / 180;
+              const cx = W * 0.5 + Math.cos(rad) * W * 0.18;
+              const cy = H * 0.38 + Math.sin(rad) * W * 0.18;
+              return <Ellipse key={a} cx={cx} cy={cy} rx={W * 0.13} ry={W * 0.08} fill="url(#grBloom)" />;
+            })}
+            <Circle cx={W * 0.5} cy={H * 0.38} r={W * 0.1} fill={shade(petal, 0.35)} />
           </Svg>
         );
       },
     },
   ],
   ambient: [
-    // Spori care plutesc lent prin aer.
     {
       key: 'spore',
       layer: 'back',
       density: 6,
       yRange: [0.15, 0.5],
       sizeRange: [4, 8],
-      speedRange: [-25, -10],
+      speedRange: [-24, -10],
       render: ({ size }) => (
         <Svg width={size} height={size}>
-          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="#FFFFFF" opacity={0.5} />
-          <Circle cx={size / 2} cy={size / 2} r={size / 3} fill="#CFFFCF" opacity={0.7} />
+          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="rgba(255,255,255,0.45)" />
+          <Circle cx={size / 2} cy={size / 2} r={size / 3} fill="rgba(207,255,207,0.7)" />
         </Svg>
       ),
     },
-    // Licurici verzi-albastrii.
     {
       key: 'firefly',
       layer: 'mid',
@@ -137,7 +160,6 @@ const PACK: WorldPack = {
         </Svg>
       ),
     },
-    // Fluturi mari bioluminescenti.
     {
       key: 'butterfly',
       layer: 'fore',
@@ -147,84 +169,166 @@ const PACK: WorldPack = {
       speedRange: [-65, -35],
       render: ({ size }) => (
         <Svg width={size} height={size}>
-          <Circle cx={size * 0.3} cy={size * 0.45} r={size * 0.25} fill="#FF6BC9" opacity={0.85} />
-          <Circle cx={size * 0.7} cy={size * 0.45} r={size * 0.25} fill="#9BFFC9" opacity={0.85} />
-          <Rect x={size * 0.47} y={size * 0.3} width={size * 0.06} height={size * 0.5} fill="#3A2A4A" />
-          <Circle cx={size * 0.3} cy={size * 0.45} r={size * 0.08} fill="#FFFFFF" opacity={0.7} />
-          <Circle cx={size * 0.7} cy={size * 0.45} r={size * 0.08} fill="#FFFFFF" opacity={0.7} />
+          <Ellipse cx={size * 0.32} cy={size * 0.45} rx={size * 0.22} ry={size * 0.28} fill="#FF6BC9" opacity={0.85} />
+          <Ellipse cx={size * 0.68} cy={size * 0.45} rx={size * 0.22} ry={size * 0.28} fill="#9BFFC9" opacity={0.85} />
+          <Rect x={size * 0.47} y={size * 0.3} width={size * 0.06} height={size * 0.5} fill="#3A2A4A" rx={2} />
         </Svg>
       ),
     },
   ],
-  // Mid layer = copaci alien uriasi cu trunchiuri groase.
-  renderMidLayer: ({ width: W, height: H, color }) => {
-    const darker = shade(color, -0.2);
-    const trunk = '#5C3A2A';
-    const backTopY = H * 0.45;
-    const frontTopY = H * 0.7;
-    return (
-      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        {/* Copaci uriasi in spate */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${backTopY}`,
-            `${W * 0.15},${H * 0.2}`,
-            `${W * 0.3},${H * 0.35}`,
-            `${W * 0.5},${H * 0.15}`,
-            `${W * 0.7},${H * 0.4}`,
-            `${W * 0.85},${H * 0.25}`,
-            `${W},${backTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={darker}
-        />
-        {/* Trunchiuri masive */}
-        <Rect x={W * 0.18} y={H * 0.3} width={W * 0.06} height={H * 0.5} fill={trunk} opacity={0.7} />
-        <Rect x={W * 0.55} y={H * 0.25} width={W * 0.08} height={H * 0.55} fill={trunk} opacity={0.7} />
-        {/* Frunzis in fata */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${frontTopY}`,
-            `${W * 0.2},${H * 0.5}`,
-            `${W * 0.45},${H * 0.62}`,
-            `${W * 0.7},${H * 0.52}`,
-            `${W * 0.88},${H * 0.6}`,
-            `${W},${frontTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={color}
-        />
-      </Svg>
-    );
-  },
-  renderGroundLayer: ({ width: W, height: H, color }) => {
-    const lighter = shade(color, 0.15);
-    const glow = '#9BFFB8';
-    return (
-      <Svg width={W} height={H}>
-        <Rect x={0} y={0} width={W} height={H} fill={color} />
-        {/* Plante stralucitoare */}
-        <Circle cx={W * 0.16} cy={H * 0.5} r={5} fill={glow} opacity={0.7} />
-        <Circle cx={W * 0.36} cy={H * 0.65} r={4} fill={glow} opacity={0.7} />
-        <Circle cx={W * 0.56} cy={H * 0.55} r={6} fill={glow} opacity={0.7} />
-        <Circle cx={W * 0.76} cy={H * 0.7} r={5} fill={glow} opacity={0.7} />
-        {/* Iarba */}
-        <Circle cx={W * 0.26} cy={H * 0.75} r={3} fill={lighter} />
-        <Circle cx={W * 0.66} cy={H * 0.45} r={3} fill={lighter} />
-      </Svg>
-    );
-  },
+  // Cloud layer = ceata verzuie sus, blanda.
   renderCloudsLayer: ({ width: W }) => {
     const H = 70;
     return (
       <Svg width={W} height={H}>
-        <Circle cx={W * 0.2} cy={28} r={20} fill="rgba(180,220,200,0.4)" />
-        <Circle cx={W * 0.28} cy={36} r={16} fill="rgba(180,220,200,0.4)" />
-        <Circle cx={W * 0.52} cy={22} r={22} fill="rgba(180,220,200,0.4)" />
-        <Circle cx={W * 0.62} cy={32} r={18} fill="rgba(180,220,200,0.4)" />
-        <Circle cx={W * 0.82} cy={28} r={20} fill="rgba(180,220,200,0.4)" />
+        <Ellipse cx={W * 0.22} cy={32} rx={40} ry={18} fill="rgba(180,220,200,0.4)" />
+        <Ellipse cx={W * 0.55} cy={26} rx={44} ry={20} fill="rgba(180,220,200,0.35)" />
+        <Ellipse cx={W * 0.84} cy={32} rx={36} ry={16} fill="rgba(180,220,200,0.4)" />
+      </Svg>
+    );
+  },
+  // FARA back layer separat — brazii sunt in mid layer (ancorati de aceeasi
+  // linie iarba ca si copacii) ca sa nu mai pluteasca.
+  // Mid layer = padure DENSA. Brazi in 3 trepte (clasic) in spate + copaci
+  // clasici (trunchi subtire + coroana mare) in fata. Toti ancorati de baseY.
+  renderMidLayer: ({ width: W, height: H, color }) => {
+    const canopy = color;
+    const trunk = '#5A3E22';
+    const baseY = H * 0.95;
+    const firColor = shade(canopy, -0.28);
+    const firLight = shade(canopy, -0.18);
+
+    // 12 brazi in spate, distribuiti dens, in 3 trepte (silueta clasica).
+    const firs = [
+      { x: 0.04, h: 0.5 },
+      { x: 0.12, h: 0.55 },
+      { x: 0.2, h: 0.46 },
+      { x: 0.28, h: 0.6 },
+      { x: 0.36, h: 0.48 },
+      { x: 0.44, h: 0.54 },
+      { x: 0.52, h: 0.5 },
+      { x: 0.6, h: 0.58 },
+      { x: 0.68, h: 0.46 },
+      { x: 0.76, h: 0.55 },
+      { x: 0.84, h: 0.5 },
+      { x: 0.94, h: 0.52 },
+    ];
+
+    // 7 copaci in fata — trunchi SUBTIRE (1.2% din W) + coroana MARE (raza
+    // 0.22-0.3 din H, mult mai mare ca trunchiul).
+    const trees = [
+      { x: 0.08, trunkH: 0.32, crownR: 0.22 },
+      { x: 0.22, trunkH: 0.38, crownR: 0.26 },
+      { x: 0.36, trunkH: 0.34, crownR: 0.24 },
+      { x: 0.5, trunkH: 0.4, crownR: 0.28 },
+      { x: 0.64, trunkH: 0.32, crownR: 0.22 },
+      { x: 0.78, trunkH: 0.4, crownR: 0.28 },
+      { x: 0.92, trunkH: 0.34, crownR: 0.24 },
+    ];
+
+    // Brad in 3 trepte: trei triunghiuri stivuite, fiecare suprapus peste
+    // urmatorul cu 30%. trunkH = mic la baza.
+    const renderFir = (cx: number, totalH: number, key: string) => {
+      const trunkH = totalH * 0.08;
+      const tipY = baseY - totalH;
+      const t1Y = tipY + totalH * 0.45;
+      const t2Y = tipY + totalH * 0.72;
+      const treeBase = baseY - trunkH;
+      const half1 = totalH * 0.16; // tier sus, ingust
+      const half2 = totalH * 0.22; // tier mediu
+      const half3 = totalH * 0.28; // tier jos, lat
+      return [
+        // tier 3 (jos, cel mai lat)
+        <Path
+          key={`${key}-3`}
+          d={`M${cx},${t1Y} L${cx - half3},${treeBase} L${cx + half3},${treeBase} Z`}
+          fill={firColor}
+        />,
+        // tier 2 (mijloc)
+        <Path
+          key={`${key}-2`}
+          d={`M${cx},${tipY + totalH * 0.22} L${cx - half2},${t2Y} L${cx + half2},${t2Y} Z`}
+          fill={firLight}
+        />,
+        // tier 1 (sus, varful)
+        <Path
+          key={`${key}-1`}
+          d={`M${cx},${tipY} L${cx - half1},${tipY + totalH * 0.45} L${cx + half1},${tipY + totalH * 0.45} Z`}
+          fill={firColor}
+        />,
+        // trunchi mic
+        <Rect
+          key={`${key}-t`}
+          x={cx - W * 0.005}
+          y={treeBase}
+          width={W * 0.01}
+          height={trunkH}
+          fill={trunk}
+        />,
+      ];
+    };
+
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        <Defs>
+          <LinearGradient id="grLeaf" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(canopy, 0.18)} />
+            <Stop offset="1" stopColor={shade(canopy, -0.2)} />
+          </LinearGradient>
+        </Defs>
+
+        {/* Brazi in spate */}
+        {firs.flatMap((f, i) => renderFir(W * f.x, H * f.h, `f-${i}`))}
+
+        {/* Copaci in fata */}
+        {trees.flatMap((t, i) => {
+          const cx = W * t.x;
+          const trunkH = H * t.trunkH;
+          const r = H * t.crownR;
+          const trunkTopY = baseY - trunkH;
+          // Coroana se suprapune cu varful trunchiului (cy putin sub topY)
+          // ca trunchiul sa pareca infipt in coroana, nu separat.
+          const crownCy = trunkTopY - r * 0.45;
+          // Trunchi SUBTIRE — sa fie clar mai ingust decat coroana.
+          const trunkW = W * 0.013;
+          return [
+            <Rect
+              key={`tr-${i}`}
+              x={cx - trunkW / 2}
+              y={trunkTopY}
+              width={trunkW}
+              height={trunkH}
+              fill={trunk}
+            />,
+            <Circle key={`cr-${i}`} cx={cx} cy={crownCy} r={r} fill="url(#grLeaf)" />,
+          ];
+        })}
+
+        {/* Banda iarba in fata, acopera bazele */}
+        <Rect x={0} y={baseY - 2} width={W} height={H - baseY + 2} fill={shade(canopy, -0.2)} />
+      </Svg>
+    );
+  },
+  // Sol = muschi + plante stralucitoare + ferigi.
+  renderGroundLayer: ({ width: W, height: H, color }) => {
+    const moss = color;
+    const glow = '#9BFFB8';
+    return (
+      <Svg width={W} height={H}>
+        <Defs>
+          <LinearGradient id="grGround" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(moss, 0.12)} />
+            <Stop offset="1" stopColor={shade(moss, -0.12)} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={W} height={H} fill="url(#grGround)" />
+        {/* Ferigi mici (arce) */}
+        <Path d={`M${W * 0.1},${H * 0.85} Q${W * 0.13},${H * 0.5} ${W * 0.18},${H * 0.55}`} stroke={shade(moss, 0.2)} strokeWidth={2} fill="none" />
+        <Path d={`M${W * 0.1},${H * 0.85} Q${W * 0.08},${H * 0.55} ${W * 0.04},${H * 0.6}`} stroke={shade(moss, 0.2)} strokeWidth={2} fill="none" />
+        {/* Plante stralucitoare */}
+        <Circle cx={W * 0.3} cy={H * 0.55} r={4} fill={glow} opacity={0.7} />
+        <Circle cx={W * 0.55} cy={H * 0.68} r={5} fill={glow} opacity={0.7} />
+        <Circle cx={W * 0.78} cy={H * 0.5} r={4} fill={glow} opacity={0.7} />
       </Svg>
     );
   },

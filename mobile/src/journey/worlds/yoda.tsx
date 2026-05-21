@@ -1,239 +1,266 @@
-// Yoda — mlastina mistica cu ruine antice si licurici. Vibe: linistit,
-// misterios, atemporal. Cetate prin ceata + lumini ezitante.
+// baby-yoda — desertul Tatooine. Dune line, sori gemeni (binary sunset iconic),
+// mesa-uri stancoase in zare, vaporizatoare de umiditate, schelet de krayt
+// dragon. Forme cu curbe smooth (Path Q) si gradienturi, nu poligoane crude.
 
-import Svg, { Circle, Polygon, Rect } from 'react-native-svg';
+import Svg, {
+  Circle,
+  Defs,
+  Ellipse,
+  LinearGradient,
+  Path,
+  RadialGradient,
+  Rect,
+  Stop,
+} from 'react-native-svg';
 import { registerWorld } from './registry';
 import { shade } from './util';
 import type { WorldPack } from './types';
 
 const PACK: WorldPack = {
-  slug: 'yoda',
-  name: 'Mlastina antica',
+  // Trebuie sa coincida cu PetSpecies.slug din DB ('baby-yoda').
+  slug: 'baby-yoda',
+  name: 'Desertul Tatooine',
   biomes: [
     {
-      key: 'mist',
-      name: 'Templul in ceata',
-      skyColor: '#7E8B7E',
-      midColor: '#3B4A3B',
-      groundColor: '#2E3A2E',
-      accent: '#C9D17B',
-      celestial: { shape: 'sun', color: '#D8E0B0', position: [0.65, 0.2], size: 75 },
+      key: 'day',
+      name: 'Desertul in arsita',
+      skyColor: '#CFD8D0',
+      midColor: '#C99A5B',
+      groundColor: '#E0B873',
+      accent: '#E67E22',
     },
     {
-      key: 'firefly-night',
-      name: 'Noaptea licuricilor',
-      skyColor: '#1F2A2F',
-      midColor: '#2A3A30',
-      groundColor: '#1E2A1E',
-      accent: '#B8FF6B',
-      celestial: { shape: 'moon', color: '#E8F5D8', position: [0.7, 0.13], size: 85 },
+      key: 'binary-sunset',
+      name: 'Apusul celor doi sori',
+      skyColor: '#F0A35A',
+      midColor: '#8A5A3C',
+      groundColor: '#C28A4E',
+      accent: '#FFD93D',
     },
   ],
   obstacles: [
     {
-      key: 'ancient_pillar',
+      key: 'boulder',
       render: ({ width: W, height: H, color }) => {
-        const stone = '#7A7560';
-        const dark = shade(stone, -0.2);
+        const rock = '#B07A45';
         return (
           <Svg width={W} height={H}>
-            <Rect x={W * 0.2} y={H * 0.85} width={W * 0.6} height={H * 0.15} fill={dark} />
-            <Rect x={W * 0.3} y={H * 0.1} width={W * 0.4} height={H * 0.78} fill={stone} />
-            <Rect x={W * 0.32} y={H * 0.2} width={W * 0.05} height={H * 0.6} fill={dark} opacity={0.4} />
-            <Rect x={W * 0.63} y={H * 0.2} width={W * 0.05} height={H * 0.6} fill={dark} opacity={0.4} />
-            <Rect x={W * 0.15} y={H * 0.05} width={W * 0.7} height={H * 0.08} fill={dark} />
-            <Circle cx={W * 0.5} cy={H * 0.4} r={W * 0.06} fill={color} opacity={0.7} />
+            <Defs>
+              <LinearGradient id="tatBoulder" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={shade(rock, 0.18)} />
+                <Stop offset="1" stopColor={shade(rock, -0.22)} />
+              </LinearGradient>
+            </Defs>
+            {/* Bolovan rotunjit cu varf neted */}
+            <Path
+              d={`M${W * 0.12},${H} Q${W * 0.04},${H * 0.55} ${W * 0.28},${H * 0.32} Q${W * 0.5},${H * 0.12} ${W * 0.72},${H * 0.3} Q${W * 0.96},${H * 0.5} ${W * 0.88},${H} Z`}
+              fill="url(#tatBoulder)"
+            />
+            {/* Crapaturi subtile */}
+            <Path d={`M${W * 0.45},${H * 0.3} L${W * 0.4},${H * 0.7}`} stroke={shade(rock, -0.35)} strokeWidth={2} fill="none" opacity={0.5} />
+            <Path d={`M${W * 0.6},${H * 0.4} L${W * 0.66},${H * 0.75}`} stroke={shade(rock, -0.35)} strokeWidth={1.5} fill="none" opacity={0.4} />
           </Svg>
         );
       },
     },
     {
-      key: 'root',
-      render: ({ width: W, height: H }) => {
-        const brown = '#4A3826';
-        const dark = shade(brown, -0.2);
+      key: 'vaporator',
+      render: ({ width: W, height: H, color }) => {
+        const metal = '#9A9488';
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.05},${H} ${W * 0.15},${H * 0.55} ${W * 0.4},${H * 0.4} ${W * 0.6},${H * 0.5} ${W * 0.8},${H * 0.55} ${W * 0.95},${H}`}
-              fill={brown}
-            />
-            <Rect x={W * 0.35} y={H * 0.45} width={W * 0.05} height={H * 0.5} fill={dark} opacity={0.5} />
-            <Rect x={W * 0.55} y={H * 0.55} width={W * 0.05} height={H * 0.4} fill={dark} opacity={0.5} />
-            <Circle cx={W * 0.5} cy={H * 0.45} r={W * 0.08} fill={dark} />
+            <Defs>
+              <LinearGradient id="tatVap" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor={shade(metal, -0.2)} />
+                <Stop offset="0.5" stopColor={shade(metal, 0.15)} />
+                <Stop offset="1" stopColor={shade(metal, -0.25)} />
+              </LinearGradient>
+            </Defs>
+            {/* Coloana centrala a vaporizatorului de umiditate */}
+            <Rect x={W * 0.43} y={H * 0.18} width={W * 0.14} height={H * 0.78} rx={W * 0.04} fill="url(#tatVap)" />
+            {/* Capac conic */}
+            <Path d={`M${W * 0.4},${H * 0.2} L${W * 0.5},${H * 0.06} L${W * 0.6},${H * 0.2} Z`} fill={shade(metal, 0.1)} />
+            {/* Aripioare verticale (tije) */}
+            <Rect x={W * 0.34} y={H * 0.28} width={W * 0.03} height={H * 0.55} fill={shade(metal, -0.1)} />
+            <Rect x={W * 0.63} y={H * 0.28} width={W * 0.03} height={H * 0.55} fill={shade(metal, -0.1)} />
+            {/* Inele */}
+            <Rect x={W * 0.4} y={H * 0.4} width={W * 0.2} height={H * 0.03} fill={shade(metal, -0.3)} />
+            <Rect x={W * 0.4} y={H * 0.62} width={W * 0.2} height={H * 0.03} fill={shade(metal, -0.3)} />
           </Svg>
         );
       },
     },
     {
-      key: 'holocron',
+      key: 'bones',
       render: ({ width: W, height: H, color }) => {
-        const bright = shade(color, 0.3);
+        const bone = '#E8DFC8';
+        const dark = shade(bone, -0.2);
         return (
           <Svg width={W} height={H}>
-            <Polygon
-              points={`${W * 0.5},${H * 0.15} ${W * 0.85},${H * 0.4} ${W * 0.85},${H * 0.75} ${W * 0.5},${H} ${W * 0.15},${H * 0.75} ${W * 0.15},${H * 0.4}`}
-              fill={color}
-              opacity={0.7}
-            />
-            <Polygon
-              points={`${W * 0.5},${H * 0.15} ${W * 0.85},${H * 0.4} ${W * 0.5},${H * 0.55} ${W * 0.15},${H * 0.4}`}
-              fill={bright}
-              opacity={0.85}
-            />
-            <Circle cx={W * 0.5} cy={H * 0.55} r={W * 0.08} fill="#FFFFFF" opacity={0.9} />
+            {/* Coaste de krayt dragon — arce osoase iesind din nisip */}
+            <Path d={`M${W * 0.2},${H} Q${W * 0.1},${H * 0.35} ${W * 0.32},${H * 0.25}`} stroke={bone} strokeWidth={W * 0.07} fill="none" strokeLinecap="round" />
+            <Path d={`M${W * 0.4},${H} Q${W * 0.32},${H * 0.25} ${W * 0.5},${H * 0.15}`} stroke={bone} strokeWidth={W * 0.08} fill="none" strokeLinecap="round" />
+            <Path d={`M${W * 0.6},${H} Q${W * 0.68},${H * 0.25} ${W * 0.5},${H * 0.15}`} stroke={bone} strokeWidth={W * 0.08} fill="none" strokeLinecap="round" />
+            <Path d={`M${W * 0.8},${H} Q${W * 0.9},${H * 0.35} ${W * 0.68},${H * 0.25}`} stroke={dark} strokeWidth={W * 0.07} fill="none" strokeLinecap="round" />
+            {/* Coloana */}
+            <Path d={`M${W * 0.32},${H * 0.25} L${W * 0.68},${H * 0.25}`} stroke={bone} strokeWidth={W * 0.05} strokeLinecap="round" />
           </Svg>
         );
       },
     },
   ],
   ambient: [
-    // Pete de ceata care plutesc in fundal.
+    // Pasare de prada (ca un dewback flying) departe in cer.
     {
-      key: 'mist',
+      key: 'raptor',
       layer: 'back',
-      density: 3,
-      yRange: [0.3, 0.6],
-      sizeRange: [60, 110],
-      speedRange: [-25, -10],
+      density: 1,
+      yRange: [0.12, 0.28],
+      sizeRange: [16, 24],
+      speedRange: [-40, -22],
       render: ({ size }) => (
         <Svg width={size} height={size * 0.4}>
-          <Circle cx={size * 0.3} cy={size * 0.2} r={size * 0.2} fill="rgba(255,255,255,0.18)" />
-          <Circle cx={size * 0.55} cy={size * 0.18} r={size * 0.25} fill="rgba(255,255,255,0.18)" />
-          <Circle cx={size * 0.75} cy={size * 0.22} r={size * 0.18} fill="rgba(255,255,255,0.18)" />
-        </Svg>
-      ),
-    },
-    // Licurici verzi care zboara mediu.
-    {
-      key: 'firefly',
-      layer: 'mid',
-      density: 6,
-      yRange: [0.3, 0.7],
-      sizeRange: [4, 8],
-      speedRange: [-50, -20],
-      render: ({ size }) => (
-        <Svg width={size} height={size}>
-          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="#B8FF6B" opacity={0.9} />
-          <Circle cx={size / 2} cy={size / 2} r={size / 4} fill="#FFFFFF" />
-        </Svg>
-      ),
-    },
-    // Frunze cazand din copaci (aproape).
-    {
-      key: 'leaf',
-      layer: 'fore',
-      density: 2,
-      yRange: [0.45, 0.7],
-      sizeRange: [10, 16],
-      speedRange: [-80, -50],
-      render: ({ size }) => (
-        <Svg width={size} height={size}>
-          <Polygon
-            points={`${size * 0.5},0 ${size * 0.85},${size * 0.4} ${size * 0.5},${size} ${size * 0.15},${size * 0.4}`}
-            fill="#5C7A3D"
-            opacity={0.85}
+          <Path
+            d={`M0,${size * 0.3} Q${size * 0.25},${size * 0.02} ${size * 0.5},${size * 0.28} Q${size * 0.75},${size * 0.02} ${size},${size * 0.3}`}
+            stroke="rgba(80,60,40,0.7)"
+            strokeWidth={2.5}
+            fill="none"
           />
         </Svg>
       ),
     },
+    // Praf de nisip purtat de vant aproape de sol.
+    {
+      key: 'sand',
+      layer: 'fore',
+      density: 6,
+      yRange: [0.6, 0.85],
+      sizeRange: [3, 7],
+      speedRange: [-110, -60],
+      render: ({ size }) => (
+        <Svg width={size} height={size}>
+          <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="rgba(220,190,140,0.6)" />
+        </Svg>
+      ),
+    },
+    // Valuri de caldura (heat shimmer) — cercuri palide care plutesc lent.
+    {
+      key: 'haze',
+      layer: 'mid',
+      density: 3,
+      yRange: [0.5, 0.65],
+      sizeRange: [40, 80],
+      speedRange: [-20, -8],
+      render: ({ size }) => (
+        <Svg width={size} height={size * 0.3}>
+          <Ellipse cx={size / 2} cy={size * 0.15} rx={size / 2} ry={size * 0.12} fill="rgba(255,240,210,0.15)" />
+        </Svg>
+      ),
+    },
   ],
-  // Mid layer = ruine antice prin ceata. Coloane sparte + arcuri.
-  renderMidLayer: ({ width: W, height: H, color }) => {
-    const darker = shade(color, -0.18);
-    const stone = shade(color, 0.05);
-    const backTopY = H * 0.55;
-    const frontTopY = H * 0.78;
-    return (
-      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        {/* Dealuri mlastinoase in spate */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${backTopY}`,
-            `${W * 0.2},${H * 0.35}`,
-            `${W * 0.4},${H * 0.5}`,
-            `${W * 0.6},${H * 0.32}`,
-            `${W * 0.8},${H * 0.48}`,
-            `${W},${backTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={darker}
-        />
-        {/* Ruine antice — coloane sparte, ca silueta */}
-        <Rect x={W * 0.15} y={H * 0.5} width={W * 0.04} height={H * 0.25} fill={stone} opacity={0.6} />
-        <Rect x={W * 0.4} y={H * 0.45} width={W * 0.05} height={H * 0.3} fill={stone} opacity={0.6} />
-        <Rect x={W * 0.42} y={H * 0.43} width={W * 0.18} height={H * 0.03} fill={stone} opacity={0.6} />
-        <Rect x={W * 0.6} y={H * 0.5} width={W * 0.04} height={H * 0.25} fill={stone} opacity={0.6} />
-        <Rect x={W * 0.78} y={H * 0.55} width={W * 0.05} height={H * 0.2} fill={stone} opacity={0.6} />
-        {/* Vegetatie in fata */}
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${frontTopY}`,
-            `${W * 0.25},${H * 0.62}`,
-            `${W * 0.5},${H * 0.72}`,
-            `${W * 0.75},${H * 0.6}`,
-            `${W},${frontTopY}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={color}
-        />
-      </Svg>
-    );
-  },
-  // Sol = muschi cu ciuperci.
-  renderGroundLayer: ({ width: W, height: H, color }) => {
-    const lighter = shade(color, 0.15);
-    return (
-      <Svg width={W} height={H}>
-        <Rect x={0} y={0} width={W} height={H} fill={color} />
-        {/* Ciuperci */}
-        <Rect x={W * 0.18} y={H * 0.6} width={4} height={8} fill="#E8DCC5" />
-        <Circle cx={W * 0.19} cy={H * 0.58} r={6} fill="#A85850" />
-        <Rect x={W * 0.42} y={H * 0.7} width={3} height={6} fill="#E8DCC5" />
-        <Circle cx={W * 0.435} cy={H * 0.68} r={4} fill="#A85850" />
-        <Rect x={W * 0.72} y={H * 0.62} width={4} height={8} fill="#E8DCC5" />
-        <Circle cx={W * 0.74} cy={H * 0.6} r={5} fill="#A85850" />
-        {/* Muschi luminos */}
-        <Circle cx={W * 0.32} cy={H * 0.5} r={4} fill={lighter} />
-        <Circle cx={W * 0.58} cy={H * 0.55} r={5} fill={lighter} />
-      </Svg>
-    );
-  },
-  // Back layer — silueta munti foarte departe, ploata in ceata.
-  renderBackLayer: ({ width: W, height: H, color }) => {
-    const distant = shade(color, -0.05);
-    return (
-      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
-        <Polygon
-          points={[
-            `0,${H}`,
-            `0,${H * 0.75}`,
-            `${W * 0.18},${H * 0.45}`,
-            `${W * 0.35},${H * 0.6}`,
-            `${W * 0.55},${H * 0.4}`,
-            `${W * 0.75},${H * 0.55}`,
-            `${W * 0.9},${H * 0.5}`,
-            `${W},${H * 0.75}`,
-            `${W},${H}`,
-          ].join(' ')}
-          fill={distant}
-          opacity={0.55}
-        />
-      </Svg>
-    );
-  },
-  // Cloud layer = ceata densa sus.
+  // Cloud layer = sorii gemeni + cer cu haze. Tatooine n-are nori grei.
   renderCloudsLayer: ({ width: W }) => {
-    const H = 90;
+    const H = 120;
     return (
       <Svg width={W} height={H}>
-        <Circle cx={W * 0.18} cy={40} r={32} fill="rgba(200,210,200,0.35)" />
-        <Circle cx={W * 0.3} cy={50} r={26} fill="rgba(200,210,200,0.35)" />
-        <Circle cx={W * 0.52} cy={35} r={36} fill="rgba(200,210,200,0.3)" />
-        <Circle cx={W * 0.65} cy={48} r={28} fill="rgba(200,210,200,0.3)" />
-        <Circle cx={W * 0.82} cy={40} r={30} fill="rgba(200,210,200,0.35)" />
+        <Defs>
+          <RadialGradient id="tatSunA" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#FFF3C8" stopOpacity="1" />
+            <Stop offset="0.6" stopColor="#FFD27A" stopOpacity="0.9" />
+            <Stop offset="1" stopColor="#FFB04A" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="tatSunB" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#FFE0A0" stopOpacity="1" />
+            <Stop offset="0.6" stopColor="#FF9A52" stopOpacity="0.85" />
+            <Stop offset="1" stopColor="#FF7A3A" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        {/* Soarele mare */}
+        <Circle cx={W * 0.66} cy={H * 0.42} r={52} fill="url(#tatSunA)" />
+        <Circle cx={W * 0.66} cy={H * 0.42} r={28} fill="#FFF6D8" />
+        {/* Al doilea soare, mai mic, langa */}
+        <Circle cx={W * 0.78} cy={H * 0.58} r={34} fill="url(#tatSunB)" />
+        <Circle cx={W * 0.78} cy={H * 0.58} r={16} fill="#FFE7B0" />
+      </Svg>
+    );
+  },
+  // Back layer = mesa-uri (butte cu varf plat) in zare, cu gradient de distanta.
+  renderBackLayer: ({ width: W, height: H }) => {
+    const mesa = '#B98A5A';
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        <Defs>
+          <LinearGradient id="tatMesa" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(mesa, 0.1)} />
+            <Stop offset="1" stopColor={shade(mesa, -0.15)} />
+          </LinearGradient>
+        </Defs>
+        {/* Mesa stanga (varf plat) */}
+        <Path
+          d={`M0,${H} L0,${H * 0.62} L${W * 0.06},${H * 0.5} L${W * 0.22},${H * 0.5} L${W * 0.27},${H * 0.66} L${W * 0.34},${H} Z`}
+          fill="url(#tatMesa)"
+          opacity={0.85}
+        />
+        {/* Mesa dreapta, mai joasa */}
+        <Path
+          d={`M${W * 0.55},${H} L${W * 0.6},${H * 0.7} L${W * 0.72},${H * 0.62} L${W * 0.86},${H * 0.62} L${W * 0.9},${H * 0.72} L${W * 0.96},${H} Z`}
+          fill="url(#tatMesa)"
+          opacity={0.7}
+        />
+      </Svg>
+    );
+  },
+  // Mid layer = dune line smooth (Path Q) + un vaporizator silueta + cupola homestead.
+  renderMidLayer: ({ width: W, height: H, color }) => {
+    const dune = color;
+    return (
+      <Svg width={W} height={H} style={{ overflow: 'visible' }}>
+        <Defs>
+          <LinearGradient id="tatDuneBack" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(dune, 0.12)} />
+            <Stop offset="1" stopColor={shade(dune, -0.1)} />
+          </LinearGradient>
+          <LinearGradient id="tatDuneFront" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(dune, 0.05)} />
+            <Stop offset="1" stopColor={shade(dune, -0.2)} />
+          </LinearGradient>
+        </Defs>
+        {/* Dune din spate — curbe smooth, seamless la y constant (H*0.6) */}
+        <Path
+          d={`M0,${H} L0,${H * 0.6} Q${W * 0.2},${H * 0.4} ${W * 0.4},${H * 0.55} Q${W * 0.6},${H * 0.68} ${W * 0.78},${H * 0.5} Q${W * 0.9},${H * 0.42} ${W},${H * 0.6} L${W},${H} Z`}
+          fill="url(#tatDuneBack)"
+        />
+        {/* Cupola homestead (casa Lars) pe creasta din spate */}
+        <Path d={`M${W * 0.12},${H * 0.55} a${W * 0.05},${W * 0.05} 0 0 1 ${W * 0.1},0 Z`} fill={shade(dune, -0.25)} opacity={0.7} />
+        {/* Vaporizator silueta departe */}
+        <Rect x={W * 0.7} y={H * 0.34} width={W * 0.015} height={H * 0.2} fill={shade(dune, -0.3)} opacity={0.6} />
+        {/* Dune din fata — seamless la y constant (H*0.8) */}
+        <Path
+          d={`M0,${H} L0,${H * 0.8} Q${W * 0.25},${H * 0.62} ${W * 0.5},${H * 0.78} Q${W * 0.72},${H * 0.9} ${W * 0.88},${H * 0.72} Q${W * 0.95},${H * 0.66} ${W},${H * 0.8} L${W},${H} Z`}
+          fill="url(#tatDuneFront)"
+        />
+      </Svg>
+    );
+  },
+  // Sol = nisip cu ondulatii (ripple) si pietricele.
+  renderGroundLayer: ({ width: W, height: H, color }) => {
+    const sand = color;
+    return (
+      <Svg width={W} height={H}>
+        <Defs>
+          <LinearGradient id="tatSand" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={shade(sand, 0.08)} />
+            <Stop offset="1" stopColor={shade(sand, -0.12)} />
+          </LinearGradient>
+        </Defs>
+        <Rect x={0} y={0} width={W} height={H} fill="url(#tatSand)" />
+        {/* Ondulatii de nisip — linii curbe subtiri */}
+        <Path d={`M0,${H * 0.35} Q${W * 0.25},${H * 0.28} ${W * 0.5},${H * 0.35} T${W},${H * 0.35}`} stroke={shade(sand, -0.12)} strokeWidth={1.5} fill="none" opacity={0.5} />
+        <Path d={`M0,${H * 0.6} Q${W * 0.3},${H * 0.52} ${W * 0.6},${H * 0.6} T${W},${H * 0.6}`} stroke={shade(sand, -0.12)} strokeWidth={1.5} fill="none" opacity={0.4} />
+        {/* Pietricele */}
+        <Circle cx={W * 0.2} cy={H * 0.75} r={3} fill={shade(sand, -0.2)} />
+        <Circle cx={W * 0.55} cy={H * 0.82} r={4} fill={shade(sand, -0.2)} />
+        <Circle cx={W * 0.82} cy={H * 0.72} r={2.5} fill={shade(sand, -0.2)} />
       </Svg>
     );
   },

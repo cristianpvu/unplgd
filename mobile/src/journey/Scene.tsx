@@ -169,22 +169,56 @@ export function Scene({ world, transition, petImageUrl, obstacle, visitor, compa
 
   const breathY = breath.interpolate({ inputRange: [0, 1], outputRange: [0, -3] });
 
+  // Ref pentru ultima valoare scrollAnim — la pauza retinem valoarea curenta
+  // si la resume continuam de acolo (fara reset la 0, ca sa nu mai sara
+  // tile-urile inapoi cand se incheie o intrebare).
+  const scrollPausedAtRef = useRef(0);
   useEffect(() => {
     if (!walking) {
-      scrollAnim.stopAnimation();
+      // La pauza, oprim animatia si salvam valoarea curenta.
+      scrollAnim.stopAnimation((v) => {
+        scrollPausedAtRef.current = v;
+      });
       return;
     }
-    scrollAnim.setValue(0);
-    const loop = Animated.loop(
+    let cancelled = false;
+    // Calculam cat mai e pana sa ajungem la -LAYER_W din valoarea curenta.
+    const from = scrollPausedAtRef.current;
+    const remainingFraction = Math.max(0, Math.min(1, 1 - Math.abs(from) / LAYER_W));
+    const remainingMs = SCROLL_DURATION_MS * remainingFraction;
+
+    const startLoop = () => {
+      if (cancelled) return;
+      scrollAnim.setValue(0);
+      Animated.loop(
+        Animated.timing(scrollAnim, {
+          toValue: -LAYER_W,
+          duration: SCROLL_DURATION_MS,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ).start();
+    };
+
+    if (remainingMs > 30) {
+      // Continuam scroll-ul de la valoarea curenta pana la -LAYER_W, apoi loop.
       Animated.timing(scrollAnim, {
         toValue: -LAYER_W,
-        duration: SCROLL_DURATION_MS,
+        duration: remainingMs,
         easing: Easing.linear,
         useNativeDriver: true,
-      }),
-    );
-    loop.start();
-    return () => loop.stop();
+      }).start(({ finished }) => {
+        if (finished) startLoop();
+      });
+    } else {
+      startLoop();
+    }
+    return () => {
+      cancelled = true;
+      scrollAnim.stopAnimation((v) => {
+        scrollPausedAtRef.current = v;
+      });
+    };
   }, [walking, scrollAnim]);
 
   // Pet tilt ocazional — il declansam la intervale random, doar in walking.
