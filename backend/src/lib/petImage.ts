@@ -38,6 +38,11 @@ export async function resolvePetImagePath(
   }
 }
 
+// Theme song-ul speciei — acelasi format ca imagePath (static, URL absolut,
+// sau cheie GCS). Alias semantic spre resolvePetImagePath ca sa nu duplicam
+// logica de signed URL si fallback-uri.
+export const resolvePetSoundPath = resolvePetImagePath;
+
 // Forma compacta a pet-ului echipat — atasata oriunde returnam un user public
 // (lista de prieteni, profil, co-walk, /me). Cand userul nu si-a echipat un
 // pet inca (extrem de rar — `ensureDefaultPet` se ruleaza la register), null.

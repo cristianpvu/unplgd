@@ -282,6 +282,10 @@ model PetSpecies {
   systemHint       String
   isDefault        Boolean  @default(false)
   imagePath        String?
+  // Theme song redat la podium hunt cand leaderul echipei castigatoare are
+  // aceasta specie. Acelasi format ca imagePath (static `/pets-sounds/x.mp3`,
+  // URL absolut, sau cheie GCS) — rezolvat prin resolvePetAssetPath.
+  soundPath        String?
   shortLore        String   @default("")
   tone             String   @default("prietenos")
   catchphrases     String[] @default([])

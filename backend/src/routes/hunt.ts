@@ -30,7 +30,7 @@ import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
 import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
 import { generateHuntHints, type HintRun } from '../lib/ai/huntHint.js';
-import { resolvePetImagePath } from '../lib/petImage.js';
+import { resolvePetImagePath, resolvePetSoundPath } from '../lib/petImage.js';
 import { awardBondXp, bondXpToLevel, BOND_REWARDS } from '../lib/pet/bond.js';
 
 export const huntRouter = Router();
@@ -1315,7 +1315,7 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
                     pet: {
                       select: {
                         name: true,
-                        species: { select: { imagePath: true } },
+                        species: { select: { imagePath: true, soundPath: true } },
                       },
                     },
                   },
@@ -1379,23 +1379,35 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
       startedAt: refreshed.startedAt,
       endedAt: refreshed.endedAt,
       teams: await Promise.all(
-        session.teams.map(async (t, idx) => ({
-          rank: idx + 1,
-          id: t.id,
-          name: t.name,
-          score: t.score,
-          monstersDefeated: t.monstersDefeated,
-          members: await Promise.all(
-            t.members.map(async (m) => ({
-              id: m.userId,
-              name: m.user.name,
-              avatarSvg: m.user.avatar?.svg ?? null,
-              petImageUrl: m.user.pet
-                ? await resolvePetImagePath(m.user.pet.species.imagePath)
-                : null,
-            })),
-          ),
-        })),
+        session.teams.map(async (t, idx) => {
+          // Theme song-ul leader-ului: doar leaderul echipei joaca efectiv pe
+          // telefonul lui, deci podium-ul lui canta melodia pet-ului sau.
+          const leader = t.leaderId
+            ? t.members.find((m) => m.userId === t.leaderId)
+            : null;
+          const leaderPetSoundUrl = leader?.user.pet?.species.soundPath
+            ? await resolvePetSoundPath(leader.user.pet.species.soundPath)
+            : null;
+          return {
+            rank: idx + 1,
+            id: t.id,
+            name: t.name,
+            score: t.score,
+            monstersDefeated: t.monstersDefeated,
+            leaderId: t.leaderId,
+            leaderPetSoundUrl,
+            members: await Promise.all(
+              t.members.map(async (m) => ({
+                id: m.userId,
+                name: m.user.name,
+                avatarSvg: m.user.avatar?.svg ?? null,
+                petImageUrl: m.user.pet
+                  ? await resolvePetImagePath(m.user.pet.species.imagePath)
+                  : null,
+              })),
+            ),
+          };
+        }),
       ),
       myXp: xpAwards
         .filter((a) => a.userId === me)
