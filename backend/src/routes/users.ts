@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getSignedUrl } from '../lib/storage/gcs.js';
-import { getPetSummaryByUserId } from '../lib/petImage.js';
+import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -33,11 +33,16 @@ usersRouter.get('/:id', async (req, res, next) => {
 
     // Fundalul de profil selectat (deblocat din story-adventure) — vizibil de
     // oricine intra pe profil. NULL daca nu si-a setat unul / nu mai e activ.
-    const background = user.selectedBackgroundKey
+    const bgRow = user.selectedBackgroundKey
       ? await prisma.profileBackground.findFirst({
           where: { key: user.selectedBackgroundKey, active: true },
           select: { key: true, name: true, imageUrl: true, videoUrl: true, tier: true },
         })
+      : null;
+    // imageUrl + videoUrl pot fi URL-uri absolute, rute statice sau chei GCS.
+    // resolveBackgroundAssets le semneaza daca e nevoie.
+    const background = bgRow
+      ? { ...bgRow, ...(await resolveBackgroundAssets(bgRow)) }
       : null;
 
     res.json({

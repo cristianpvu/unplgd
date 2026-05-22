@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { badRequest, conflict, notFound, serverError } from '../lib/errors.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { bondXpToLevel, awardBondXp, BOND_REWARDS } from '../lib/pet/bond.js';
+import { resolveBackgroundAssets } from '../lib/petImage.js';
 import {
   generateStoryArc,
   type StoryArc,
@@ -393,18 +394,23 @@ adventureRouter.get('/backgrounds', async (req, res, next) => {
       }),
     ]);
 
+    const activeUnlocks = unlocks.filter((u) => u.background.active);
+    // Rezolva imageUrl + videoUrl in paralel pe toata lista (signed URLs cand
+    // valoarea din DB e o cheie GCS, altfel URL pasat ca atare).
+    const resolvedAssets = await Promise.all(
+      activeUnlocks.map((u) => resolveBackgroundAssets(u.background)),
+    );
+
     res.json({
       selectedKey: user.selectedBackgroundKey,
-      backgrounds: unlocks
-        .filter((u) => u.background.active)
-        .map((u) => ({
-          key: u.background.key,
-          name: u.background.name,
-          imageUrl: u.background.imageUrl,
-          videoUrl: u.background.videoUrl,
-          tier: u.background.tier,
-          worldSlug: u.background.worldSlug,
-        })),
+      backgrounds: activeUnlocks.map((u, i) => ({
+        key: u.background.key,
+        name: u.background.name,
+        imageUrl: resolvedAssets[i].imageUrl,
+        videoUrl: resolvedAssets[i].videoUrl,
+        tier: u.background.tier,
+        worldSlug: u.background.worldSlug,
+      })),
     });
   } catch (e) {
     next(e);

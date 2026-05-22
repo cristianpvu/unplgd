@@ -43,6 +43,27 @@ export async function resolvePetImagePath(
 // logica de signed URL si fallback-uri.
 export const resolvePetSoundPath = resolvePetImagePath;
 
+// Generic alias — orice asset GCS / static / URL absolut (ex. fundaluri de
+// profil cu imageUrl+videoUrl). Aceeasi politica de TTL + fallback ca la pet.
+export const resolveAssetPath = resolvePetImagePath;
+
+// Convenience pentru ProfileBackground: rezolva imageUrl + videoUrl in paralel.
+// Trecere oricare format (URL absolut, ruta statica /..., cheie GCS sau gs://).
+// videoUrl ramane null daca lipseste din DB.
+export async function resolveBackgroundAssets(bg: {
+  imageUrl: string;
+  videoUrl: string | null;
+}): Promise<{ imageUrl: string; videoUrl: string | null }> {
+  const [imageUrl, videoUrl] = await Promise.all([
+    resolveAssetPath(bg.imageUrl),
+    bg.videoUrl ? resolveAssetPath(bg.videoUrl) : Promise.resolve(null),
+  ]);
+  return {
+    imageUrl: imageUrl ?? bg.imageUrl,
+    videoUrl: videoUrl ?? null,
+  };
+}
+
 // Forma compacta a pet-ului echipat — atasata oriunde returnam un user public
 // (lista de prieteni, profil, co-walk, /me). Cand userul nu si-a echipat un
 // pet inca (extrem de rar — `ensureDefaultPet` se ruleaza la register), null.

@@ -13,7 +13,7 @@ import { ensureDefaultPet } from '../lib/pet.js';
 import { logger } from '../lib/logger.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
 import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.js';
-import { resolvePetImagePath } from '../lib/petImage.js';
+import { resolvePetImagePath, resolveBackgroundAssets } from '../lib/petImage.js';
 import { awardBondXp } from '../lib/pet/bond.js';
 
 export const journeyRouter = Router();
@@ -305,11 +305,12 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
           // P2002 = deja deblocat → ignoram, returnam tot fundalul.
           if (err?.code !== 'P2002') throw err;
         }
+        const resolved = await resolveBackgroundAssets(bg);
         unlockedBackground = {
           key: bg.key,
           name: bg.name,
-          imageUrl: bg.imageUrl,
-          videoUrl: bg.videoUrl,
+          imageUrl: resolved.imageUrl,
+          videoUrl: resolved.videoUrl,
           tier: bg.tier,
         };
       }
