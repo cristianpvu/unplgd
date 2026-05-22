@@ -397,20 +397,19 @@ adventureRouter.get('/backgrounds', async (req, res, next) => {
     const activeUnlocks = unlocks.filter((u) => u.background.active);
     // Rezolva imageUrl + videoUrl in paralel pe toata lista (signed URLs cand
     // valoarea din DB e o cheie GCS, altfel URL pasat ca atare).
-    const resolvedAssets = await Promise.all(
-      activeUnlocks.map((u) => resolveBackgroundAssets(u.background)),
+    const resolved = await Promise.all(
+      activeUnlocks.map(async (u) => ({
+        key: u.background.key,
+        name: u.background.name,
+        tier: u.background.tier,
+        worldSlug: u.background.worldSlug,
+        ...(await resolveBackgroundAssets(u.background)),
+      })),
     );
 
     res.json({
       selectedKey: user.selectedBackgroundKey,
-      backgrounds: activeUnlocks.map((u, i) => ({
-        key: u.background.key,
-        name: u.background.name,
-        imageUrl: resolvedAssets[i].imageUrl,
-        videoUrl: resolvedAssets[i].videoUrl,
-        tier: u.background.tier,
-        worldSlug: u.background.worldSlug,
-      })),
+      backgrounds: resolved,
     });
   } catch (e) {
     next(e);
