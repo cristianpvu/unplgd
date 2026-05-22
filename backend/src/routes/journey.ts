@@ -242,6 +242,7 @@ type CheckpointResponse = {
     key: string;
     name: string;
     imageUrl: string;
+    videoUrl: string | null;
     tier: number;
   } | null;
 };
@@ -308,6 +309,7 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
           key: bg.key,
           name: bg.name,
           imageUrl: bg.imageUrl,
+          videoUrl: bg.videoUrl,
           tier: bg.tier,
         };
       }

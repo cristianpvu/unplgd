@@ -36,7 +36,7 @@ usersRouter.get('/:id', async (req, res, next) => {
     const background = user.selectedBackgroundKey
       ? await prisma.profileBackground.findFirst({
           where: { key: user.selectedBackgroundKey, active: true },
-          select: { key: true, name: true, imageUrl: true, tier: true },
+          select: { key: true, name: true, imageUrl: true, videoUrl: true, tier: true },
         })
       : null;
 

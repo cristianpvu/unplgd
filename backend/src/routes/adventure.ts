@@ -401,6 +401,7 @@ adventureRouter.get('/backgrounds', async (req, res, next) => {
           key: u.background.key,
           name: u.background.name,
           imageUrl: u.background.imageUrl,
+          videoUrl: u.background.videoUrl,
           tier: u.background.tier,
           worldSlug: u.background.worldSlug,
         })),

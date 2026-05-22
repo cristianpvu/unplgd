@@ -428,7 +428,10 @@ model ProfileBackground {
   // afiseze fundalurile in ordine. Liber, fara FK.
   petSlug   String?
   name      String
-  imageUrl  String // populat de user; static
+  imageUrl  String // poster/thumbnail static — folosit in selectorul de fundaluri (instant load) si ca fallback cand videoUrl lipseste
+  // Clip live MP4 loop muted (H.264, ~5-10s). NULL = fundal static din imageUrl.
+  // Populat manual in DB (Prisma Studio) cu URL-uri spre CDN-ul tau.
+  videoUrl  String?
   tier      Int     @default(1) // 1=bronze, 2=argint, 3=aur — pt extindere viitoare
   requiredCompletions Int @default(1) // cate victorii la boss ca sa deblochezi (adventure)
   sortOrder Int     @default(0)

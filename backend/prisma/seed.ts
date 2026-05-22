@@ -815,6 +815,66 @@ async function seedAdventureWorlds() {
   console.log(`seedAdventureWorlds: ${ADVENTURE_WORLDS.length} lumi`);
 }
 
+// Fundalurile de journey (per pet × per capitol). Idempotent prin upsert pe `key`.
+// `videoUrl` ramane NULL — il completeaza user-ul manual (Prisma Studio sau SQL)
+// cu URL-uri MP4 reale spre CDN. Pana atunci, mobile foloseste imageUrl static
+// ca fallback. `imageUrl` e poster placeholder via picsum.photos cu seed
+// deterministic — landscape stabil per cheie, schimbabil oricand.
+type SeedJourneyBackground = {
+  key: string;
+  petSlug: string;
+  name: string;
+  sortOrder: number;
+};
+
+const JOURNEY_BACKGROUNDS: SeedJourneyBackground[] = [
+  // Vader — galaxie / spatiu
+  { key: 'vader-ch1-planeta-rosie', petSlug: 'darth-vader', name: 'Planeta Rosie', sortOrder: 0 },
+  { key: 'vader-ch2-nebuloasa', petSlug: 'darth-vader', name: 'Nebuloasa Furtunoasa', sortOrder: 1 },
+  // Stitch — insula
+  { key: 'stitch-ch1-plaja', petSlug: 'stitch', name: 'Plaja Tropicala', sortOrder: 0 },
+  { key: 'stitch-ch2-vulcan', petSlug: 'stitch', name: 'Muntele Vulcanic', sortOrder: 1 },
+  // Yoda — Tatooine
+  { key: 'yoda-ch1-desert', petSlug: 'yoda', name: 'Desertul Arsitei', sortOrder: 0 },
+  { key: 'yoda-ch2-apus', petSlug: 'yoda', name: 'Apusul cu Doi Sori', sortOrder: 1 },
+  // Groot — padurea
+  { key: 'groot-ch1-padure', petSlug: 'groot', name: 'Padurea Adanca', sortOrder: 0 },
+  { key: 'groot-ch2-luminis', petSlug: 'groot', name: 'Luminisul Stralucitor', sortOrder: 1 },
+  // Dog — oras / parc
+  { key: 'dog-ch1-parc', petSlug: 'dog', name: 'Parcul Vesel', sortOrder: 0 },
+  { key: 'dog-ch2-oras', petSlug: 'dog', name: 'Orasul de Seara', sortOrder: 1 },
+];
+
+async function seedJourneyBackgrounds() {
+  for (const b of JOURNEY_BACKGROUNDS) {
+    // Poster deterministic via picsum.photos — landscape stabil per cheie pana
+    // cand user-ul inlocuieste imageUrl cu thumbnail-ul real.
+    const posterUrl = `https://picsum.photos/seed/${b.key}/600/300`;
+    await prisma.profileBackground.upsert({
+      where: { key: b.key },
+      create: {
+        key: b.key,
+        petSlug: b.petSlug,
+        name: b.name,
+        imageUrl: posterUrl,
+        // videoUrl ramane NULL — completat manual cand sunt gata clipurile.
+        tier: 1,
+        sortOrder: b.sortOrder,
+        active: true,
+      },
+      update: {
+        petSlug: b.petSlug,
+        name: b.name,
+        sortOrder: b.sortOrder,
+        active: true,
+        // NU suprascriem imageUrl/videoUrl — daca user-ul le-a populat manual,
+        // raman editari ale lui. Modificare numelui = update aici, re-seed.
+      },
+    });
+  }
+  console.log(`seedJourneyBackgrounds: ${JOURNEY_BACKGROUNDS.length} fundaluri`);
+}
+
 async function main() {
   // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
   // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
@@ -826,6 +886,10 @@ async function main() {
 
   // Lumile de aventura ruleaza mereu (nu sub skip guard).
   await seedAdventureWorlds();
+
+  // Fundalurile journey — ruleaza mereu (idempotent prin upsert pe `key`).
+  // Modificarile manuale ale imageUrl/videoUrl in DB sunt preservate.
+  await seedJourneyBackgrounds();
 
   // Pool-ul de intrebari journey ruleaza mereu — idempotent prin (domain,prompt).
   // Adaugare intrebari noi → urcari de fisier + container restart.
