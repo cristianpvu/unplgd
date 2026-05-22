@@ -1,7 +1,6 @@
 import {
   ActivityIndicator,
   Image,
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { SvgXml } from 'react-native-svg';
+import { BackgroundMedia } from '../../../../src/ui/BackgroundMedia';
 import { getMe } from '../../../../src/api/me';
 import { getUserCoCreations, getUserProfile } from '../../../../src/api/users';
 import { AvatarHead } from '../../../../src/avatar/AvatarHead';
@@ -73,13 +73,14 @@ export default function ProfileScreen() {
       {u && (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
           {/* Stage cu avatar + pet la picioare, exact ca pe homepage. Fundalul
-              deblocat (daca exista) e randat in spate — vizibil de oricine. */}
-          {u.background?.imageUrl ? (
-            <ImageBackground
-              source={{ uri: u.background.imageUrl }}
-              style={styles.avatarStageFramed}
-              imageStyle={styles.avatarStageBgImg}
-            >
+              deblocat (daca exista) e randat in spate (poster + video opt) ca
+              cadru rotunjit — vizibil de oricine intra pe profil. */}
+          {u.background ? (
+            <View style={styles.avatarStageFramed}>
+              <BackgroundMedia
+                imageUrl={u.background.imageUrl}
+                videoUrl={u.background.videoUrl}
+              />
               <View style={styles.avatarStage}>
                 <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
                 {u.pet?.imageUrl && (
@@ -92,7 +93,7 @@ export default function ProfileScreen() {
                   </View>
                 )}
               </View>
-            </ImageBackground>
+            </View>
           ) : (
             <View style={styles.avatarStage}>
               <AvatarHead svg={u.avatarSvg} svgBlink={u.avatarSvgBlink} height={280} />
@@ -234,7 +235,9 @@ const styles = StyleSheet.create({
   // intinda pe toata latimea ScrollView-ului si sa pozitioneze pet-ul corect.
   avatarStage: { position: 'relative', alignSelf: 'center' },
   // Cand exista fundal deblocat: il randam ca un cadru rotunjit in spatele
-  // avatarului, full-width, cu avatarul centrat deasupra.
+  // avatarului, full-width, cu avatarul centrat deasupra. Imaginea poster
+  // + video-ul live (cand exista) sunt copii absolutFill in interior, deci
+  // overflow:hidden + borderRadius le decupeaza la rotunjit-ul cadrului.
   avatarStageFramed: {
     width: '100%',
     alignItems: 'center',
@@ -243,7 +246,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
   },
-  avatarStageBgImg: { borderRadius: 20 },
   // Pet la dreapta-jos peste picioarele avatarului — overlap usor ca sa para
   // ca stau impreuna pe podea, scalat dupa avatar 280 (homepage are 420 cu
   // pet 120 → ratio ~0.28; aici 280×0.28 = 80).

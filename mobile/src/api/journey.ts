@@ -39,6 +39,7 @@ export type CheckpointReward = {
     key: string;
     name: string;
     imageUrl: string;
+    videoUrl: string | null;
     tier: number;
   } | null;
 };

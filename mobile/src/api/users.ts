@@ -10,8 +10,16 @@ export type UserProfile = {
   avatarSvg: string | null;
   avatarSvgBlink: string | null;
   pet: PetSummary | null;
-  // Fundalul de profil selectat (deblocat din story-adventure). NULL = default.
-  background: { key: string; name: string; imageUrl: string; tier: number } | null;
+  // Fundalul de profil selectat (deblocat din story-adventure / journey).
+  // `videoUrl` optional — cand exista, mobile-ul randeaza VideoView (loop muted)
+  // peste poster; cand lipseste, foloseste imageUrl static. NULL = default.
+  background: {
+    key: string;
+    name: string;
+    imageUrl: string;
+    videoUrl: string | null;
+    tier: number;
+  } | null;
 };
 
 export type CoCreationAlbumItem = {

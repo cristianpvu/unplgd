@@ -107,8 +107,9 @@ export type BackgroundsResponse = {
     key: string;
     name: string;
     imageUrl: string;
+    videoUrl: string | null;
     tier: number;
-    worldSlug: string;
+    worldSlug: string | null;
   }[];
 };
 

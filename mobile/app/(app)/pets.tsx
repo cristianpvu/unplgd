@@ -44,6 +44,10 @@ export default function Pets() {
     mutationFn: (key: string | null) => selectBackground(key),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['adventure', 'backgrounds'] });
+      // Profilul (/users/:id) si home (/me) afiseaza fundalul — invalidam
+      // ambele ca sa se reincarce la urmatoarea deschidere.
+      qc.invalidateQueries({ queryKey: ['users'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
     },
   });
 

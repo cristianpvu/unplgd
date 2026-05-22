@@ -107,7 +107,8 @@
           "cameraPermission": "Folosim camera ca sa fotografiezi desenul tau si sa-l transformam intr-o ilustratie magica."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-video"
     ]
   }
 }

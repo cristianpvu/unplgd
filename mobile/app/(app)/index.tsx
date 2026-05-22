@@ -40,6 +40,7 @@ import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
 import { PetBadge } from '../../src/ui/PetBadge';
+import { BackgroundMedia } from '../../src/ui/BackgroundMedia';
 import { CoWalkButton } from '../../src/ble/CoWalkProgress';
 import { colors } from '../../src/theme/colors';
 
@@ -86,8 +87,17 @@ export default function Home() {
   const progress = me ? xpProgress(me.xp, me.level) : null;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.container}>
+    <View style={styles.root}>
+      {/* Fundal fullscreen sub TOT (status bar inclusiv). Poster + video opt
+          live. Cand user n-are fundal selectat, ramane colors.bg din `root`. */}
+      {me?.background && (
+        <BackgroundMedia
+          imageUrl={me.background.imageUrl}
+          videoUrl={me.background.videoUrl}
+        />
+      )}
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <View style={styles.container}>
         <View style={styles.topRow}>
           <IconButton
             onPress={() => setSheet('notifications')}
@@ -254,7 +264,8 @@ export default function Home() {
           </View>
         )}
       </BottomSheet>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -619,7 +630,11 @@ function SheetItem({
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+  // Wrapper exterior: tine colors.bg ca fallback cand n-ai fundal selectat,
+  // si gazduieste BackgroundMedia absolutFill care acopera TOT (status bar inclusiv).
+  root: { flex: 1, backgroundColor: colors.bg },
+  // SafeAreaView ramane transparent ca BackgroundMedia sa fie vizibil dedesubt.
+  safe: { flex: 1, backgroundColor: 'transparent' },
   container: { flex: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, gap: 14 },
 
   topRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
