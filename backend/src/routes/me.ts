@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { notFound } from '../lib/errors.js';
 import { getOrCreateDailyToken } from '../lib/bleToken.js';
 import { getUsageStats } from '../lib/ai/usage.js';
-import { getPetSummaryByUserId } from '../lib/petImage.js';
+import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
 
 export const meRouter = Router();
 
@@ -13,6 +13,19 @@ meRouter.get('/', requireAuth, async (req, res, next) => {
     const user = await prisma.user.findUnique({ where: { id: req.userId! } });
     if (!user) throw notFound('user_not_found', 'User not found');
     const pet = await getPetSummaryByUserId(user.id);
+
+    // Fundalul de profil — folosit ca background fullscreen pe home + ca poster
+    // pe profil. resolveBackgroundAssets semneaza URL-urile GCS daca e cazul.
+    const bgRow = user.selectedBackgroundKey
+      ? await prisma.profileBackground.findFirst({
+          where: { key: user.selectedBackgroundKey, active: true },
+          select: { key: true, name: true, imageUrl: true, videoUrl: true, tier: true },
+        })
+      : null;
+    const background = bgRow
+      ? { ...bgRow, ...(await resolveBackgroundAssets(bgRow)) }
+      : null;
+
     res.json({
       id: user.id,
       email: user.email,
@@ -22,6 +35,7 @@ meRouter.get('/', requireAuth, async (req, res, next) => {
       level: user.level,
       createdAt: user.createdAt,
       pet,
+      background,
     });
   } catch (e) {
     next(e);
