@@ -228,6 +228,10 @@ journeyRouter.get('/questions', async (req, res, next) => {
 const checkpointSchema = z.object({
   sceneId: z.string().min(1).max(64),
   chapterId: z.string().min(1).max(64),
+  // Slug-ul speciei pet-ului la momentul completarii — util pentru grupare in
+  // pagina de chat (cate capitole are pet-ul X completate). Optional pentru
+  // compatibilitate cu apeluri vechi.
+  petSlug: z.string().min(1).max(64).optional(),
   bondXp: z.number().int().min(0).max(1000).optional(),
   backgroundKey: z.string().min(1).max(80).optional(),
 });
@@ -248,7 +252,24 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
     const body = checkpointSchema.parse(req.body);
 
     await ensureDefaultPet(userId);
-    const pet = await prisma.pet.findUniqueOrThrow({ where: { userId } });
+    const pet = await prisma.pet.findUniqueOrThrow({
+      where: { userId },
+      include: { species: true },
+    });
+    const petSlug = body.petSlug ?? pet.species.slug;
+
+    // Inregistram capitolul ca terminat. Idempotent prin unique (userId, chapterId).
+    try {
+      await prisma.journeyChapterProgress.create({
+        data: {
+          userId,
+          chapterId: body.chapterId,
+          petSlug,
+        },
+      });
+    } catch (err: any) {
+      if (err?.code !== 'P2002') throw err;
+    }
 
     let bondAwarded = 0;
     if (body.bondXp && body.bondXp > 0) {
@@ -296,6 +317,35 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
     res.json(response);
   } catch (e) {
     if (e instanceof z.ZodError) return next(badRequest('invalid_body', e.message));
+    next(e);
+  }
+});
+
+// GET /journey/progress?petSlug=darth-vader
+// Returneaza lista de chapterIds completate de user pt un pet (sau global daca
+// nu se da petSlug). Mobile cere asta la deschiderea chat-ului ca sa stie daca
+// pet-ul mai are povesti necompletate si afiseaza butonul de aventura.
+type ProgressResponse = {
+  petSlug: string | null;
+  completedChapters: string[];
+};
+
+journeyRouter.get('/progress', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const petSlug = typeof req.query.petSlug === 'string' ? req.query.petSlug : null;
+    const where: { userId: string; petSlug?: string } = { userId };
+    if (petSlug) where.petSlug = petSlug;
+    const rows = await prisma.journeyChapterProgress.findMany({
+      where,
+      select: { chapterId: true },
+    });
+    const response: ProgressResponse = {
+      petSlug,
+      completedChapters: rows.map((r) => r.chapterId),
+    };
+    res.json(response);
+  } catch (e) {
     next(e);
   }
 });

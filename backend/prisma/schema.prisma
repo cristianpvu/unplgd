@@ -50,6 +50,7 @@ model User {
   ownedItems              UserItem[]
   adventureRuns           AdventureRun[]
   backgroundUnlocks       UserBackground[]
+  journeyChapterProgress  JourneyChapterProgress[]
 
   @@index([email])
 }
@@ -448,6 +449,26 @@ model UserBackground {
 
   @@unique([userId, backgroundKey])
   @@index([userId])
+}
+
+// Progresul povestilor Journey per user. Cand user-ul termina un capitol (atinge
+// scena checkpoint), salvam aici intrarea. Mobile cere progresul la deschiderea
+// chat-ului ca sa stie daca sa propuna aventura sau nu. Unique pe (userId,
+// chapterId) → idempotent.
+model JourneyChapterProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  // chapterId din mobile (ex: 'vader-ch1'). Nu legam de model in DB pt
+  // modularitate — capitolele sunt definite in mobile.
+  chapterId   String
+  // Slug pet la momentul completarii — util pt grupare per pet.
+  petSlug     String
+  completedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chapterId])
+  @@index([userId, petSlug])
 }
 
 // Pool global de intrebari de cultura generala pentru jocul Journey.
