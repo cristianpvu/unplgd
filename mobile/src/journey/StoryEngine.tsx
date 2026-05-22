@@ -75,7 +75,11 @@ type EngineApi = {
   skipCurrent: () => void;
 };
 
-export function useStoryEngine(chapter: Chapter | null): EngineApi {
+export function useStoryEngine(
+  chapter: Chapter | null,
+  petSlug: string | null = null,
+): EngineApi {
+  const petSlugForRun = petSlug ?? '';
   const [state, setState] = useState<EngineState>(() => initialState(chapter));
 
   const tokenRef = useRef(0);
@@ -223,22 +227,23 @@ export function useStoryEngine(chapter: Chapter | null): EngineApi {
         case 'checkpoint': {
           setState((s) => ({ ...s, petCanWalk: false }));
           await playLine(scene.text, 'narrator', myToken);
-          // Claim reward (bond xp + unlock fundal). Idempotent server-side.
-          if (scene.reward) {
-            try {
-              const reward = await claimCheckpoint({
-                sceneId: scene.id,
-                chapterId: ch.id,
-                bondXp: scene.reward.bondXp,
-                backgroundKey: scene.reward.backgroundKey,
-              });
-              if (isMine(myToken)) {
-                setState((s) => ({ ...s, lastReward: reward }));
-              }
-            } catch (err) {
-              // eslint-disable-next-line no-console
-              console.warn('[engine] checkpoint claim failed:', String(err));
+          // Claim reward + inregistreaza capitolul ca terminat. Idempotent
+          // server-side. Trimitem chiar daca reward lipseste, ca progresul sa
+          // fie persistat oricum.
+          try {
+            const reward = await claimCheckpoint({
+              sceneId: scene.id,
+              chapterId: ch.id,
+              petSlug: petSlugForRun,
+              bondXp: scene.reward?.bondXp,
+              backgroundKey: scene.reward?.backgroundKey,
+            });
+            if (isMine(myToken)) {
+              setState((s) => ({ ...s, lastReward: reward }));
             }
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn('[engine] checkpoint claim failed:', String(err));
           }
           await sleep(600);
           break;
@@ -430,7 +435,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function findActiveChapter(chapters: Chapter[]): Chapter | null {
+// Alege capitolul curent: primul care nu e in `completed`. Daca toate sunt
+// completate, returneaza ultimul (re-jucabil).
+export function findActiveChapter(
+  chapters: Chapter[],
+  completed: Set<string> = new Set(),
+): Chapter | null {
   if (chapters.length === 0) return null;
-  return chapters[0];
+  for (const ch of chapters) {
+    if (!completed.has(ch.id)) return ch;
+  }
+  return chapters[chapters.length - 1];
 }

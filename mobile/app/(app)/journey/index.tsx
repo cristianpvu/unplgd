@@ -24,6 +24,7 @@ import { IntroCinematic } from '../../../src/journey/IntroCinematic';
 import { getWorldForPet } from '../../../src/journey/worlds';
 import { getStoryForPet } from '../../../src/journey/stories';
 import { findActiveChapter, useStoryEngine } from '../../../src/journey/StoryEngine';
+import { getJourneyProgress } from '../../../src/api/journey';
 import { computeBiomeTransition } from '../../../src/journey/worlds/util';
 
 const DISTANCE_TICK_MS = 90;
@@ -42,10 +43,22 @@ export default function JourneyScreen() {
 
   const world = useMemo(() => getWorldForPet(pet?.species.slug), [pet?.species.slug]);
   const story = useMemo(() => getStoryForPet(pet?.species.slug), [pet?.species.slug]);
-  // Pt MVP: primul capitol al povestii. Iteratie urmatoare: progresul user.
+
+  // Progresul user-ului — cheam endpoint-ul ca sa stim ce capitole sunt deja
+  // completate si sa pornim de la urmatorul necompletat.
+  const progressQuery = useQuery({
+    queryKey: ['journey-progress', pet?.species.slug],
+    queryFn: () => getJourneyProgress(pet!.species.slug),
+    enabled: !!pet?.species.slug,
+  });
+  const completedSet = useMemo(
+    () => new Set(progressQuery.data?.completedChapters ?? []),
+    [progressQuery.data],
+  );
+
   const chapter = useMemo(
-    () => (story ? findActiveChapter(story.chapters) : null),
-    [story],
+    () => (story ? findActiveChapter(story.chapters, completedSet) : null),
+    [story, completedSet],
   );
 
   // Intro cinematic — daca capitolul are unul, il jucam inainte sa porneasca
@@ -56,7 +69,10 @@ export default function JourneyScreen() {
     setIntroDone(!chapter?.introCinematic);
   }, [chapter?.id, chapter?.introCinematic]);
 
-  const { state, answerChallenge, skipCurrent } = useStoryEngine(introDone ? chapter : null);
+  const { state, answerChallenge, skipCurrent } = useStoryEngine(
+    introDone ? chapter : null,
+    pet?.species.slug ?? null,
+  );
 
   // Distanta — pur cosmetica, contor metri afisat sus. Nu mai dicteaza biome.
   const [distance, setDistance] = useState(0);

@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SvgXml } from 'react-native-svg';
+import { createAudioPlayer } from 'expo-audio';
 import { getResults } from '../../../../src/api/hunt';
 import { colors } from '../../../../src/theme/colors';
 
@@ -50,6 +51,36 @@ export default function HuntResults() {
       ),
     ).start();
   }, [teams.length]);
+
+  // Theme song la podium — melodia pet-ului leader-ului echipei rank=1.
+  // Pornit cu delay sa coincida cu aterizarea treaptei 1 (stepDelay 600ms +
+  // spring settle). Cleanup la unmount sau cand userul iese din ecran.
+  const winnerSoundUrl =
+    teams.find((t) => t.rank === 1)?.leaderPetSoundUrl ?? null;
+  useEffect(() => {
+    if (!winnerSoundUrl) return;
+    let cancelled = false;
+    let player: ReturnType<typeof createAudioPlayer> | null = null;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      try {
+        player = createAudioPlayer({ uri: winnerSoundUrl });
+        player.play();
+      } catch {
+        // ignore — sound e bonus, nu blocheaza UX
+      }
+    }, 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      try {
+        player?.pause();
+        player?.remove();
+      } catch {
+        // ignore
+      }
+    };
+  }, [winnerSoundUrl]);
 
   if (!sessionId || resultsQuery.isPending) {
     return (

@@ -157,6 +157,9 @@ export type HuntResultsResponse = {
     name: string;
     score: number;
     monstersDefeated: number;
+    leaderId: string | null;
+    // Theme song-ul pet-ului leader-ului. Redat la podium doar pe rank=1.
+    leaderPetSoundUrl: string | null;
     members: {
       id: string;
       name: string;

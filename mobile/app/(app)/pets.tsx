@@ -268,19 +268,8 @@ export default function Pets() {
           )}
         </View>
 
-        {/* Intrare in journey — un singur drum infinit, side-scroller. */}
-        <Pressable
-          onPress={() => router.push('/(app)/journey')}
-          style={({ pressed }) => [styles.adventureBtn, pressed && styles.adventurePressed]}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={styles.adventureTitle}>Drumul cu {pet.name}</Text>
-            <Text style={styles.adventureSub}>
-              Mergeti impreuna prin lume si treceti obstacolele
-            </Text>
-          </View>
-          <Text style={styles.adventureArrow}>→</Text>
-        </Pressable>
+        {/* Intrarea in aventura traieste acum in chat-ul cu pet-ul — vezi
+            chat.tsx, componenta AdventureInvite. */}
 
         {/* Fundaluri deblocate — selectabile pt profil */}
         {backgroundsQuery.data && backgroundsQuery.data.backgrounds.length > 0 && (

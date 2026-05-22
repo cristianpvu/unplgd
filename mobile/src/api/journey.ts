@@ -60,9 +60,16 @@ export function fetchJourneyQuestions(domain: string, count: number) {
   );
 }
 
+export function getJourneyProgress(petSlug: string) {
+  return api<{ petSlug: string; completedChapters: string[] }>(
+    `/journey/progress?petSlug=${encodeURIComponent(petSlug)}`,
+  );
+}
+
 export function claimCheckpoint(args: {
   sceneId: string;
   chapterId: string;
+  petSlug?: string;
   bondXp?: number;
   backgroundKey?: string;
 }) {
