@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -57,6 +57,9 @@ export default function HuntResults() {
   // spring settle). Cleanup la unmount sau cand userul iese din ecran.
   const winnerSoundUrl =
     teams.find((t) => t.rank === 1)?.leaderPetSoundUrl ?? null;
+  // `confettiActive` se flip-eaza pe true exact in momentul in care apasam
+  // player.play() — confetti si melodia pornesc sincronizate, fara delay vizibil.
+  const [confettiActive, setConfettiActive] = useState(false);
   useEffect(() => {
     if (!winnerSoundUrl) return;
     let cancelled = false;
@@ -66,6 +69,7 @@ export default function HuntResults() {
       try {
         player = createAudioPlayer({ uri: winnerSoundUrl });
         player.play();
+        setConfettiActive(true);
       } catch {
         // ignore — sound e bonus, nu blocheaza UX
       }
@@ -73,6 +77,7 @@ export default function HuntResults() {
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      setConfettiActive(false);
       try {
         player?.pause();
         player?.remove();
@@ -123,7 +128,11 @@ export default function HuntResults() {
 
         {/* Podium fizic — 3 trepte cu avatarele echipelor pe ele */}
         {data.teams.length > 0 && (
-          <Podium teams={data.teams} myTeamRank={myRank} />
+          <View style={styles.podiumStage}>
+            <Confetti active={confettiActive} />
+            <Champagne active={confettiActive} />
+            <Podium teams={data.teams} myTeamRank={myRank} />
+          </View>
         )}
 
         {/* XP card cu count-up */}
@@ -299,7 +308,25 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
 
   return (
     <View style={styles.podiumCol}>
-      {/* Caractere full body langa langa pe treapta */}
+      {/* Nume echipa + scor DEASUPRA caracterelor — astfel caracterele raman
+          cu talpile direct pe treapta, sa para ca chiar stau pe podium. */}
+      <Animated.View
+        style={[
+          styles.podiumLabel,
+          {
+            opacity: chars,
+            transform: [{ translateY: charsTranslateY }, { scale: charsScale }],
+          },
+        ]}
+      >
+        <Text style={[styles.podiumTeamName, mine && styles.podiumTeamNameMine]} numberOfLines={1}>
+          {team.name}
+        </Text>
+        <Text style={styles.podiumScore}>{team.score}</Text>
+      </Animated.View>
+
+      {/* Caractere full body langa langa, talpile aliniate la baza coloanei
+          (podiumChars are paddingBottom 0). */}
       <Animated.View
         style={[
           styles.podiumChars,
@@ -311,76 +338,637 @@ function PodiumStep({ team, mine }: { team: PodiumTeam; mine: boolean }) {
       >
         <View style={styles.podiumLineup}>
           {team.members.map((m, idx) => (
-            <View
+            <PodiumMember
               key={m.id}
-              style={[
-                styles.podiumMember,
-                {
-                  width: charW,
-                  height: charH,
-                  marginLeft: idx === 0 ? 0 : memberOverlap,
-                  zIndex: team.members.length - idx,
-                },
-              ]}
-            >
-              {/* Coronita pe cap, colorata cu rank-ul echipei. */}
-              <View style={styles.podiumCrownOnHead}>
-                <SvgXml
-                  xml={crownSvg}
-                  width={sz.crown}
-                  height={Math.round(sz.crown * 0.7)}
-                />
-              </View>
-              {m.avatarSvg ? (
-                <SvgXml xml={m.avatarSvg} width={charW} height={charH} />
-              ) : (
-                <View style={[styles.charFallback, { width: charW, height: charH }]} />
-              )}
-              {/* Pet stand IN FATA caracterului in coltul jos-dreapta — peek
-                  out partial ca un sidekick. Absolute pozitionat ca sa nu
-                  largeasca containerul caracterului. */}
-              {m.petImageUrl && (
-                <View
-                  style={[
-                    styles.podiumPet,
-                    {
-                      width: sz.pet,
-                      height: sz.pet,
-                      right: -Math.round(sz.pet * 0.25),
-                    },
-                  ]}
-                >
-                  <Image
-                    source={{ uri: m.petImageUrl }}
-                    style={{ width: sz.pet, height: sz.pet }}
-                    resizeMode="contain"
-                  />
-                </View>
-              )}
-            </View>
+              member={m}
+              idx={idx}
+              memberCount={team.members.length}
+              memberOverlap={memberOverlap}
+              charW={charW}
+              charH={charH}
+              petSize={sz.pet}
+              crownSize={sz.crown}
+              crownSvg={crownSvg}
+              // Bounce-ul de fericire suna numai la rank 1 — restul stau cuminte.
+              bouncing={team.rank === 1}
+              bounceDelay={charsDelay + 500 + idx * 120}
+            />
           ))}
         </View>
-
-        <Text style={[styles.podiumTeamName, mine && styles.podiumTeamNameMine]} numberOfLines={1}>
-          {team.name}
-        </Text>
-        <Text style={styles.podiumScore}>{team.score}</Text>
       </Animated.View>
 
-      {/* Treapta */}
+      {/* Treapta — wrapper cu overflow:hidden si height fix permite intrarea
+          spring de jos fara sa clip-uim si crown-urile sau pet-urile peek out
+          care stau in alta zona a layout-ului. */}
+      <View style={{ width: '100%', height: stepH, overflow: 'hidden' }}>
+        <Animated.View
+          style={[
+            styles.podiumBlock,
+            {
+              height: stepH,
+              backgroundColor: color,
+              transform: [{ translateY: stepTranslateY }],
+            },
+          ]}
+        >
+          <Text style={styles.podiumRank}>{team.rank}</Text>
+        </Animated.View>
+      </View>
+    </View>
+  );
+}
+
+// Un singur membru pe podium — extras ca sa poata avea propriul Animated.Value
+// pt bounce (nu putem chema hooks intr-un .map). Pe rank 1, avatarul si pet-ul
+// "topaie" subtle si asincron, ca si cum se bucura. Pe restul rank-urilor stau
+// statici.
+//
+// Async-ul vine din 2 surse:
+//   1. perioadele diferite intre avatar (~900ms) si pet (~720ms) — niciodata
+//      nu cad pe acelasi ritm.
+//   2. delay-uri de pornire offset per index — al doilea membru porneste cu
+//      120ms intarziere fata de primul.
+type PodiumMemberData = {
+  id: string;
+  name: string;
+  avatarSvg: string | null;
+  petImageUrl: string | null;
+};
+
+function PodiumMember({
+  member,
+  idx,
+  memberCount,
+  memberOverlap,
+  charW,
+  charH,
+  petSize,
+  crownSize,
+  crownSvg,
+  bouncing,
+  bounceDelay,
+}: {
+  member: PodiumMemberData;
+  idx: number;
+  memberCount: number;
+  memberOverlap: number;
+  charW: number;
+  charH: number;
+  petSize: number;
+  crownSize: number;
+  crownSvg: string;
+  bouncing: boolean;
+  bounceDelay: number;
+}) {
+  const avatarHop = useRef(new Animated.Value(0)).current;
+  const petHop = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!bouncing) return;
+    // Avatar: hop usor de ~5px, perioada ~900ms. Easing sinusoidal-ish da
+    // un "boop" curat fara senzatie agresiva.
+    const avatarLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(avatarHop, {
+          toValue: 1,
+          duration: 450,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(avatarHop, {
+          toValue: 0,
+          duration: 450,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    // Pet: amplitudine mai mare (e mai mic, are nevoie de "punch"), perioada
+    // mai scurta ~720ms ca sa fie complet desincronizat fata de avatar.
+    const petLoop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(petHop, {
+          toValue: 1,
+          duration: 360,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(petHop, {
+          toValue: 0,
+          duration: 360,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    const startAvatar = setTimeout(() => avatarLoop.start(), bounceDelay);
+    // Pet porneste cu un offset suplimentar — niciodata la pas cu avatarul.
+    const startPet = setTimeout(() => petLoop.start(), bounceDelay + 240);
+
+    return () => {
+      clearTimeout(startAvatar);
+      clearTimeout(startPet);
+      avatarLoop.stop();
+      petLoop.stop();
+      avatarHop.setValue(0);
+      petHop.setValue(0);
+    };
+  }, [bouncing, bounceDelay, avatarHop, petHop]);
+
+  const avatarTranslateY = avatarHop.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -5],
+  });
+  const petTranslateY = petHop.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -7],
+  });
+
+  return (
+    <View
+      style={[
+        styles.podiumMember,
+        {
+          width: charW,
+          height: charH,
+          marginLeft: idx === 0 ? 0 : memberOverlap,
+          zIndex: memberCount - idx,
+        },
+      ]}
+    >
+      {/* Coronita pe cap, colorata cu rank-ul echipei. Topaie odata cu avatarul. */}
       <Animated.View
         style={[
-          styles.podiumBlock,
-          {
-            height: stepH,
-            backgroundColor: color,
-            transform: [{ translateY: stepTranslateY }],
-          },
+          styles.podiumCrownOnHead,
+          { transform: [{ translateY: avatarTranslateY }] },
         ]}
       >
-        <Text style={styles.podiumRank}>{team.rank}</Text>
+        <SvgXml
+          xml={crownSvg}
+          width={crownSize}
+          height={Math.round(crownSize * 0.7)}
+        />
       </Animated.View>
+      <Animated.View style={{ transform: [{ translateY: avatarTranslateY }] }}>
+        {member.avatarSvg ? (
+          <SvgXml xml={member.avatarSvg} width={charW} height={charH} />
+        ) : (
+          <View style={[styles.charFallback, { width: charW, height: charH }]} />
+        )}
+      </Animated.View>
+      {/* Pet stand IN FATA caracterului in coltul jos-dreapta — peek out
+          partial ca un sidekick. Topaie pe propriul ritm. */}
+      {member.petImageUrl && (
+        <Animated.View
+          style={[
+            styles.podiumPet,
+            {
+              width: petSize,
+              height: petSize,
+              right: -Math.round(petSize * 0.25),
+              transform: [{ translateY: petTranslateY }],
+            },
+          ]}
+        >
+          <Image
+            source={{ uri: member.petImageUrl }}
+            style={{ width: petSize, height: petSize }}
+            resizeMode="contain"
+          />
+        </Animated.View>
+      )}
     </View>
+  );
+}
+
+// Sampanii — 2 sticle in colturile sus ale podium-ului, cu pop dramatic la
+// startul melodiei. Dopurile zboara spre exterior, jet de bubbles iese din
+// gura sticlei timp de ~2s. Doar la rank 1 (montat ca peer cu Confetti, ambele
+// trigger-uite de acelasi `confettiActive`). Re-monteaza la fiecare activare
+// prin runKey ca sa replay-uiasca animatia daca user-ul revine pe ecran.
+function Champagne({ active }: { active: boolean }) {
+  const [runKey, setRunKey] = useState(0);
+  useEffect(() => {
+    if (active) setRunKey((k) => k + 1);
+  }, [active]);
+  if (!active) return null;
+  return (
+    <View pointerEvents="none" style={styles.champagneLayer}>
+      <ChampagneBottle key={`L-${runKey}`} side="left" />
+      <ChampagneBottle key={`R-${runKey}`} side="right" />
+    </View>
+  );
+}
+
+// SVG sticla de sampanie — corp verde-inchis, gat foiat aurit, eticheta aurie.
+// viewBox 30x100; randata la dimensiunea ceruta in props. Fara dopul de sus —
+// dopul e o componenta separata animata, ca sa-l putem "scoate" la pop.
+const CHAMPAGNE_BOTTLE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30 100">
+  <!-- gat -->
+  <rect x="12" y="6" width="6" height="22" fill="#0F3B22"/>
+  <!-- foiat auriu pe gat -->
+  <rect x="11" y="22" width="8" height="10" fill="#D4AF37"/>
+  <rect x="11" y="22" width="8" height="2" fill="#B8941E"/>
+  <!-- umar (tranzitie gat-corp) -->
+  <path d="M11 32 Q11 36 9 40 L21 40 Q19 36 19 32 Z" fill="#0F3B22"/>
+  <!-- corp -->
+  <rect x="6" y="40" width="18" height="54" rx="3" fill="#15532F"/>
+  <!-- highlight pe corp -->
+  <rect x="8" y="44" width="2" height="46" rx="1" fill="#1E7A45" opacity="0.6"/>
+  <!-- eticheta -->
+  <rect x="8" y="58" width="14" height="20" fill="#F5E6C8"/>
+  <rect x="8" y="58" width="14" height="3" fill="#D4AF37"/>
+  <rect x="8" y="75" width="14" height="3" fill="#D4AF37"/>
+  <!-- baza -->
+  <rect x="6" y="92" width="18" height="3" rx="1" fill="#0A2A18"/>
+</svg>`;
+
+function ChampagneBottle({ side }: { side: 'left' | 'right' }) {
+  // Sticlele intra cu un mic tilt+spring din afara cadrului. Apoi pop —
+  // sticla tresare scurt (recoil), dopul zboara, bubbles ies din gura.
+  const enter = useRef(new Animated.Value(0)).current;
+  const recoil = useRef(new Animated.Value(0)).current;
+  const fadeOut = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(enter, {
+      toValue: 1,
+      friction: 6,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+    // Mic recoil cand dopul sare — sticla se "trage inapoi" 80ms apoi revine.
+    Animated.sequence([
+      Animated.delay(180),
+      Animated.timing(recoil, {
+        toValue: 1,
+        duration: 90,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.timing(recoil, {
+        toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    // Dupa ~3s sticla incepe sa se decoloreze ca sa nu ramana acolo agatata
+    // toata durata melodiei — pop-ul e bonus vizual, nu element permanent.
+    Animated.sequence([
+      Animated.delay(2800),
+      Animated.timing(fadeOut, {
+        toValue: 0,
+        duration: 900,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [enter, recoil, fadeOut]);
+
+  const isLeft = side === 'left';
+  // Pozitionate aproape de centru ca sa flancheze coloana rank 1 (centrala in
+  // ordinea 2-1-3). Inclinate INWARD — gura sticlei sus catre interior, ca o
+  // toasta peste castigator. Pivotul de rotatie e baza sticlei (transformOrigin
+  // bottom center in style).
+  const baseRotate = isLeft ? 28 : -28;
+  // Muzzle = punct de emisie pt bubbles, in local coords ale sticlei (deja
+  // rotita). Cu noul tilt inward, muzzleX negativ pt left (bubbles ies in
+  // jumatatea inspre-centru), pozitiv pt right.
+  const muzzleX = isLeft ? -22 : 22;
+  const muzzleY = -22;
+
+  const enterTranslateX = enter.interpolate({
+    inputRange: [0, 1],
+    outputRange: [isLeft ? -60 : 60, 0],
+  });
+  const enterTranslateY = enter.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-40, 0],
+  });
+  // Recoil: cand dopul iese spre interior, sticla bumpaie spre EXTERIOR
+  // (Newton's 3rd). Pt left = -X (stanga), pt right = +X (dreapta).
+  const recoilOffset = recoil.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, isLeft ? -6 : 6],
+  });
+  // Tilt suplimentar in directia inward — sticla se "apleaca" mai mult cand
+  // sare dopul, apoi revine.
+  const recoilRot = recoil.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', `${isLeft ? 6 : -6}deg`],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.champagneBottle,
+        // Pozitionate la ~35% din latimea stage-ului fiecare — flanc coloana
+        // centrala (rank 1) fara sa acopere coloanele laterale.
+        isLeft ? { left: '34%' } : { right: '34%' },
+        {
+          opacity: fadeOut,
+          transform: [
+            { translateX: Animated.add(enterTranslateX, recoilOffset) },
+            { translateY: enterTranslateY },
+            { rotate: `${baseRotate}deg` },
+            { rotate: recoilRot },
+          ],
+        },
+      ]}
+    >
+      <SvgXml xml={CHAMPAGNE_BOTTLE_SVG} width={32} height={106} />
+      {/* Dopul (cork) — porneste pe gura sticlei, zboara spre exterior+sus cu
+          spin. Pozitionat absolute relativ la sticla in care e parintele. */}
+      <ChampagneCork side={side} />
+      {/* Jet de bubbles — 12 cercuri mici care ies din gura sticlei in directia
+          inclinarii. Loop scurt: pop initial + cateva valuri suplimentare. */}
+      <Bubbles muzzleX={muzzleX} muzzleY={muzzleY} side={side} />
+    </Animated.View>
+  );
+}
+
+function ChampagneCork({ side }: { side: 'left' | 'right' }) {
+  const fly = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(200),
+      Animated.timing(fly, {
+        toValue: 1,
+        duration: 700,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fly]);
+
+  const isLeft = side === 'left';
+  // Cork-ul pleaca de la "gura" sticlei. Cu tilt-ul inward (+28°/-28°), gura e
+  // orientata catre centrul podium-ului. Dop-ul zboara spre interior + sus —
+  // simbolic ca "spre castigator".
+  const corkTranslateX = fly.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, isLeft ? 70 : -70],
+  });
+  const corkTranslateY = fly.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -90],
+  });
+  const corkRotate = fly.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', `${isLeft ? -540 : 540}deg`],
+  });
+  const corkOpacity = fly.interpolate({
+    inputRange: [0, 0.85, 1],
+    outputRange: [1, 1, 0],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.cork,
+        {
+          opacity: corkOpacity,
+          transform: [
+            { translateX: corkTranslateX },
+            { translateY: corkTranslateY },
+            { rotate: corkRotate },
+          ],
+        },
+      ]}
+    />
+  );
+}
+
+const BUBBLE_COUNT = 14;
+const BUBBLE_COLORS = ['#F5E6C8', '#FFF8DC', '#FFFFFF', '#FCE38A'];
+
+function Bubbles({
+  muzzleX,
+  muzzleY,
+  side,
+}: {
+  muzzleX: number;
+  muzzleY: number;
+  side: 'left' | 'right';
+}) {
+  const bubbles = useMemo(
+    () =>
+      Array.from({ length: BUBBLE_COUNT }).map((_, i) => ({
+        id: i,
+        size: 4 + Math.random() * 6,
+        // Spread lateral — dispersia in jurul jetului central.
+        spread: (Math.random() - 0.5) * 60,
+        // Cat de departe ajunge bubble-ul pe directia jetului.
+        distance: 60 + Math.random() * 70,
+        delay: 200 + i * 35 + Math.random() * 80,
+        duration: 900 + Math.random() * 400,
+        color: BUBBLE_COLORS[i % BUBBLE_COLORS.length]!,
+      })),
+    [],
+  );
+
+  return (
+    <>
+      {bubbles.map((b) => (
+        <Bubble
+          key={b.id}
+          bubble={b}
+          startX={muzzleX}
+          startY={muzzleY}
+          side={side}
+        />
+      ))}
+    </>
+  );
+}
+
+function Bubble({
+  bubble,
+  startX,
+  startY,
+  side,
+}: {
+  bubble: {
+    size: number;
+    spread: number;
+    distance: number;
+    delay: number;
+    duration: number;
+    color: string;
+  };
+  startX: number;
+  startY: number;
+  side: 'left' | 'right';
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(bubble.delay),
+      Animated.timing(t, {
+        toValue: 1,
+        duration: bubble.duration,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [t, bubble.delay, bubble.duration]);
+
+  const isLeft = side === 'left';
+  // Jet-ul iese din gura sticlei in directia inclinarii inward — sticla stanga
+  // sufla bubbles spre dreapta (catre centru), sticla dreapta spre stanga.
+  // Vizual: cele 2 jeturi se intalnesc peste castigator. Dispersia se aplica
+  // perpendicular pe directie ca sa nu fie linie rigida.
+  const dirX = isLeft ? 1 : -1;
+  const endX = startX + dirX * bubble.distance + bubble.spread * 0.5;
+  const endY = startY - bubble.distance * 0.7 + Math.abs(bubble.spread) * 0.3;
+
+  const translateX = t.interpolate({
+    inputRange: [0, 1],
+    outputRange: [startX, endX],
+  });
+  const translateY = t.interpolate({
+    inputRange: [0, 1],
+    outputRange: [startY, endY],
+  });
+  const opacity = t.interpolate({
+    inputRange: [0, 0.15, 0.7, 1],
+    outputRange: [0, 1, 1, 0],
+  });
+  const scale = t.interpolate({
+    inputRange: [0, 0.3, 1],
+    outputRange: [0.4, 1, 0.6],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.bubble,
+        {
+          width: bubble.size,
+          height: bubble.size,
+          backgroundColor: bubble.color,
+          opacity,
+          transform: [{ translateX }, { translateY }, { scale }],
+        },
+      ]}
+    />
+  );
+}
+
+// Confetti — particule colorate care cad peste podium odata cu melodia. Folosim
+// Animated nativ (fara dep nou) — fiecare piesa are translateY 0→jos, rotate
+// random si fade-out spre final. Repornim animatia cand `active` flip-eaza pe
+// true (key force-remount via internal state).
+const CONFETTI_COUNT = 36;
+const CONFETTI_COLORS = ['#F1C40F', '#E74C3C', '#2ECC71', '#3498DB', '#9B59B6', '#FF8C42'];
+const CONFETTI_DURATION = 2800;
+const CONFETTI_FALL = 360;
+
+function Confetti({ active }: { active: boolean }) {
+  // Generam piesele O DATA per "activare". Cheia se incrementeaza la fiecare
+  // activare astfel incat sa re-monteze copilul si sa replay-uiasca animatia
+  // daca user-ul revine pe ecran (ex. dupa back+forward).
+  const [runKey, setRunKey] = useState(0);
+  useEffect(() => {
+    if (active) setRunKey((k) => k + 1);
+  }, [active]);
+
+  if (!active) return null;
+  return <ConfettiBurst key={runKey} />;
+}
+
+function ConfettiBurst() {
+  // useMemo seed-eaza random-urile o data per mount — fara asta, la fiecare
+  // render React ar regenera pozitiile si animatia ar smucki.
+  const pieces = useMemo(
+    () =>
+      Array.from({ length: CONFETTI_COUNT }).map((_, i) => ({
+        id: i,
+        startX: Math.random(), // 0..1 procent din latime
+        color: CONFETTI_COLORS[i % CONFETTI_COLORS.length]!,
+        size: 6 + Math.random() * 6,
+        rotateStart: Math.random() * 360,
+        rotateDelta: (Math.random() - 0.5) * 720,
+        delay: Math.random() * 500,
+        swayAmp: (Math.random() - 0.5) * 30,
+        shape: (Math.random() > 0.5 ? 'square' : 'rect') as 'square' | 'rect',
+      })),
+    [],
+  );
+
+  return (
+    <View pointerEvents="none" style={styles.confettiLayer}>
+      {pieces.map((p) => (
+        <ConfettiPiece key={p.id} piece={p} />
+      ))}
+    </View>
+  );
+}
+
+function ConfettiPiece({
+  piece,
+}: {
+  piece: {
+    startX: number;
+    color: string;
+    size: number;
+    rotateStart: number;
+    rotateDelta: number;
+    delay: number;
+    swayAmp: number;
+    shape: 'square' | 'rect';
+  };
+}) {
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.delay(piece.delay),
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: CONFETTI_DURATION,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [piece.delay, progress]);
+
+  const translateY = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-20, CONFETTI_FALL],
+  });
+  const translateX = progress.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, piece.swayAmp, 0],
+  });
+  const rotate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [`${piece.rotateStart}deg`, `${piece.rotateStart + piece.rotateDelta}deg`],
+  });
+  const opacity = progress.interpolate({
+    inputRange: [0, 0.1, 0.85, 1],
+    outputRange: [0, 1, 1, 0],
+  });
+
+  const leftPct: `${number}%` = `${Math.round(piece.startX * 100)}%`;
+  const h = piece.shape === 'square' ? piece.size : piece.size * 0.45;
+
+  return (
+    <Animated.View
+      style={[
+        styles.confettiPiece,
+        {
+          left: leftPct,
+          width: piece.size,
+          height: h,
+          backgroundColor: piece.color,
+          opacity,
+          transform: [{ translateX }, { translateY }, { rotate }],
+        },
+      ]}
+    />
   );
 }
 
@@ -428,14 +1016,77 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 28, fontWeight: '900', letterSpacing: -0.4 },
   sub: { color: colors.textMuted, fontSize: 14, fontWeight: '600' },
 
-  // Podium fizic — 3 trepte cu inaltimi diferite + avatare deasupra
+  // Stage = containerul absolut pt confetti suprapus peste podium. Padding-ul
+  // la top da loc coroanelor de pe locul 1; padding orizontal lasa pet-ul din
+  // coltul dreapta (right: -pet*0.25) sa iasa partial in afara coloanei fara
+  // sa fie taiat.
+  podiumStage: {
+    position: 'relative',
+    paddingTop: 36,
+    paddingHorizontal: 14,
+  },
+  // Podium fizic — 3 trepte cu inaltimi diferite + avatare deasupra. Overflow
+  // visible ca sa nu taie crown-urile si pet-urile peek out; intrarea
+  // spring-from-below e clip-uita la nivelul fiecarui block individual.
   podiumWrap: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 4,
-    overflow: 'hidden',
+  },
+
+  // Layer absolute peste podium pt confetti. pointerEvents none in JSX —
+  // nu blocheaza tap-uri prin el.
+  confettiLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  confettiPiece: {
+    position: 'absolute',
+    top: 0,
+    borderRadius: 2,
+  },
+
+  // Layer pentru sampanii — peste confetti dar tot in spatele podium-ului
+  // logic (vizual e DEASUPRA caracterelor in coltul de sus, dar n-ar trebui
+  // sa-i atinga vizual). pointerEvents none.
+  champagneLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 11,
+  },
+  champagneBottle: {
+    position: 'absolute',
+    top: 0,
+    width: 32,
+    height: 106,
+    // Originea rotirii e jos-center (baza sticlei) ca recoil-ul sa fie credibil.
+    transformOrigin: 'bottom center',
+  },
+  // Dopul SVG ar fi exagerat — un cerc plat maro-cream e suficient si rapid.
+  cork: {
+    position: 'absolute',
+    top: -2,
+    left: 11,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#C19A6B',
+    borderWidth: 1,
+    borderColor: '#8B6F47',
+  },
+  bubble: {
+    position: 'absolute',
+    top: 0,
+    left: 11,
+    borderRadius: 999,
   },
   podiumCol: {
     flex: 1,
@@ -443,8 +1094,14 @@ const styles = StyleSheet.create({
   },
   podiumChars: {
     alignItems: 'center',
+  },
+  // Eticheta echipei — nume + scor — randata DEASUPRA caracterelor ca acestea
+  // sa stea cu talpile direct pe treapta. Margin-ul de jos da o pauza vizuala
+  // intre text si caractere.
+  podiumLabel: {
+    alignItems: 'center',
     gap: 2,
-    paddingBottom: 4,
+    marginBottom: 6,
   },
   // Crown overlap-uieste varful avatarului — absolute pozitionata in interiorul
   // podiumMember ca sa nu mute layout-ul caracterului in jos.
