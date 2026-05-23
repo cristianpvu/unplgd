@@ -896,6 +896,11 @@ async function main() {
   // Adaugare intrebari noi → urcari de fisier + container restart.
   await seedJourneyQuestions(prisma);
 
+  // Taxonomia de domenii ruleaza mereu (upsert pe slug + dezactivare slug-uri
+  // disparute). Trebuie sa fie INAINTE de guard-ul de skip ca sa se aplice si
+  // pe DB cu catalog deja populat.
+  await seedDomains(prisma);
+
   // Cleanup ownership orphan + Backfill UserItem (idempotent) — pt useri existenti.
   await cleanupOrphanUserItems();
   await backfillUserItems();
@@ -1028,11 +1033,9 @@ async function main() {
     data: { active: false },
   });
 
-  const domainResult = await seedDomains(prisma);
-
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates, ${domainResult.count} domains`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates`,
   );
 }
 
