@@ -17,6 +17,7 @@ import {
 } from '../lib/ai/chatContext.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
 import { bondProgress } from '../lib/pet/bond.js';
+import { awardTopicFromMessage } from '../lib/pet/topicAward.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -501,6 +502,13 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
 
     await appendChatTurn(cacheKey, userTurn);
     await appendChatTurn(cacheKey, { role: 'assistant', content: replyText });
+
+    // Topic detection fire-and-forget — clasifica mesajul copilului si acordeaza
+    // DomainXp daca confidence-ul depaseste threshold-ul. NU blocheaza raspunsul
+    // pet-ului. Cap zilnic 5/(user, domain) gestionat in topicAward.
+    void awardTopicFromMessage(userId, message).catch((err) => {
+      req.log.warn({ err }, 'topic.award_unexpected_throw');
+    });
 
     let replyAudioUrl: string | null = null;
     let ttsProvider: string | null = null;
