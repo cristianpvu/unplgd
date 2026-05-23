@@ -153,7 +153,7 @@ function TeamNamingView({
   const canSubmit = trimmed.length >= 1 && trimmed.length <= 30 && !mut.isPending;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
       <ScrollView contentContainerStyle={styles.namingScroll}>
         <View style={styles.namingHeader}>
@@ -216,7 +216,7 @@ function MemberWaitingView({
     : 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
       <ScrollView contentContainerStyle={styles.memberScroll}>
         {/* Timer mare in centru — atentia principala */}
@@ -309,7 +309,7 @@ function LobbyView({
   const ready = session.playersNeeded === 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
 
       <ScrollView contentContainerStyle={styles.lobbyScroll}>

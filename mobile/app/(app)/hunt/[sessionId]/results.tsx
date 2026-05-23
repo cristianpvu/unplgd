@@ -89,7 +89,7 @@ export default function HuntResults() {
 
   if (!sessionId || resultsQuery.isPending) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <ActivityIndicator color={colors.accent} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
@@ -97,7 +97,7 @@ export default function HuntResults() {
 
   if (resultsQuery.error || !resultsQuery.data) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Text style={styles.error}>Nu am putut incarca rezultatele</Text>
       </SafeAreaView>
     );
@@ -108,7 +108,7 @@ export default function HuntResults() {
   const isWinner = myRank === 1;
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Tag mic + titlu mare in stanga */}
         <View style={styles.header}>

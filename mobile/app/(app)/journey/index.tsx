@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
 import { useQuery } from '@tanstack/react-query';
 import { getMyPet, petImageUrl } from '../../../src/api/pets';
@@ -37,6 +38,7 @@ const STACK_OPTIONS = {
 };
 
 export default function JourneyScreen() {
+  const insets = useSafeAreaInsets();
   const petQuery = useQuery({ queryKey: ['my-pet'], queryFn: getMyPet });
   const pet = petQuery.data?.pet ?? null;
   const petImg = petImageUrl(pet?.species.imagePath ?? null);
@@ -243,8 +245,11 @@ export default function JourneyScreen() {
           </View>
         )}
 
-        {/* Distance counter discret bottom-right */}
-        <View style={styles.distanceCorner} pointerEvents="none">
+        {/* Distance counter discret bottom-right — adaug insets.bottom pt nav-bar */}
+        <View
+          style={[styles.distanceCorner, { bottom: insets.bottom + 8, right: insets.right + 12 }]}
+          pointerEvents="none"
+        >
           <Text style={styles.distanceCornerText}>{distance}m</Text>
         </View>
       </View>
@@ -263,6 +268,7 @@ function CaptionBar({
   speaker: string | null;
   raised: boolean;
 }) {
+  const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     fade.setValue(0);
@@ -277,7 +283,9 @@ function CaptionBar({
     <Animated.View
       style={[
         styles.captionWrap,
-        raised && styles.captionWrapRaised,
+        // bottom default 14, raised devine 60. Adaug insets.bottom in ambele
+        // cazuri ca sa nu treaca peste nav-bar Android (edge-to-edge).
+        { bottom: insets.bottom + (raised ? 60 : 14) },
         {
           opacity: fade,
           transform: [
@@ -304,6 +312,7 @@ function ChallengeOptions({
   accentColor: string;
   onAnswer: (idx: number) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     fade.setValue(0);
@@ -318,6 +327,7 @@ function ChallengeOptions({
     <Animated.View
       style={[
         styles.optionsArea,
+        { bottom: insets.bottom + 14 },
         {
           opacity: fade,
           transform: [

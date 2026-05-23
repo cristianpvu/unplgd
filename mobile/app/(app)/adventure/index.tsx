@@ -20,7 +20,7 @@ export default function AdventureHome() {
   });
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.headerRow}>
         <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
           <Text style={styles.back}>←</Text>

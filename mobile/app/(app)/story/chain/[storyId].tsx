@@ -74,7 +74,7 @@ export default function StoryChain() {
 
   if (chainQuery.isPending) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <ActivityIndicator color={colors.accent} style={{ marginTop: 60 }} />
       </SafeAreaView>
     );
@@ -82,7 +82,7 @@ export default function StoryChain() {
 
   if (chainQuery.error || !chainQuery.data) {
     return (
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <Header onBack={() => router.back()} title="Lant" />
         <Text style={styles.errorText}>Nu am putut incarca lantul povestii</Text>
       </SafeAreaView>
@@ -93,7 +93,7 @@ export default function StoryChain() {
   const title = chapters[0]?.title ?? 'Poveste';
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header onBack={() => router.back()} title={title} />
       <View style={styles.subHeader}>
         <Text style={styles.subText}>
