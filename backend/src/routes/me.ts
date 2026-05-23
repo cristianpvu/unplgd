@@ -7,6 +7,7 @@ import { getUsageStats } from '../lib/ai/usage.js';
 import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
 import { getAllSkillScores } from '../lib/skills.js';
 import { getAllDomainScores, getTopRootDomains } from '../lib/domains.js';
+import { getOrGenerateInsight } from '../lib/pet/mentor.js';
 
 export const meRouter = Router();
 
@@ -95,6 +96,19 @@ meRouter.get('/domains/top', requireAuth, async (req, res, next) => {
     const limit = Math.max(1, Math.min(20, parseInt(String(req.query.limit ?? '10'), 10) || 10));
     const top = await getTopRootDomains(req.userId!, limit);
     res.json({ domains: top });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Reflectia saptamanii — pet-ul citeste skills + domains + activitati din
+// ultimele 7 zile si scrie 1 mesaj scurt (~60 cuvinte). Cache 1 mesaj/saptamana
+// (ISO week), regenerat luni dimineata automat. ?fresh=1 ignora cache (debug).
+meRouter.get('/insight', requireAuth, async (req, res, next) => {
+  try {
+    const forceFresh = req.query.fresh === '1';
+    const insight = await getOrGenerateInsight(req.userId!, { forceFresh });
+    res.json(insight);
   } catch (e) {
     next(e);
   }
