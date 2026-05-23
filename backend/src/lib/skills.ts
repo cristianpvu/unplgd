@@ -35,6 +35,7 @@ export const SKILL_REWARDS = {
 
   // Story Adventure
   ADVENTURE_BOSS_DEFEATED: { perseverenta: 15, curiozitate: 8, logica: 5 },
+  ADVENTURE_NODE_CORRECT: { curiozitate: 4, logica: 3 },
   JOURNEY_QUESTION_CORRECT: { logica: 3, curiozitate: 5 },
   JOURNEY_CHAPTER_COMPLETED: { perseverenta: 10, curiozitate: 5 },
 

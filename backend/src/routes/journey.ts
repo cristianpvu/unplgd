@@ -15,6 +15,7 @@ import { synthesizeTts } from '../lib/ai/tts.js';
 import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.js';
 import { resolvePetImagePath, resolveBackgroundAssets } from '../lib/petImage.js';
 import { awardBondXp } from '../lib/pet/bond.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 
 export const journeyRouter = Router();
 journeyRouter.use(requireAuth);
@@ -271,6 +272,18 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
     } catch (err: any) {
       if (err?.code !== 'P2002') throw err;
     }
+
+    // Skill award la chapter completed (perseverenta + curiozitate). Idempotent
+    // pe chapterId. NB: per-question correct nu se acorda inca — mobile valideaza
+    // local, nu trimite back-end fiecare raspuns. Daca vrem granularitate, adaugam
+    // POST /journey/answer in viitor.
+    await awardSkillsForEvent(
+      userId,
+      'journey_chapter',
+      body.chapterId,
+      SKILL_REWARDS.JOURNEY_CHAPTER_COMPLETED,
+      `Capitol journey ${body.chapterId} terminat`,
+    );
 
     let bondAwarded = 0;
     if (body.bondXp && body.bondXp > 0) {

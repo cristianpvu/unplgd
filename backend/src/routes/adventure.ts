@@ -5,6 +5,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { badRequest, conflict, notFound, serverError } from '../lib/errors.js';
 import { ensureDefaultPet } from '../lib/pet.js';
 import { bondXpToLevel, awardBondXp, BOND_REWARDS } from '../lib/pet/bond.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 import { resolveBackgroundAssets } from '../lib/petImage.js';
 import {
   generateStoryArc,
@@ -258,6 +260,33 @@ adventureRouter.post('/runs/:id/node/:nodeIndex/answer', async (req, res, next) 
       data: { progressJson: newProgress as object },
     });
 
+    // La raspuns corect: skills (curiozitate + logica) si domain (worldul rulat).
+    // Idempotent prin sourceId = `${runId}_${nodeId}` — re-answer pe acelasi
+    // nod nu re-acordeaza.
+    if (correct) {
+      const world = await prisma.adventureWorld.findUnique({
+        where: { slug: run.worldSlug },
+        select: { domain: true },
+      });
+      await awardSkillsForEvent(
+        userId,
+        'adventure_node',
+        `${run.id}_${node.id}`,
+        SKILL_REWARDS.ADVENTURE_NODE_CORRECT,
+        'Obstacol Adventure trecut',
+      );
+      if (world?.domain) {
+        await awardDomainXp(
+          userId,
+          world.domain,
+          DOMAIN_REWARDS.ADVENTURE_NODE_COMPLETED,
+          'adventure_node',
+          `${run.id}_${node.id}`,
+          'Obstacol Adventure trecut',
+        );
+      }
+    }
+
     res.json({
       correct,
       line: correct ? node.obstacle.successLine : node.obstacle.failLine,
@@ -333,6 +362,29 @@ adventureRouter.post('/runs/:id/complete', async (req, res, next) => {
         'adventure',
         run.id,
         `Aventura ${run.worldSlug} completata`,
+      );
+    }
+
+    // Skills + domain pt boss-ul invins. Idempotent pe runId.
+    const world = await prisma.adventureWorld.findUnique({
+      where: { slug: run.worldSlug },
+      select: { domain: true },
+    });
+    await awardSkillsForEvent(
+      userId,
+      'adventure_boss',
+      run.id,
+      SKILL_REWARDS.ADVENTURE_BOSS_DEFEATED,
+      `Boss ${run.worldSlug} invins`,
+    );
+    if (world?.domain) {
+      await awardDomainXp(
+        userId,
+        world.domain,
+        DOMAIN_REWARDS.ADVENTURE_BOSS_DEFEATED,
+        'adventure_boss',
+        run.id,
+        `Boss ${run.worldSlug} invins`,
       );
     }
 

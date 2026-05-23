@@ -11,6 +11,7 @@ import {
   storyVerifySystemPrompt,
 } from '../lib/ai/storyPrompts.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import {
   appendChatTurn,
   clearChatHistory,
@@ -599,6 +600,23 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
         await Promise.all([
           awardXp(me, xpListener, 'story_listened', claim.id, 'Poveste verificata'),
           awardXp(claim.story.authorId, xpAuthor, 'story_told', claim.id, 'Poveste spusa'),
+          // Skills: listener primeste empatie+sociabilitate, author primeste
+          // creativitate+curiozitate. Idempotent pe claim.id (un singur
+          // listening per claim).
+          awardSkillsForEvent(
+            me,
+            'story_listened',
+            claim.id,
+            SKILL_REWARDS.STORY_LISTENED_VERIFIED,
+            'Poveste verificata',
+          ),
+          awardSkillsForEvent(
+            claim.story.authorId,
+            'story_told',
+            claim.id,
+            SKILL_REWARDS.STORY_AUTHORED,
+            'Poveste spusa',
+          ),
         ]);
       }
 
@@ -800,6 +818,16 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
         XP_REWARDS.CO_CREATION,
         'story_extension',
         newStory.id,
+        'Continuare poveste',
+      );
+
+      // Skills pe extensie — extending = continuare creativa, e poveste noua
+      // plus empatie pt cel ce a ascultat prima poveste.
+      await awardSkillsForEvent(
+        me,
+        'story_extension',
+        newStory.id,
+        SKILL_REWARDS.STORY_CHAIN_EXTENDED,
         'Continuare poveste',
       );
 

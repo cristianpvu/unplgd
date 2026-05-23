@@ -9,6 +9,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { prisma } from './prisma.js';
 import { syncDomainEvent } from './graphSync.js';
+import { logger } from './logger.js';
 
 // Recompense per eveniment. Amount-ul e o singura cifra — domeniile primesc
 // scor per sursa (vs skills care primesc map de skill→amount). sourceType
@@ -57,7 +58,11 @@ export type DomainAwardResult = {
 
 /**
  * Idempotent grant pe (userId, domainSlug, sourceType, sourceId).
- * Re-run = no-op. Throws daca slug-ul nu exista in Domain.
+ * Re-run = no-op. Daca slug-ul nu exista in Domain (sau e inactiv), SKIP silent
+ * (returneaza alreadyAwarded:true) cu warning log — protejam app-ul de slug-uri
+ * legacy / unmapped (ex. JourneyQuestion.domain='general' care nu e in
+ * taxonomie). Taxonomia se actualizeaza cu seedDomains, dar pana atunci
+ * evenimentele nu cad.
  */
 export async function awardDomainXp(
   userId: string,
@@ -68,12 +73,12 @@ export async function awardDomainXp(
   description?: string,
   client: Tx = prisma,
 ): Promise<DomainAwardResult> {
-  // Validare existenta domain — FK pe DB ar arunca oricum, dar mesaj curat e util.
   const domain = await client.domain.findUnique({ where: { slug: domainSlug } });
-  if (!domain) {
-    throw new Error(`Invalid domain slug: ${domainSlug}`);
-  }
-  if (!domain.active) {
+  if (!domain || !domain.active) {
+    logger.warn(
+      { domainSlug, sourceType, sourceId },
+      'awardDomainXp: slug necunoscut/inactiv, skip',
+    );
     return { alreadyAwarded: true, amount: 0, domainSlug };
   }
 

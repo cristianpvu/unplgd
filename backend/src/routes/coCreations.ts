@@ -12,6 +12,7 @@ import {
 } from '../lib/ai/cocreationValidator.js';
 import { generateIllustration, isImagenConfigured } from '../lib/ai/imagen.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { getIO, userRoomName } from '../lib/socket/io.js';
 
 export const coCreationsRouter = Router();
@@ -150,6 +151,22 @@ async function runValidationPipeline(cocId: string, imageBase64: string, mimeTyp
     await Promise.all([
       awardXp(c.userAId, XP_REWARDS.CO_CREATION, 'co_creation', cocId, 'Co-creatie validata'),
       awardXp(c.userBId, XP_REWARDS.CO_CREATION, 'co_creation', cocId, 'Co-creatie validata'),
+      // Skills: creativitate (act creativ) + empatie + sociabilitate (impreuna
+      // cu un prieten). Acelasi reward map pt amandoi — egalitate de rol.
+      awardSkillsForEvent(
+        c.userAId,
+        'co_creation',
+        cocId,
+        SKILL_REWARDS.CO_CREATION_COMPLETED,
+        'Co-creatie validata',
+      ),
+      awardSkillsForEvent(
+        c.userBId,
+        'co_creation',
+        cocId,
+        SKILL_REWARDS.CO_CREATION_COMPLETED,
+        'Co-creatie validata',
+      ),
     ]);
 
     emitStatusChanged(await serialize(cocId, c.userAId));

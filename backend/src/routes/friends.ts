@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { FriendshipStatus, InteractionMethod } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getPetSummariesByUserIds } from '../lib/petImage.js';
@@ -57,6 +58,24 @@ friendsRouter.post('/', async (req, res, next) => {
           XP_REWARDS.FRIENDSHIP_NEW,
           'friendship_new',
           friendship.id,
+          'Prieten nou',
+          tx,
+        ),
+        // Skills: sociabilitate pt amandoi. Idempotent pe friendshipId — un
+        // singur grant per relatie.
+        awardSkillsForEvent(
+          me,
+          'friendship_new',
+          friendship.id,
+          SKILL_REWARDS.FRIENDSHIP_NEW,
+          'Prieten nou',
+          tx,
+        ),
+        awardSkillsForEvent(
+          friendUserId,
+          'friendship_new',
+          friendship.id,
+          SKILL_REWARDS.FRIENDSHIP_NEW,
           'Prieten nou',
           tx,
         ),

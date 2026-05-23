@@ -98,8 +98,12 @@ const TAXONOMY: SeedDomain[] = [
     icon: 'tree',
     kind: 'both',
     children: [
-      // Slug existent
+      // Slug existente folosite de codul actual
       { slug: 'geografie', name: 'Geografie', icon: 'globe', kind: 'knowledge' },
+      // Slug-uri JourneyQuestion.domain — folosite ca teme de capitol in joc.
+      { slug: 'ocean', name: 'Oceane', icon: 'wave', kind: 'both' },
+      { slug: 'padure', name: 'Padure', icon: 'tree-leaf', kind: 'both' },
+      { slug: 'desert', name: 'Desert', icon: 'sun', kind: 'both' },
       { slug: 'natura-plante', name: 'Plante', icon: 'flower', kind: 'interest' },
       { slug: 'natura-ecologie', name: 'Ecologie', icon: 'recycle', kind: 'both' },
       { slug: 'natura-vreme', name: 'Vremea', icon: 'cloud', kind: 'both' },
@@ -154,6 +158,8 @@ const TAXONOMY: SeedDomain[] = [
       // Slug existent
       { slug: 'viata-cotidiana', name: 'Viata de zi cu zi', icon: 'home', kind: 'knowledge' },
       { slug: 'limba-romana', name: 'Limba Romana', icon: 'speech', kind: 'knowledge' },
+      // Slug JourneyQuestion.domain = 'oras'
+      { slug: 'oras', name: 'Oras', icon: 'city', kind: 'both' },
       { slug: 'sociale-prieteni', name: 'Prieteni si Comunitate', icon: 'friends', kind: 'interest' },
       { slug: 'sociale-familie', name: 'Familie', icon: 'family', kind: 'interest' },
     ],

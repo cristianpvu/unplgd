@@ -1,6 +1,7 @@
 import { FriendshipStatus, InteractionMethod } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { awardXp, XP_REWARDS } from '../xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../skills.js';
 
 // Squad multiplier — identic cu cel din vechiul /co-walk endpoint.
 // 2 = pair (1x), 3 = "Patrula" (1.5x), 4+ = "Trupa" (2x).
@@ -120,6 +121,22 @@ export async function awardCowalkParticipant(args: {
             'Interactiune zilnica',
             tx,
           ),
+          awardSkillsForEvent(
+            userId,
+            'daily_interaction',
+            a.id,
+            SKILL_REWARDS.DAILY_INTERACTION,
+            'Interactiune zilnica',
+            tx,
+          ),
+          awardSkillsForEvent(
+            partnerId,
+            'daily_interaction',
+            b.id,
+            SKILL_REWARDS.DAILY_INTERACTION,
+            'Interactiune zilnica',
+            tx,
+          ),
         ]);
         dailyAwarded = true;
       }
@@ -127,6 +144,14 @@ export async function awardCowalkParticipant(args: {
 
     const audit = `Co-walk ${durationSec}s steps=${steps} rssiStd=${rssiStdDev.toFixed(2)} squad=${squadSize}x${multiplier}`;
     const r = await awardXp(userId, coWalkXp, 'co_walk', sourceId, audit, tx);
+    await awardSkillsForEvent(
+      userId,
+      'co_walk',
+      sourceId,
+      SKILL_REWARDS.CO_WALK_COMPLETED,
+      audit,
+      tx,
+    );
 
     return {
       alreadyAwarded: r.alreadyAwarded,

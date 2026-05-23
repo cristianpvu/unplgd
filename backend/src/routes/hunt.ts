@@ -26,6 +26,8 @@ import { resolveTokens } from '../lib/bleToken.js';
 import { distanceMeters, warmthForDistance, bearingDegrees } from '../lib/hunt/warmth.js';
 import { judgeRiddleAnswer, judgeCountingAnswer, judgeMcqAnswer } from '../lib/hunt/judge.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 import { env } from '../env.js';
 import { createDevHereSession } from '../lib/hunt/devSession.js';
 import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
@@ -1268,6 +1270,41 @@ huntRouter.post('/sessions/:id/monsters/:mid/finalize', async (req, res, next) =
           },
         }),
       ]);
+
+      // Skills + domain pe fiecare membru al echipei — post-commit, idempotent
+      // prin unique (userId, skill, sourceType, sourceId). Domain-ul vine din
+      // MonsterTemplate dupa slug (HuntMonster nu il cache-uieste).
+      const template = await prisma.monsterTemplate.findUnique({
+        where: { slug: monster.slug },
+        select: { domain: true },
+      });
+      await Promise.all(
+        monster.team.members.flatMap((m) => {
+          const awards: Promise<unknown>[] = [
+            awardSkillsForEvent(
+              m.userId,
+              'hunt_monster',
+              mid,
+              SKILL_REWARDS.HUNT_MONSTER_DEFEATED,
+              'Monstru invins',
+            ),
+          ];
+          if (template?.domain) {
+            awards.push(
+              awardDomainXp(
+                m.userId,
+                template.domain,
+                DOMAIN_REWARDS.HUNT_MONSTER_DEFEATED,
+                'hunt_monster',
+                mid,
+                'Monstru invins',
+              ),
+            );
+          }
+          return awards;
+        }),
+      );
+
       emitHuntUpdate(id, 'monster_finalized');
       res.json({
         status: MonsterStatus.DEFEATED,
@@ -1370,6 +1407,24 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
           id,
           `Hunt rank ${rank + 1}`,
         );
+        // Skills bazate pe rank — doar pt top 3, ceilalti primesc doar XP normal.
+        const rankRewards =
+          rank === 0
+            ? SKILL_REWARDS.HUNT_RANK_1
+            : rank === 1
+              ? SKILL_REWARDS.HUNT_RANK_2
+              : rank === 2
+                ? SKILL_REWARDS.HUNT_RANK_3
+                : null;
+        if (rankRewards) {
+          await awardSkillsForEvent(
+            member.userId,
+            'hunt_rank',
+            id,
+            rankRewards,
+            `Hunt rank ${rank + 1}`,
+          );
+        }
         xpAwards.push({ userId: member.userId, amount, rank: rank + 1 });
       }
     }

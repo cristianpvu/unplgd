@@ -3,6 +3,7 @@ import { prisma } from '../prisma.js';
 import { logger } from '../logger.js';
 import { emitPhoneDownUpdate } from '../socket/phonedownEmit.js';
 import { awardChestForParticipant } from './award.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../skills.js';
 
 // Cap silentios la 4h. Peste atat sesiunea se inchide automat indiferent de
 // participantii care n-au cedat. Anti "am uitat telefonul jos toata noaptea".
@@ -128,6 +129,22 @@ export async function endSession(sessionId: string): Promise<void> {
       });
     } catch (err) {
       logger.error({ err, participantId: p.id }, 'phonedown chest award failed');
+    }
+    // Skills: WINNER primeste perseverenta mare; ceilalti primesc participation
+    // (perseverenta mica + sociabilitate). Idempotent pe participantId.
+    try {
+      const rewards = ranked?.isWinner
+        ? SKILL_REWARDS.PHONE_DOWN_WINNER
+        : SKILL_REWARDS.PHONE_DOWN_PARTICIPATION;
+      await awardSkillsForEvent(
+        p.userId,
+        'phone_down',
+        p.id,
+        rewards,
+        ranked?.isWinner ? 'PhoneDown castigator' : 'PhoneDown participant',
+      );
+    } catch (err) {
+      logger.error({ err, participantId: p.id }, 'phonedown skills award failed');
     }
   }
 

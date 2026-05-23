@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { FriendshipStatus, InteractionMethod } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
+import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { requireAuth } from '../middleware/auth.js';
 import { checkinRateLimit } from '../middleware/rateLimit.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
@@ -77,6 +78,22 @@ interactionsRouter.post('/checkin', checkinRateLimit, async (req, res, next) => 
           'Interactiune zilnica',
           tx,
         ),
+        awardSkillsForEvent(
+          me,
+          'daily_interaction',
+          a.id,
+          SKILL_REWARDS.DAILY_INTERACTION,
+          'Interactiune zilnica',
+          tx,
+        ),
+        awardSkillsForEvent(
+          friendUserId,
+          'daily_interaction',
+          b.id,
+          SKILL_REWARDS.DAILY_INTERACTION,
+          'Interactiune zilnica',
+          tx,
+        ),
       ]);
 
       return { interactionId: a.id, me: meXp, friend: friendXp };
@@ -143,6 +160,8 @@ interactionsRouter.post('/scan', checkinRateLimit, async (req, res, next) => {
         await Promise.all([
           awardXp(me, XP_REWARDS.FRIENDSHIP_NEW, 'friendship_new', friendship.id, 'Prieten nou', tx),
           awardXp(friendUserId, XP_REWARDS.FRIENDSHIP_NEW, 'friendship_new', friendship.id, 'Prieten nou', tx),
+          awardSkillsForEvent(me, 'friendship_new', friendship.id, SKILL_REWARDS.FRIENDSHIP_NEW, 'Prieten nou', tx),
+          awardSkillsForEvent(friendUserId, 'friendship_new', friendship.id, SKILL_REWARDS.FRIENDSHIP_NEW, 'Prieten nou', tx),
         ]);
       } else if (friendship.status !== FriendshipStatus.ACCEPTED) {
         // Pending sau respinsa anterior — scanul fizic o forteaza la ACCEPTED.
@@ -179,6 +198,8 @@ interactionsRouter.post('/scan', checkinRateLimit, async (req, res, next) => {
         await Promise.all([
           awardXp(me, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', a.id, 'Interactiune zilnica', tx),
           awardXp(friendUserId, XP_REWARDS.DAILY_INTERACTION, 'daily_interaction', b.id, 'Interactiune zilnica', tx),
+          awardSkillsForEvent(me, 'daily_interaction', a.id, SKILL_REWARDS.DAILY_INTERACTION, 'Interactiune zilnica', tx),
+          awardSkillsForEvent(friendUserId, 'daily_interaction', b.id, SKILL_REWARDS.DAILY_INTERACTION, 'Interactiune zilnica', tx),
         ]);
         interactionCreated = true;
       }
