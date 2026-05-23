@@ -33,6 +33,36 @@ services:
       retries: 5
     networks: [unplgd_net]
 
+  # Neo4j — graf de skills + interese (read replica denormalizata a evenimentelor
+  # din Postgres). Acces din backend pe net intern (neo4j:7687). Porturile sunt
+  # bind doar pe loopback: Browser UI via SSH tunnel (-L 7474:127.0.0.1:7474),
+  # cypher-shell similar. NU expus la internet.
+  neo4j:
+    image: neo4j:5-community
+    container_name: unplgd_neo4j_prod
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD}
+      NEO4J_PLUGINS: '[]'
+      # Memory tuning pentru prod: 1GB heap + 1GB page cache. Ajusteaza in jos
+      # daca instance-ul Hetzner are sub 4GB total.
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 1G
+    volumes:
+      - unplgd_neo4j_prod_data:/data
+      - unplgd_neo4j_prod_logs:/logs
+    ports:
+      - "127.0.0.1:7474:7474"  # HTTP / Browser UI (via SSH tunnel)
+      - "127.0.0.1:7687:7687"  # Bolt (via SSH tunnel pt cypher-shell local)
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks: [unplgd_net]
+
   backend:
     build: .
     container_name: unplgd_backend
@@ -40,11 +70,18 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+      # Neo4j NU e blocker — driverul e lazy si tolereaza absenta. Lasam pe
+      # service_started ca backend-ul sa nu astepte ~40s la prima pornire dar
+      # tot sa se starteze dupa neo4j a aparut.
+      neo4j:    { condition: service_started }
     environment:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://redis:6379
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       BLE_SECRET: ${BLE_SECRET}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
@@ -73,6 +110,8 @@ services:
 volumes:
   unplgd_postgres_prod_data:
   unplgd_redis_prod_data:
+  unplgd_neo4j_prod_data:
+  unplgd_neo4j_prod_logs:
   unplgd_tts_cache:
 
 networks:

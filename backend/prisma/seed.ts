@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CHALLENGES } from './data/challenges.js';
 import { seedJourneyQuestions } from './seed-journey-questions.js';
+import { seedDomains } from './seed-domains.js';
 
 const prisma = new PrismaClient();
 
@@ -1027,9 +1028,11 @@ async function main() {
     data: { active: false },
   });
 
+  const domainResult = await seedDomains(prisma);
+
   const counts = await prisma.item.count();
   console.log(
-    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates`,
+    `Seed complete: ${TYPES.length} types, ${counts} items, ${CHALLENGES.length} hunt challenges, ${MONSTER_TEMPLATES.length} monster templates, ${domainResult.count} domains`,
   );
 }
 

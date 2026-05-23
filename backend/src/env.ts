@@ -74,6 +74,17 @@ const schema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
+  // Neo4j — proiectia grafului de skills + interese + activitati. Sursa de
+  // adevar ramane Postgres; Neo4j e read replica denormalizata pentru
+  // queries de traversare + vizualizare in dashboard. Sync fire-and-forget
+  // din awardSkillXp/awardDomainXp; cron de rebuild zilnic la fallback.
+  //
+  // Daca lipseste, sync-ul e dezactivat silent (app functioneaza, doar nu
+  // se populeaza graful). Endpoint-urile care depind de Neo4j returneaza
+  // 503 cu mesaj clar.
+  NEO4J_URI: z.string().optional(),
+  NEO4J_USER: z.string().default('neo4j'),
+  NEO4J_PASSWORD: z.string().optional(),
 });
 
 const parsed = schema.safeParse(process.env);

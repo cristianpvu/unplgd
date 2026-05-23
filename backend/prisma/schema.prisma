@@ -51,8 +51,94 @@ model User {
   adventureRuns           AdventureRun[]
   backgroundUnlocks       UserBackground[]
   journeyChapterProgress  JourneyChapterProgress[]
+  skillXpTransactions     SkillXpTransaction[]
+  domainXpTransactions    DomainXpTransaction[]
 
   @@index([email])
+}
+
+// ===== SKILLS + INTERESTS (self-discovery layer pentru copil) =====
+//
+// Doua axe complementare:
+//   - Skill = CUM esti (creativitate, perseverenta, sociabilitate...) — traits
+//   - Domain = CE-ti place (sport, dinozauri, spatiu, fantasy...) — content
+//
+// Ambele acumuleaza scor din evenimente existente (hunt, story, NFC, chat).
+// Scorul final se calculeaza la query cu decay exponential — profilul reflecta
+// cine esti acum, nu cine ai fost. Vezi lib/skills.ts si lib/domains.ts.
+//
+// Modular: skill = string (nu enum), domain = slug intr-un tabel separat.
+// Adaugare skill nou / domain nou = INSERT in DB, fara migrare cod.
+
+// Taxonomia domeniilor — unica sursa de adevar pentru `domain` din intregul
+// sistem (MonsterTemplate, HuntChallenge, PetSpecies.expertiseDomains[],
+// AdventureWorld, JourneyQuestion).
+//
+// Ierarhica: subdomeniile pointeaza catre radacina via parentSlug. Folosit pt
+// agregare in dashboard ("Sport" total = suma copiilor + scor propriu).
+//
+// `kind`:
+//   - 'interest'  = preferinta de continut/hobby (sport, animale, fantasy)
+//   - 'knowledge' = subiect academic (istorie, matematica, limba-romana)
+//   - 'both'     = se aplica si ca interes si ca subiect (spatiu, tehnologie)
+model Domain {
+  slug       String  @id
+  parentSlug String?
+  name       String
+  icon       String?
+  kind       String  @default("both")
+  sortOrder  Int     @default(0)
+  active     Boolean @default(true)
+
+  parent               Domain?               @relation("DomainHierarchy", fields: [parentSlug], references: [slug])
+  children             Domain[]              @relation("DomainHierarchy")
+  domainXpTransactions DomainXpTransaction[]
+
+  @@index([parentSlug, active])
+  @@index([kind, active])
+}
+
+// Acordare scor pe skill per eveniment — idempotent pe (userId, skill,
+// sourceType, sourceId). Pattern identic cu XpTransaction si BondXpTransaction.
+//
+// `skill` e string ('creativitate' | 'curiozitate' | 'sociabilitate' |
+// 'perseverenta' | 'logica' | 'empatie' pt MVP). Lista definita in
+// lib/skills.ts ca SKILLS_VALID.
+model SkillXpTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  skill       String
+  amount      Int
+  sourceType  String
+  sourceId    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill, sourceType, sourceId])
+  @@index([userId, skill, createdAt])
+}
+
+// Acordare scor pe domeniu per eveniment — idempotent pe (userId, domainSlug,
+// sourceType, sourceId). FK pe Domain pentru integritate (vs skill care e free
+// string).
+model DomainXpTransaction {
+  id          String   @id @default(cuid())
+  userId      String
+  domainSlug  String
+  amount      Int
+  sourceType  String
+  sourceId    String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  domain Domain @relation(fields: [domainSlug], references: [slug])
+
+  @@unique([userId, domainSlug, sourceType, sourceId])
+  @@index([userId, domainSlug, createdAt])
+  @@index([userId, createdAt])
 }
 
 // Legare cont <-> bratara NFC. UID-ul tag-ului (hardcodat de fabrica, citit la

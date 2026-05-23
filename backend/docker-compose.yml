@@ -31,6 +31,35 @@ services:
       timeout: 3s
       retries: 10
 
+  # Neo4j — graf de skills + interese (read replica denormalizata a evenimentelor
+  # din Postgres). Sync fire-and-forget din backend. UI Browser pe http://localhost:7475
+  # (login: neo4j / unplgd_dev). Bolt pe 7688 (mapat din 7687 intern).
+  neo4j:
+    image: neo4j:5-community
+    container_name: unplgd_neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/unplgd_dev
+      # Plugin APOC dezactivat MVP — nu il folosim si reduce attack surface.
+      NEO4J_PLUGINS: '[]'
+      # Memory tuning pentru dev: 512MB heap + 512MB page cache (laptop-friendly).
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 512m
+    ports:
+      - "7475:7474"  # HTTP / Browser UI
+      - "7688:7687"  # Bolt
+    volumes:
+      - unplgd_neo4j_data:/data
+      - unplgd_neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   unplgd_postgres_data:
   unplgd_redis_data:
+  unplgd_neo4j_data:
+  unplgd_neo4j_logs:

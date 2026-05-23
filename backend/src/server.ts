@@ -31,6 +31,7 @@ import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
 import { redis } from './lib/redis.js';
+import { closeDriver as closeNeo4jDriver } from './lib/neo4j.js';
 
 const app = express();
 
@@ -93,7 +94,7 @@ server.listen(env.PORT, () => {
 async function shutdown(signal: string) {
   logger.info({ signal }, 'shutting down');
   server.close();
-  await Promise.allSettled([prisma.$disconnect(), redis.quit()]);
+  await Promise.allSettled([prisma.$disconnect(), redis.quit(), closeNeo4jDriver()]);
   process.exit(0);
 }
 

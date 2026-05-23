@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { env } from '../env.js';
 import { getUsageStats } from '../lib/ai/usage.js';
+import { rebuildGraphFromScratch } from '../lib/graphSync.js';
 
 // Endpoint-uri pentru debug rapid (browser-friendly, fara JWT). Pazite cu
 // ADMIN_KEY din env — query param ?key=<secret>. Daca lipseste cheia, raspund
@@ -80,6 +81,20 @@ adminRouter.get('/ai-usage', async (req, res, next) => {
   <p class="muted">Adauga <code>&amp;format=json</code> pentru date raw.</p>
 </body>
 </html>`);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /admin/graph/rebuild?key=<secret>
+// Sterge graful Neo4j si il reconstruieste din Postgres. Folosit cand sync-ul
+// incremental a esuat (Neo4j down) sau dupa schimbari in schema graf. Returneaza
+// numarul de noduri si edges create.
+adminRouter.post('/graph/rebuild', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const result = await rebuildGraphFromScratch();
+    res.json(result);
   } catch (e) {
     next(e);
   }

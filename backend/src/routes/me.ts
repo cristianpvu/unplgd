@@ -5,6 +5,8 @@ import { notFound } from '../lib/errors.js';
 import { getOrCreateDailyToken } from '../lib/bleToken.js';
 import { getUsageStats } from '../lib/ai/usage.js';
 import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
+import { getAllSkillScores } from '../lib/skills.js';
+import { getAllDomainScores, getTopRootDomains } from '../lib/domains.js';
 
 export const meRouter = Router();
 
@@ -60,6 +62,39 @@ meRouter.get('/ai-usage', requireAuth, async (_req, res, next) => {
   try {
     const stats = await getUsageStats(30);
     res.json(stats);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Profilul de skill-uri al copilului — 6 dimensiuni cu scor + level RPG.
+// Decay 60 zile (half-life). Calculat la query, fara cache (acceptabil pt MVP).
+meRouter.get('/skills', requireAuth, async (req, res, next) => {
+  try {
+    const skills = await getAllSkillScores(req.userId!);
+    res.json({ skills });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Toata harta de domenii (radacini + subdomenii). Folosit la ecranul detaliat.
+meRouter.get('/domains', requireAuth, async (req, res, next) => {
+  try {
+    const all = await getAllDomainScores(req.userId!);
+    res.json({ domains: all });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Top N domenii radacina cu scor > 0 — pentru "constelatia" de pe profil
+// (top 10 default). Query param ?limit=N pentru ajustari.
+meRouter.get('/domains/top', requireAuth, async (req, res, next) => {
+  try {
+    const limit = Math.max(1, Math.min(20, parseInt(String(req.query.limit ?? '10'), 10) || 10));
+    const top = await getTopRootDomains(req.userId!, limit);
+    res.json({ domains: top });
   } catch (e) {
     next(e);
   }
