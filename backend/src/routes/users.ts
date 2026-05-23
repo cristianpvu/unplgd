@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { getSignedUrl } from '../lib/storage/gcs.js';
 import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
+import { getAllSkillScores } from '../lib/skills.js';
+import { getTopRootDomains } from '../lib/domains.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -56,6 +58,37 @@ usersRouter.get('/:id', async (req, res, next) => {
       pet,
       background,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /users/:id/skills — profil public skills (orice user logat poate vedea
+// skill-urile altuia). Acelasi format ca /me/skills.
+usersRouter.get('/:id/skills', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) throw badRequest('missing_id', 'userId lipsa');
+    const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw notFound('user_not_found', 'User inexistent');
+    const skills = await getAllSkillScores(id);
+    res.json({ skills });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /users/:id/domains/top — top N domenii radacina pt constelatia publica.
+// Default limit 10. Acelasi format ca /me/domains/top.
+usersRouter.get('/:id/domains/top', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!id) throw badRequest('missing_id', 'userId lipsa');
+    const exists = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+    if (!exists) throw notFound('user_not_found', 'User inexistent');
+    const limit = Math.max(1, Math.min(20, parseInt(String(req.query.limit ?? '10'), 10) || 10));
+    const domains = await getTopRootDomains(id, limit);
+    res.json({ domains });
   } catch (e) {
     next(e);
   }
