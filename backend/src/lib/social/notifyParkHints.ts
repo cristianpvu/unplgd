@@ -45,17 +45,18 @@ function slotKey(m: ParkMatch): string {
   return `${m.parkId}|${m.dayOfWeek}|${m.hourBucket}`;
 }
 
-function buildTitle(petName: string | null): string {
-  if (petName) return `${petName} zice...`;
-  return 'Prietenul tau zice...';
+function buildTitle(_petName: string | null): string {
+  // Title sugestiv — NU promitem prezenta, e o prezicere din pattern istoric.
+  return 'Idee pentru tine';
 }
 
 function buildBody(match: ParkMatch): string {
   const day = DAYS_OF_WEEK.find((d) => d.id === match.dayOfWeek)?.label ?? 'zi';
-  // Capitalize day for readability.
   const dayCap = day.charAt(0).toUpperCase() + day.slice(1);
   const hourRange = `${match.hourStart}-${match.hourEnd}`;
-  return `${dayCap} ${hourRange} in ${match.parkName} — copii care iubesc aceleasi lucruri ca tine vor fi acolo. Vino!`;
+  // "De obicei vin" semnaleaza ca-i pattern, nu garantie. User-ul intelege
+  // ca exista posibilitatea sa nu fie nimeni — dar e cel mai bun pariu.
+  return `${dayCap} ${hourRange} · ${match.parkName} — de obicei vin copii cu pasiuni similare`;
 }
 
 /**

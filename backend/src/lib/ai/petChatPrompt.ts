@@ -87,21 +87,30 @@ REGULI PT MEMORII:
     : '';
 
   // Park hint — intalniri reale. Pet-ul stie ca exista un slot popular cu
-  // profil similar. Mentioneaza-l DOAR daca topicul vine natural.
+  // profil similar IN ISTORIE. Mentioneaza-l DOAR daca topicul vine natural.
   const parkHint = ctx.parkHint;
   const parkHintBlock = parkHint
     ? `
 HINT INTALNIRI REALE (intern, NU spune ca-l ai):
-  Stii ca ${parkHint.dayLabel} intre orele ${parkHint.hourRange}, ${parkHint.parkName}
-  aduna copii cu pasiuni similare (${parkHint.sharedDomains.join(', ')}).
+  In trecut, ${parkHint.dayLabel} intre orele ${parkHint.hourRange}, ${parkHint.parkName}
+  a strans copii cu pasiuni similare (${parkHint.sharedDomains.join(', ')}).
+  ASTA E UN PATTERN ISTORIC — NU O PROGRAMARE OFICIALA. Nimeni nu s-a
+  inscris formal; e doar ce s-a intamplat in saptamanile trecute.
 
   CAND il folosesti:
   - DOAR daca topicul conversatiei cade aproape (kid vorbeste despre joaca afara,
-    se plictiseste, vorbeste despre pasiunile lui, sau intreaba ce sa faca)
+    se plictiseste, vorbeste despre pasiunile lui, sau intreaba ce sa faca).
   - DAR NU il forta — daca topicul nu cade natural, NU il mentiona.
-  - Daca-l folosesti, propunere SCURTA, in caracter, fara nume de copii:
-    "Stii ca ${parkHint.dayLabel} in ${parkHint.parkName}... alti copii care
-    iubesc lucrurile astea vor fi acolo. Ai mers vreodata?"
+  - Formuleaza-l ca **idee, posibilitate, banuiala** — NU promisiune. Foloseste
+    cuvinte de tip "de obicei", "poate", "se intampla", "ai sanse mai mari".
+  - Exemple bune (in caracter, evident):
+    * "Am observat ca ${parkHint.dayLabel} in ${parkHint.parkName} se aduna
+      copii care iubesc ${parkHint.sharedDomains[0] ?? 'lucrurile astea'}.
+      Poate dai de ei daca treci pe acolo."
+    * "De obicei ${parkHint.dayLabel} se intampla sa fie copii ca tine in
+      ${parkHint.parkName}. Nicio garantie, dar ai sanse mai mari decat in
+      alte locuri."
+  - NU spune "vor fi acolo", "sunt acolo", "te asteapta". E PROBABILISTIC.
   - NU "trimite-mi prieten online", NU "vorbeste cu cineva pe app". Mereu
     invitatie sa mearga FIZIC sa intalneasca alti copii in lumea reala.
   - Maxim O DATA in conversatie. Daca kid-ul refuza, ramai in caracter, nu

@@ -111,13 +111,20 @@ export async function sendPushBatch(messages: PushMessage[]): Promise<PushResult
         const ticket = tickets[j];
         if (!ticket) {
           results.push({ to: msg.to, success: false, error: 'no_ticket' });
+          logger.warn({ to: msg.to }, 'expo_push.no_ticket');
           continue;
         }
         if (ticket.status === 'ok') {
           results.push({ to: msg.to, success: true });
         } else {
           const errCode = ticket.details?.error ?? 'unknown';
+          // ticket din varianta error are si `message` la nivel de root.
+          const ticketMsg = (ticket as { message?: string }).message ?? null;
           results.push({ to: msg.to, success: false, error: errCode });
+          logger.warn(
+            { to: msg.to, errCode, ticketMsg, fullTicket: ticket },
+            'expo_push.ticket_error',
+          );
 
           // Token-uri invalide la nivel device — sters automat din DB ca sa
           // nu mai incercam. `DeviceNotRegistered` apare cand user-ul a
