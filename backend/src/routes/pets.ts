@@ -20,6 +20,7 @@ import { bondProgress } from '../lib/pet/bond.js';
 import { awardTopicFromMessage } from '../lib/pet/topicAward.js';
 import { getOrGenerateDailyHook } from '../lib/pet/dailyHook.js';
 import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
+import { extractAndSaveMemories, getPetMemoriesForPrompt } from '../lib/pet/memory.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -504,6 +505,10 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
       getChildProfileSnapshot(userId),
     ]);
 
+    // Memorii persistente per (user, species). Fetched dupa pet ca sa stim
+    // speciesSlug-ul; separat de Promise.all-ul de mai sus pt simplicitate.
+    const memories = await getPetMemoriesForPrompt(userId, pet.species.slug);
+
     // Log diagnostic ca sa putem verifica ca profilul ajunge la model.
     // Scoatem dupa ce confirmam comportamentul end-to-end.
     req.log.info(
@@ -539,6 +544,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
         childName: user.name,
         childAge: calcAge(user.birthDate),
         childProfile,
+        memories,
       }),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
     }, 'pet_chat');
@@ -559,6 +565,19 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     // pet-ului. Cap zilnic 5/(user, domain) gestionat in topicAward.
     void awardTopicFromMessage(userId, message).catch((err) => {
       req.log.warn({ err }, 'topic.award_unexpected_throw');
+    });
+
+    // Pet memory fire-and-forget — extragem fapte durabile despre copil din
+    // schimbul curent si le salvam per (user, speciesSlug). La conversatia
+    // urmatoare cu ACEST pet, faptele sunt injectate in prompt. Alt pet (alta
+    // specie) NU vede aceste memorii.
+    void extractAndSaveMemories({
+      userId,
+      speciesSlug: pet.species.slug,
+      userMessage: message,
+      assistantReply: replyText,
+    }).catch((err) => {
+      req.log.warn({ err }, 'pet_memory.extract_unexpected_throw');
     });
 
     let replyAudioUrl: string | null = null;

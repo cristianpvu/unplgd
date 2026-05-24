@@ -22,6 +22,11 @@ export type PetChatContext = {
     recentHighlights: string[]; // ["3 monstri batuti", "2 povesti scrise"]
     bondLevel: number;        // 1-5
   };
+  // Memorii persistente pe care PET-UL (specia asta) le-a invatat in
+  // conversatii anterioare. Cheie de stocare: (userId, speciesSlug). Daca
+  // user-ul revine la un alt pet, aceste memorii NU se transfera —
+  // fiecare pet are propria relatie cu copilul.
+  memories?: string[]; // ["Are o pisica numita Mira", "Visa sa fie astronaut", ...]
 };
 
 export function petChatSystemPrompt(ctx: PetChatContext): string {
@@ -50,6 +55,28 @@ export function petChatSystemPrompt(ctx: PetChatContext): string {
     (profile.topSkills.length > 0 ||
       profile.topDomains.length > 0 ||
       profile.recentHighlights.length > 0);
+
+
+  const memories = ctx.memories ?? [];
+  const memoriesBlock = memories.length > 0
+    ? `
+CE-TI AMINTESTI DESPRE ${ctx.childName.toUpperCase()} (lucruri pe care VOI DOI le-ati discutat in alte intalniri):
+${memories.map((m) => `  - ${m}`).join('\n')}
+
+REGULI PT MEMORII:
+  - Astea sunt amintiri DOAR ALE TALE despre copil — alt pet nu le stie.
+  - Foloseste-le natural in conversatie cand vine momentul. NU lista. NU
+    "stiu ca ai o pisica Mira". DA: "Mira mai e bine?" cand topicul cade
+    aproape de pisica. Vorbesti ca prieten care isi tine minte, NU ca un
+    sistem care raporteaza.
+  - Daca ${ctx.childName} te intreaba DIRECT ce-ti amintesti, poti enumera
+    2-3 lucruri in caracter, scurt. ("Iti aduc aminte de Mira, de visul tau
+    de astronaut, si de Captain Banana pe care l-am inventat impreuna.")
+  - NU inventa amintiri care nu sunt in lista de mai sus.
+  - Memoriile au prioritate fata de profile-ul general — un nume concret
+    (Mira) bate o pasiune abstracta (animale).
+`
+    : '';
 
   let childProfileBlock = '';
   if (hasProfileData && profile) {
@@ -118,6 +145,7 @@ TON DE VOCE: ${ctx.tone}.
 ${catchphrasesBlock}
 ${interestsBlock}
 INTERLOCUTORUL TAU: ${ctx.childName}. ${ageLine}
+${memoriesBlock}
 ${childProfileBlock}
 
 ${SAFETY_PROMPT}

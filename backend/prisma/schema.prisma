@@ -53,6 +53,7 @@ model User {
   journeyChapterProgress  JourneyChapterProgress[]
   skillXpTransactions     SkillXpTransaction[]
   domainXpTransactions    DomainXpTransaction[]
+  petMemories             PetMemory[]
 
   @@index([email])
 }
@@ -440,6 +441,31 @@ model BondXpTransaction {
 
   @@unique([petId, sourceType, sourceId])
   @@index([petId, createdAt])
+}
+
+// Memorie persistenta a pet-ului despre copil — fapte extrase din conversatii
+// (pisica, vis, frica, glume) ca pet-ul sa-si tina minte detalii intre sesiuni.
+//
+// CHEIA PRINCIPIALA: per (userId, speciesSlug). Asa Darth Vader si Yoda au
+// MEMORII SEPARATE despre acelasi copil — daca copilul i-a zis lui Vader cum
+// o cheama pisica, Yoda nu stie. Cand revine la Vader, Vader stie.
+//
+// `archived` true = "uitata" (kid a cerut sa uite, sau e prea veche). Nu o
+// stergem fizic ca sa pastram audit trail. Prompt-ul de chat injecteaza doar
+// memoriile cu archived=false, sortate descrescator dupa createdAt, top N.
+model PetMemory {
+  id          String   @id @default(cuid())
+  userId      String
+  speciesSlug String   // leg slaba la PetSpecies.slug — modular, fara FK
+  fact        String   // ex. "Are o pisica numita Mira"
+  sourceType  String   // "chat" pentru moment
+  sourceId    String?  // optional: id-ul mesajului sursa
+  createdAt   DateTime @default(now())
+  archived    Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, speciesSlug, archived, createdAt])
 }
 
 // ===== STORY-ADVENTURE (joc: pet-ul te poarta printr-o lume pe o harta cu
