@@ -139,11 +139,20 @@ async function fetchOverpassParks(lat: number, lng: number): Promise<{
 
   const resp = await fetch(OVERPASS_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'unplgd-mobile/1.0',
+    },
     body: `data=${encodeURIComponent(query)}`,
   });
 
   if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    logger.warn(
+      { status: resp.status, body: body.slice(0, 200) },
+      'overpass.fetch_failed',
+    );
     throw new Error(`Overpass HTTP ${resp.status}`);
   }
 
