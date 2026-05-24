@@ -54,8 +54,30 @@ model User {
   skillXpTransactions     SkillXpTransaction[]
   domainXpTransactions    DomainXpTransaction[]
   petMemories             PetMemory[]
+  notifications           Notification[]
 
   @@index([email])
+}
+
+// Notificare in-app (Tier 1 fara push). Folosita momentan pt sugestii de
+// intalniri reale (park hints) + viitor: friend requests, level-up, etc.
+// `kind` discrimina sursa, `payload` poarta date specifice (parkId, slot,
+// etc.) ca front-ul sa decida cum sa o afiseze si unde sa duca tap-ul.
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  kind        String   // ex. "park_hint", "friend_request", "level_up"
+  title       String
+  body        String
+  payload     Json     @default("{}")
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@index([userId, kind, createdAt])
 }
 
 // ===== SKILLS + INTERESTS (self-discovery layer pentru copil) =====

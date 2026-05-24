@@ -21,6 +21,7 @@ import { awardTopicFromMessage } from '../lib/pet/topicAward.js';
 import { getOrGenerateDailyHook } from '../lib/pet/dailyHook.js';
 import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
 import { extractAndSaveMemories, getPetMemoriesForPrompt } from '../lib/pet/memory.js';
+import { getTopParkMatchesForUser } from '../lib/social/parkMatcher.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -509,6 +510,31 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     // speciesSlug-ul; separat de Promise.all-ul de mai sus pt simplicitate.
     const memories = await getPetMemoriesForPrompt(userId, pet.species.slug);
 
+    // Park hint — top 1 match cu similaritate decenta. Daca exista, pet-ul
+    // poate mentiona "vino sambata la X" cand topicul cade natural. Daca
+    // nu, prompt-ul nu include hint-ul. Fail soft — daca pica matcher-ul,
+    // chat-ul tot raspunde, doar fara hint social.
+    let parkHint: {
+      parkName: string;
+      dayLabel: string;
+      hourRange: string;
+      sharedDomains: string[];
+    } | undefined;
+    try {
+      const matches = await getTopParkMatchesForUser(userId, 1);
+      const top = matches[0];
+      if (top && top.similarity >= 0.2) {
+        parkHint = {
+          parkName: top.parkName,
+          dayLabel: top.dayLabel,
+          hourRange: `${top.hourStart}-${top.hourEnd}`,
+          sharedDomains: top.sharedDomains.map((d) => d.slug),
+        };
+      }
+    } catch (err) {
+      req.log.warn({ err }, 'park_hint.fetch_failed');
+    }
+
     // Log diagnostic ca sa putem verifica ca profilul ajunge la model.
     // Scoatem dupa ce confirmam comportamentul end-to-end.
     req.log.info(
@@ -545,6 +571,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
         childAge: calcAge(user.birthDate),
         childProfile,
         memories,
+        parkHint,
       }),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
     }, 'pet_chat');

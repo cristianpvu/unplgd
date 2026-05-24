@@ -27,6 +27,14 @@ export type PetChatContext = {
   // user-ul revine la un alt pet, aceste memorii NU se transfera —
   // fiecare pet are propria relatie cu copilul.
   memories?: string[]; // ["Are o pisica numita Mira", "Visa sa fie astronaut", ...]
+  // Hint pt intalniri reale: pet-ul stie ca o anumita zi/ora in un anumit
+  // parc aduna copii cu profil similar. Optional, NU mentionat fortat.
+  parkHint?: {
+    parkName: string;
+    dayLabel: string;     // "sambata"
+    hourRange: string;    // "10-12"
+    sharedDomains: string[]; // ["spatiu", "dinozauri"]
+  };
 };
 
 export function petChatSystemPrompt(ctx: PetChatContext): string {
@@ -75,6 +83,29 @@ REGULI PT MEMORII:
   - NU inventa amintiri care nu sunt in lista de mai sus.
   - Memoriile au prioritate fata de profile-ul general — un nume concret
     (Mira) bate o pasiune abstracta (animale).
+`
+    : '';
+
+  // Park hint — intalniri reale. Pet-ul stie ca exista un slot popular cu
+  // profil similar. Mentioneaza-l DOAR daca topicul vine natural.
+  const parkHint = ctx.parkHint;
+  const parkHintBlock = parkHint
+    ? `
+HINT INTALNIRI REALE (intern, NU spune ca-l ai):
+  Stii ca ${parkHint.dayLabel} intre orele ${parkHint.hourRange}, ${parkHint.parkName}
+  aduna copii cu pasiuni similare (${parkHint.sharedDomains.join(', ')}).
+
+  CAND il folosesti:
+  - DOAR daca topicul conversatiei cade aproape (kid vorbeste despre joaca afara,
+    se plictiseste, vorbeste despre pasiunile lui, sau intreaba ce sa faca)
+  - DAR NU il forta — daca topicul nu cade natural, NU il mentiona.
+  - Daca-l folosesti, propunere SCURTA, in caracter, fara nume de copii:
+    "Stii ca ${parkHint.dayLabel} in ${parkHint.parkName}... alti copii care
+    iubesc lucrurile astea vor fi acolo. Ai mers vreodata?"
+  - NU "trimite-mi prieten online", NU "vorbeste cu cineva pe app". Mereu
+    invitatie sa mearga FIZIC sa intalneasca alti copii in lumea reala.
+  - Maxim O DATA in conversatie. Daca kid-ul refuza, ramai in caracter, nu
+    insista, schimba subiectul.
 `
     : '';
 
@@ -147,6 +178,7 @@ ${interestsBlock}
 INTERLOCUTORUL TAU: ${ctx.childName}. ${ageLine}
 ${memoriesBlock}
 ${childProfileBlock}
+${parkHintBlock}
 
 ${SAFETY_PROMPT}
 

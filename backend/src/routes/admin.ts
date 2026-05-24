@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { env } from '../env.js';
 import { getUsageStats } from '../lib/ai/usage.js';
 import { rebuildGraphFromScratch } from '../lib/graphSync.js';
+import { getParkAggregates } from '../lib/social/parkAggregates.js';
+import { runNotifyParkHints } from '../lib/social/notifyParkHints.js';
 
 // Endpoint-uri pentru debug rapid (browser-friendly, fara JWT). Pazite cu
 // ADMIN_KEY din env — query param ?key=<secret>. Daca lipseste cheia, raspund
@@ -94,6 +96,33 @@ adminRouter.post('/graph/rebuild', async (req, res, next) => {
   try {
     if (!checkKey(req, res)) return;
     const result = await rebuildGraphFromScratch();
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /admin/social/park-aggregates?key=<secret>[&fresh=1]
+// Inspecteaza matricea agregata (park × day × hour × profile). Util pt
+// debug + verificat ca avem destule date inainte de a notifica useri.
+adminRouter.get('/social/park-aggregates', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const fresh = req.query.fresh === '1';
+    const data = await getParkAggregates({ forceFresh: fresh });
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /admin/social/notify-park-hints?key=<secret>
+// Ruleaza notificatorul pe TOTI userii activi. In productie: apelat de un
+// cron daily dimineata (~8 AM). Pentru moment manual din admin.
+adminRouter.post('/social/notify-park-hints', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const result = await runNotifyParkHints();
     res.json(result);
   } catch (e) {
     next(e);

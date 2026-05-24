@@ -113,3 +113,61 @@ meRouter.get('/insight', requireAuth, async (req, res, next) => {
     next(e);
   }
 });
+
+// Notificari in-app — lista descendent cronologic. Pe MVP, fara paginare:
+// notificarile sunt rare (max 2-3/saptamana per user). `unreadOnly=1` pt UI
+// indicator badge.
+meRouter.get('/notifications', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const unreadOnly = req.query.unreadOnly === '1';
+    const items = await prisma.notification.findMany({
+      where: { userId, ...(unreadOnly ? { readAt: null } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    const unreadCount = await prisma.notification.count({
+      where: { userId, readAt: null },
+    });
+    res.json({ items, unreadCount });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Mark read — un singur ID. Idempotent.
+meRouter.post('/notifications/:id/read', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const id = String(req.params.id ?? '');
+    if (!id) return res.status(400).json({ error: 'missing_id' });
+    const n = await prisma.notification.findUnique({ where: { id } });
+    if (!n || n.userId !== userId) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    if (n.readAt) {
+      return res.json({ ok: true, alreadyRead: true });
+    }
+    await prisma.notification.update({
+      where: { id },
+      data: { readAt: new Date() },
+    });
+    res.json({ ok: true, alreadyRead: false });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// Mark ALL read — buton "marcheaza toate ca citite".
+meRouter.post('/notifications/read-all', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const result = await prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+    res.json({ ok: true, updated: result.count });
+  } catch (e) {
+    next(e);
+  }
+});
