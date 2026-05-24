@@ -504,6 +504,23 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
       getChildProfileSnapshot(userId),
     ]);
 
+    // Log diagnostic ca sa putem verifica ca profilul ajunge la model.
+    // Scoatem dupa ce confirmam comportamentul end-to-end.
+    req.log.info(
+      {
+        userId,
+        topSkills: childProfile.topSkills,
+        topDomains: childProfile.topDomains,
+        recentHighlights: childProfile.recentHighlights,
+        bondLevel: childProfile.bondLevel,
+        profileEmpty:
+          childProfile.topSkills.length === 0 &&
+          childProfile.topDomains.length === 0 &&
+          childProfile.recentHighlights.length === 0,
+      },
+      'pet_chat.child_profile_snapshot',
+    );
+
     const cacheKey = chatCacheKey(userId);
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
