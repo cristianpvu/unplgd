@@ -23,6 +23,12 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Expo push token — inregistrat de mobile la login si setari notificari ON.
+  // Format ExponentPushToken[xxxxxxxxxxxx]. Folosit pt push prin Expo Push API
+  // (proxy gratuit catre APNs/FCM, fara setup separat de certificate).
+  pushToken          String?
+  pushTokenUpdatedAt DateTime?
+
   // Cheia fundalului de profil selectat (din ProfileBackground.key, deblocat
   // prin story-adventure). Vizibil de ceilalti pe profil. NULL = default.
   selectedBackgroundKey String?

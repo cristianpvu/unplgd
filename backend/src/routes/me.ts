@@ -158,6 +158,40 @@ meRouter.post('/notifications/:id/read', requireAuth, async (req, res, next) => 
   }
 });
 
+// POST /me/push-token { token: "ExponentPushToken[...]" }
+// Mobile cheama la login si la fiecare schimbare de permissions.
+// Idempotent — update sau no-op daca acelasi token e deja salvat.
+meRouter.post('/push-token', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const token = typeof req.body?.token === 'string' ? req.body.token : null;
+    if (!token || !token.startsWith('ExponentPushToken[')) {
+      return res.status(400).json({ error: 'invalid_token' });
+    }
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: token, pushTokenUpdatedAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /me/push-token — kid (sau parinte) revoca push permissions.
+meRouter.delete('/push-token', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: null, pushTokenUpdatedAt: null },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // Mark ALL read — buton "marcheaza toate ca citite".
 meRouter.post('/notifications/read-all', requireAuth, async (req, res, next) => {
   try {

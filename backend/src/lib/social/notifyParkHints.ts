@@ -12,6 +12,7 @@ import { prisma } from '../prisma.js';
 import { logger } from '../logger.js';
 import { getTopParkMatchesForUser, type ParkMatch } from './parkMatcher.js';
 import { DAYS_OF_WEEK } from './parkAggregates.js';
+import { sendPush } from '../push/expoPush.js';
 
 const MIN_SIMILARITY_FOR_NOTIFY = 0.25;
 const COOLDOWN_DAYS_SAME_SLOT = 14;
@@ -22,6 +23,8 @@ const MS_PER_DAY = 86400000;
 export type NotifyResult = {
   totalUsersScanned: number;
   notificationsCreated: number;
+  pushSent: number;
+  pushFailed: number;
   skipped: {
     inactiveUsers: number;
     weeklyCapReached: number;
@@ -63,6 +66,8 @@ export async function runNotifyParkHints(): Promise<NotifyResult> {
   const result: NotifyResult = {
     totalUsersScanned: 0,
     notificationsCreated: 0,
+    pushSent: 0,
+    pushFailed: 0,
     skipped: {
       inactiveUsers: 0,
       weeklyCapReached: 0,
@@ -124,32 +129,53 @@ export async function runNotifyParkHints(): Promise<NotifyResult> {
         continue;
       }
 
-      // Take pet name pentru title personalizat.
-      const pet = await prisma.pet.findUnique({
-        where: { userId },
-        select: { name: true },
-      });
+      // Pet name + pushToken intr-un singur query.
+      const [pet, userInfo] = await Promise.all([
+        prisma.pet.findUnique({ where: { userId }, select: { name: true } }),
+        prisma.user.findUnique({ where: { id: userId }, select: { pushToken: true } }),
+      ]);
 
-      await prisma.notification.create({
-        data: {
-          userId,
-          kind: 'park_hint',
-          title: buildTitle(pet?.name ?? null),
-          body: buildBody(eligibleMatch),
-          payload: {
-            slotKey: slotKey(eligibleMatch),
-            parkId: eligibleMatch.parkId,
-            parkOsmId: eligibleMatch.parkOsmId,
-            parkName: eligibleMatch.parkName,
-            dayOfWeek: eligibleMatch.dayOfWeek,
-            hourStart: eligibleMatch.hourStart,
-            hourEnd: eligibleMatch.hourEnd,
-            similarity: eligibleMatch.similarity,
-            sharedDomains: eligibleMatch.sharedDomains.map((d) => d.slug),
-          },
-        },
+      const title = buildTitle(pet?.name ?? null);
+      const body = buildBody(eligibleMatch);
+      const notifPayload = {
+        slotKey: slotKey(eligibleMatch),
+        parkId: eligibleMatch.parkId,
+        parkOsmId: eligibleMatch.parkOsmId,
+        parkName: eligibleMatch.parkName,
+        dayOfWeek: eligibleMatch.dayOfWeek,
+        hourStart: eligibleMatch.hourStart,
+        hourEnd: eligibleMatch.hourEnd,
+        similarity: eligibleMatch.similarity,
+        sharedDomains: eligibleMatch.sharedDomains.map((d) => d.slug),
+      };
+
+      const created = await prisma.notification.create({
+        data: { userId, kind: 'park_hint', title, body, payload: notifPayload },
       });
       result.notificationsCreated += 1;
+
+      // Push notification — daca user-ul are token, trimite si push.
+      // In-app notification ramane salvata oricum. Push e best-effort.
+      if (userInfo?.pushToken) {
+        try {
+          const ok = await sendPush({
+            to: userInfo.pushToken,
+            title,
+            body,
+            data: {
+              kind: 'park_hint',
+              notificationId: created.id,
+              ...notifPayload,
+            },
+            channelId: 'park_hints',
+          });
+          if (ok) result.pushSent += 1;
+          else result.pushFailed += 1;
+        } catch (err) {
+          logger.warn({ err, userId }, 'notify_park_hints.push_failed');
+          result.pushFailed += 1;
+        }
+      }
     } catch (err) {
       logger.warn({ err, userId }, 'notify_park_hints.user_failed');
     }
