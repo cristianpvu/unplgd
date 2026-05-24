@@ -47,11 +47,19 @@ function cacheKey(userId: string): string {
   return `pet:hook:${userId}:${bucharestDayKey()}`;
 }
 
-async function gatherContext(userId: string): Promise<{
-  basedOn: DailyHookPayload['basedOn'];
+type PetCtx = {
   petName: string;
   speciesName: string;
   speciesTone: string;
+  systemHint: string;
+  shortLore: string;
+  catchphrases: string[];
+  interests: string[];
+};
+
+async function gatherContext(userId: string): Promise<{
+  basedOn: DailyHookPayload['basedOn'];
+  pet: PetCtx;
   childName: string;
 }> {
   const since = new Date(Date.now() - WINDOW_HOURS * MS_PER_HOUR);
@@ -81,7 +89,7 @@ async function gatherContext(userId: string): Promise<{
     ensureDefaultPet(userId).then(() =>
       prisma.pet.findUniqueOrThrow({
         where: { userId },
-        include: { species: { select: { name: true, tone: true } } },
+        include: { species: true },
       }),
     ),
   ]);
@@ -120,57 +128,90 @@ async function gatherContext(userId: string): Promise<{
       eventCount: skillEvents.length,
       daysSinceLastActivity,
     },
-    petName: pet.name,
-    speciesName: pet.species.name,
-    speciesTone: pet.species.tone,
+    pet: {
+      petName: pet.name,
+      speciesName: pet.species.name,
+      speciesTone: pet.species.tone,
+      systemHint: pet.species.systemHint,
+      shortLore: pet.species.shortLore,
+      catchphrases: pet.species.catchphrases,
+      interests: pet.species.interests,
+    },
     childName: user.name,
   };
 }
 
-const SYSTEM_PROMPT = `Esti un pet AI care saluta copilul (6-14 ani) cand deschide aplicatia. Mesajul tau apare intr-un bubble mic deasupra ta pe home screen si serveste ca teaser pentru o conversatie ulterioara.
+function buildSystemPrompt(pet: PetCtx, childName: string): string {
+  const loreBlock = pet.shortLore ? `\nLUMEA TA: ${pet.shortLore}` : '';
+  const catchphrasesBlock = pet.catchphrases.length > 0
+    ? `\nREPLICI SEMNATURA: ${pet.catchphrases.map((p) => `"${p}"`).join(', ')}`
+    : '';
+  const interestsBlock = pet.interests.length > 0
+    ? `\nSUBIECTE CARE TE PASIONEAZA: ${pet.interests.join(', ')}`
+    : '';
+
+  return `Esti ${pet.speciesName}. Numele tau in conversatia asta este ${pet.petName}.
+
+CINE ESTI:
+${pet.systemHint}
+${loreBlock}
+
+TON DE VOCE: ${pet.speciesTone}.
+${catchphrasesBlock}${interestsBlock}
+
+INTERLOCUTORUL TAU: ${childName}.
+
+CONTEXT: scrii UN mesaj de salut care apare intr-un bubble mic deasupra ta cand
+${childName} deschide aplicatia. Mesajul tau e si primul lucru pe care il aude
+in chat cand tap-uieste pe tine — deci de aici incepe efectiv conversatia voastra.
 
 REGULI STRICTE:
 - O singura propozitie, MAXIM 18 cuvinte. Bubble-ul e mic.
-- Romana FARA DIACRITICE.
-- Fara emoji. Fara markdown. Fara JSON. DOAR textul mesajului.
-- Voce de pet: curios, prietenos, jucaus. NU institutional, NU coach.
-- Daca exista o activitate concreta recenta (skill in crestere SAU domeniu cu care s-a jucat), fa-o curioasa: "Te-ai luptat bine cu dinozaurii ieri — mai vrem azi?" sau "Iar visez la spatiu... vrei sa-ti zic ce am visat?"
-- Daca nu e nicio activitate recenta (zero evenimente sau cativa zile pauza), fa-o calduros: "Hei, mi-a fost dor de tine — vrem o aventura?" sau "Sper sa fii ok — vreau sa-ti povestesc ceva."
-- NU mentiona cifre, scoruri, nivele, XP. Vorbesti ca un prieten, nu ca un dashboard.
-- NU oferi sfaturi educationale ("hai sa invatam"). Sune ca o invitatie la joaca / conversatie.
-- Mesajul trebuie sa invite tap pe pet pentru a deschide chat-ul.`;
+- Romana CU diacritice (e citit cu TTS, vocea pet-ului).
+- Fara emoji, fara markdown, fara JSON. DOAR textul mesajului.
+- Vocabular, ton, ritm — TOATE din "CINE ESTI" si "TON DE VOCE". Daca esti
+  Darth Vader, suni a Darth Vader. Daca esti un catelus jucaus, suni a catelus.
+- Nu te prezenta cu numele/rolul. ${childName} stie cine esti, te vede pe ecran.
+- Deschide DIRECT in caracter — o observatie din lumea ta, o intrebare specifica,
+  o referinta la ce face copilul, o invitatie scurta la joaca/poveste.
+- Daca exista o activitate concreta recenta, fa-o curioasa (in caracter): nu
+  "ai luptat bine", ci ceva ce ar zice TU despre asta in lumea TA.
+- Daca nu e activitate recenta, fa-o calduros, NU acuzator. "Mi-a fost dor"
+  in caracterul tau, nu generic.
+- NU mentiona cifre, scoruri, nivele, XP. Vorbesti ca personajul tau.
+- NU oferi sfaturi educationale ("hai sa invatam"). Trebuie sa sune ca o
+  invitatie la conversatie, nu ca un coach.
+- NU "Bravo!", "Buna treaba!", "Esti grozav!" generic. Recunoasterea ramane
+  in caracter (Darth Vader n-ar zice "bravo", ar zice "Forta ta a crescut").
+- Mesajul trebuie sa-l atraga sa tap-uiasca si sa intre in chat.`;
+}
 
 function buildUserPrompt(ctx: {
   basedOn: DailyHookPayload['basedOn'];
-  petName: string;
-  speciesName: string;
-  speciesTone: string;
   childName: string;
 }): string {
-  const { basedOn, petName, speciesName, speciesTone, childName } = ctx;
+  const { basedOn, childName } = ctx;
   const skillLine = basedOn.topSkill
-    ? `${basedOn.topSkill.skill} (+${basedOn.topSkill.amount})`
-    : '(nimic)';
+    ? basedOn.topSkill.skill
+    : '(nimic notabil)';
   const domainLine = basedOn.topDomain
-    ? `${basedOn.topDomain.name}`
-    : '(nimic)';
+    ? basedOn.topDomain.name
+    : '(niciun topic clar)';
   const lastActivity = basedOn.daysSinceLastActivity == null
-    ? 'niciodata'
+    ? 'inca nu s-a jucat niciodata'
     : basedOn.daysSinceLastActivity === 0
       ? 'azi'
       : basedOn.daysSinceLastActivity === 1
         ? 'ieri'
         : `acum ${basedOn.daysSinceLastActivity} zile`;
 
-  return `Esti ${petName}, un ${speciesName} cu ton ${speciesTone}. Copilul tau este ${childName}.
-
-Ce a facut ${childName} in ultimele 48h:
-- Skill cu cea mai mare crestere: ${skillLine}
-- Domeniu/topic cu care s-a jucat cel mai mult: ${domainLine}
-- Evenimente totale: ${basedOn.eventCount}
+  return `Background despre ${childName} (ultimele 48h):
+- Skill in crestere: ${skillLine}
+- Topic preferat acum: ${domainLine}
+- Total evenimente recente: ${basedOn.eventCount}
 - Ultima activitate: ${lastActivity}
 
-Scrie mesajul tau de salut pentru ${childName} azi. O singura propozitie, sub 18 cuvinte, doar textul.`;
+Scrie salutul tau pentru ${childName} acum, in caracter. O propozitie, sub 18 cuvinte, doar textul.`;
 }
 
 /**
@@ -197,10 +238,10 @@ export async function getOrGenerateDailyHook(
   const completion = await claudeMessages(
     {
       model: env.ANTHROPIC_HINT_MODEL,
-      max_tokens: 80,
+      max_tokens: 120,
       temperature: 0.7,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: buildUserPrompt(ctx) }],
+      system: buildSystemPrompt(ctx.pet, ctx.childName),
+      messages: [{ role: 'user', content: buildUserPrompt({ basedOn: ctx.basedOn, childName: ctx.childName }) }],
     },
     'pet_daily_hook',
   );

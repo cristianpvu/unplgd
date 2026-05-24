@@ -442,6 +442,22 @@ petsRouter.get('/chat', async (req, res, next) => {
         req.log.error({ err }, 'tts.pet_chat_intro_failed');
       }
       intro = { text: introText, audioUrl, ttsProvider };
+
+      // Persistam intro-ul DOAR in chat history (Redis), NU in messages
+      // returnat aici — altfel mobile-ul l-ar afisa duplicat (o data ca intro
+      // si o data ca mesaj). Pe urmatorul GET /chat history.length > 0 si
+      // intro = null; mesajul intra natural ca prima replica assistant.
+      //
+      // Beneficiu real: la primul mesaj al kid-ului, Claude vede in context
+      // [intro_text, kid_msg] si continua firul, nu porneste de la zero.
+      try {
+        await appendChatTurn(chatCacheKey(userId), {
+          role: 'assistant',
+          content: introText,
+        });
+      } catch (err) {
+        req.log.warn({ err }, 'pet_hook.intro_history_persist_failed');
+      }
     } else {
       // Resincronizam audio pe ultimul mesaj assistant (live mode il canta la
       // re-deschiderea ecranului). Iteram de la coada catre cap ca sa luam
