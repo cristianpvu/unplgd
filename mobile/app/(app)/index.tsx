@@ -34,7 +34,7 @@ import {
   TIER_LABEL,
 } from '../../src/chests/reveal';
 import { listFriends } from '../../src/api/friends';
-import { getMyPet, petImageUrl } from '../../src/api/pets';
+import { getMyPet, getPetDailyHook, petImageUrl } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
@@ -75,6 +75,20 @@ export default function Home() {
   const petImage = petImageUrl(petQuery.data?.pet.species.imagePath ?? null);
   const petName = petQuery.data?.pet.name ?? null;
   const petCatchphrases = petQuery.data?.pet.species.catchphrases ?? [];
+
+  // Daily hook personalizat — un singur mesaj/zi pe baza activitatii recente.
+  // Daca pica (network/AI), bubble-ul cade pe catchphrases speciei.
+  const hookQuery = useQuery({
+    queryKey: ['pet', 'daily-hook'],
+    queryFn: getPetDailyHook,
+    // 6h — hook-ul se schimba zilnic la miezul noptii, dar nu vrem refetch
+    // la fiecare focus al app-ului. 6h prinde ziua noua daca ramane logat.
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: false,
+  });
+  const bubblePhrases = hookQuery.data?.text
+    ? [hookQuery.data.text]
+    : petCatchphrases;
 
   // Daca user-ul e logat dar n-a apucat sa-si creeze avatarul (a inchis app-ul
   // pe mijlocul onboarding-ului), il trimitem inapoi in flow-ul de creare.
@@ -158,7 +172,7 @@ export default function Home() {
             {petQuery.data && (
               <View style={styles.bubbleAnchor} pointerEvents="box-none">
                 <PetSpeechBubble
-                  phrases={petCatchphrases}
+                  phrases={bubblePhrases}
                   petName={petName ?? 'Buddy'}
                   onPress={() => router.push('/(app)/chat')}
                 />

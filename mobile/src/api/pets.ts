@@ -133,6 +133,17 @@ export function clearPetChat() {
   return api<void>('/pets/chat', { method: 'DELETE' });
 }
 
+// Daily hook — mesajul personalizat afisat in bubble-ul pe home. Generat o
+// data pe zi pe baza activitatii ultimilor 48h.
+export type PetDailyHookResponse = {
+  text: string;
+  generatedAt: string;
+};
+
+export function getPetDailyHook() {
+  return api<PetDailyHookResponse>('/pets/daily-hook');
+}
+
 // MP3 URL absolut pt expo-audio (backend serveste relative /tts-cache/...).
 export function absolutePetAudioUrl(path: string | null): string | null {
   if (!path) return null;

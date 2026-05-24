@@ -18,6 +18,7 @@ import {
 import { synthesizeTts } from '../lib/ai/tts.js';
 import { bondProgress } from '../lib/pet/bond.js';
 import { awardTopicFromMessage } from '../lib/pet/topicAward.js';
+import { getOrGenerateDailyHook } from '../lib/pet/dailyHook.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -414,11 +415,22 @@ petsRouter.get('/chat', async (req, res, next) => {
       );
 
     if (messages.length === 0) {
-      const p = await ensurePet();
-      const phrases = p.species.catchphrases;
-      const introText = phrases.length > 0
-        ? phrases[Math.floor(Math.random() * phrases.length)]!
-        : 'Hei.';
+      await ensurePet();
+      // Intro = acelasi daily hook care apare in bubble-ul pe home, ca sa
+      // existe continuitate cand user-ul tap-uieste pe pet (bubble teasere ->
+      // chat continua firul). Hook-ul e cached zilnic, deci e instant aici.
+      let introText: string;
+      try {
+        const hook = await getOrGenerateDailyHook(userId);
+        introText = hook.text;
+      } catch (err) {
+        req.log.error({ err }, 'pet_hook.intro_fallback_to_catchphrase');
+        const p = await ensurePet();
+        const phrases = p.species.catchphrases;
+        introText = phrases.length > 0
+          ? phrases[Math.floor(Math.random() * phrases.length)]!
+          : 'Hei.';
+      }
       let audioUrl: string | null = null;
       let ttsProvider: string | null = null;
       try {
@@ -529,6 +541,22 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     }
 
     res.json({ reply: replyText, replyAudioUrl, ttsProvider });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /pets/daily-hook — mesajul personalizat care apare in bubble-ul pet-ului
+// pe home, generat o data pe zi per user pe baza activitatii recente (48h).
+// Cache 24h in Redis (cheia se schimba la miezul noptii Bucuresti).
+//
+// Acelasi text e folosit ca intro la chat cand history-ul e gol — asa
+// conversatia continua firul tease-uit pe home.
+petsRouter.get('/daily-hook', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const hook = await getOrGenerateDailyHook(userId);
+    res.json({ text: hook.text, generatedAt: hook.generatedAt });
   } catch (e) {
     next(e);
   }
