@@ -35,6 +35,12 @@ import {
 } from '../../src/chests/reveal';
 import { listFriends } from '../../src/api/friends';
 import { getMyPet, getPetDailyHook, petImageUrl } from '../../src/api/pets';
+import {
+  getMyNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type NotificationItem,
+} from '../../src/api/notifications';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
@@ -70,6 +76,24 @@ export default function Home() {
     queryKey: ['friends'],
     queryFn: listFriends,
     enabled: sheet === 'friends',
+  });
+
+  // Notificari — query mereu activ (low-cost, max 50 records) ca sa avem
+  // badge unread vizibil instant. Sheet-ul reuseste aceleasi date.
+  const notificationsQuery = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => getMyNotifications(),
+    refetchInterval: 60_000, // refetch la 1 min ca sa prinda notificari noi
+    staleTime: 30_000,
+  });
+  const qc = useQueryClient();
+  const markReadMut = useMutation({
+    mutationFn: (id: string) => markNotificationRead(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+  const markAllReadMut = useMutation({
+    mutationFn: () => markAllNotificationsRead(),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
   const petImage = petImageUrl(petQuery.data?.pet.species.imagePath ?? null);
@@ -113,12 +137,21 @@ export default function Home() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.container}>
         <View style={styles.topRow}>
-          <IconButton
-            onPress={() => setSheet('notifications')}
-            accessibilityLabel="Notificari"
-          >
-            <BellIcon />
-          </IconButton>
+          <View>
+            <IconButton
+              onPress={() => setSheet('notifications')}
+              accessibilityLabel="Notificari"
+            >
+              <BellIcon />
+            </IconButton>
+            {(notificationsQuery.data?.unreadCount ?? 0) > 0 && (
+              <View style={styles.notifBadge} pointerEvents="none">
+                <Text style={styles.notifBadgeText}>
+                  {Math.min(notificationsQuery.data?.unreadCount ?? 0, 9)}
+                </Text>
+              </View>
+            )}
+          </View>
           <View style={styles.statusBlock}>
             <View style={styles.statusLabels}>
               <Text style={styles.statusLabel}>Lvl {me?.level ?? '-'}</Text>
@@ -248,7 +281,40 @@ export default function Home() {
         )}
         {sheet === 'notifications' && (
           <View style={styles.sheetList}>
-            <Text style={styles.sheetEmpty}>Inca nu ai notificari.</Text>
+            {notificationsQuery.isPending ? (
+              <ActivityIndicator color={colors.accent} />
+            ) : notificationsQuery.data && notificationsQuery.data.items.length > 0 ? (
+              <>
+                {notificationsQuery.data.unreadCount > 0 && (
+                  <Pressable
+                    onPress={() => markAllReadMut.mutate()}
+                    style={({ pressed }) => [
+                      styles.markAllReadBtn,
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Text style={styles.markAllReadText}>Marcheaza toate ca citite</Text>
+                  </Pressable>
+                )}
+                {notificationsQuery.data.items.map((n) => (
+                  <NotificationRow
+                    key={n.id}
+                    n={n}
+                    onPress={() => {
+                      if (!n.readAt) markReadMut.mutate(n.id);
+                      // Park hint tap = deschide chat-ul cu pet-ul ca sa
+                      // continue conversatia natural acolo.
+                      if (n.kind === 'park_hint') {
+                        setSheet(null);
+                        router.push('/(app)/chat');
+                      }
+                    }}
+                  />
+                ))}
+              </>
+            ) : (
+              <Text style={styles.sheetEmpty}>Inca nu ai notificari.</Text>
+            )}
           </View>
         )}
         {sheet === 'settings' && (
@@ -372,6 +438,77 @@ const MAX_VISIBLE = 4;
 function stacksHeight(n: number) {
   const visible = Math.min(Math.max(n, 1), MAX_VISIBLE);
   return PAD_TOP + visible * STACK_H + (visible - 1) * STACK_GAP + PAD_BOTTOM;
+}
+
+// Iconita per tip de notificare — standardizam design. Park hint = pin verde,
+// alte tipuri vor avea iconitele lor specifice.
+const NOTIFICATION_VISUALS: Record<
+  string,
+  { icon: string; color: string; bg: string }
+> = {
+  park_hint: { icon: '◉', color: '#7DCEA0', bg: 'rgba(125,206,160,0.15)' },
+};
+
+const DEFAULT_VISUAL = { icon: '✦', color: colors.accent, bg: 'rgba(33,150,243,0.15)' };
+
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diffMs / 60000);
+  if (m < 1) return 'acum';
+  if (m < 60) return `acum ${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `acum ${h}h`;
+  const d = Math.floor(h / 24);
+  return `acum ${d}z`;
+}
+
+// Card notificare standardizat: iconita colorata stanga + titlu + body
+// compact + chip domenii (daca exista in payload) + timestamp jos-dreapta.
+function NotificationRow({ n, onPress }: { n: NotificationItem; onPress: () => void }) {
+  const unread = !n.readAt;
+  const visual = NOTIFICATION_VISUALS[n.kind] ?? DEFAULT_VISUAL;
+  const domains = Array.isArray(n.payload?.sharedDomains)
+    ? (n.payload.sharedDomains as string[]).slice(0, 3)
+    : [];
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.notifCard,
+        unread && styles.notifCardUnread,
+        pressed && { opacity: 0.92 },
+      ]}
+    >
+      <View style={[styles.notifIcon, { backgroundColor: visual.bg }]}>
+        <Text style={[styles.notifIconText, { color: visual.color }]}>{visual.icon}</Text>
+      </View>
+
+      <View style={styles.notifBodyCol}>
+        <View style={styles.notifHeaderRow}>
+          <Text style={styles.notifTitleNew} numberOfLines={1}>
+            {n.title}
+          </Text>
+          {unread && <View style={styles.notifDotInline} />}
+        </View>
+        <Text style={styles.notifBodyNew} numberOfLines={2}>
+          {n.body}
+        </Text>
+
+        {domains.length > 0 && (
+          <View style={styles.notifChips}>
+            {domains.map((d) => (
+              <View key={d} style={styles.notifChip}>
+                <Text style={styles.notifChipText}>{d}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <Text style={styles.notifTime}>{timeAgo(n.createdAt)}</Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function ChestsSideButton() {
@@ -911,4 +1048,110 @@ const styles = StyleSheet.create({
   friendInfo: { flex: 1, gap: 2 },
   friendName: { color: colors.text, fontSize: 16, fontWeight: '700' },
   friendLevel: { color: colors.textMuted, fontSize: 12, fontWeight: '600' },
+
+  // Notifications
+  markAllReadBtn: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 4,
+  },
+  markAllReadText: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // Card notificare standardizat
+  notifCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    gap: 12,
+  },
+  notifCardUnread: {
+    backgroundColor: colors.cardAlt,
+  },
+  notifIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notifIconText: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  notifBodyCol: {
+    flex: 1,
+    gap: 4,
+  },
+  notifHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  notifTitleNew: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+  },
+  notifDotInline: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.accent,
+  },
+  notifBodyNew: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  notifChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  notifChip: {
+    backgroundColor: 'rgba(125,206,160,0.18)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  notifChipText: {
+    color: '#5DAA80',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  notifTime: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  notifBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+  },
 });

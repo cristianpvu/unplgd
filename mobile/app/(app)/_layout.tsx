@@ -8,6 +8,10 @@ import { CoWalkToast } from '../../src/ble/CoWalkToast';
 import { useCowalkEnabled, loadCowalkEnabled } from '../../src/ble/cowalkPref';
 import { useCoCreationNotifier } from '../../src/coCreation/useCoCreationNotifier';
 import { PhoneDownInviteToast } from '../../src/phonedown/PhoneDownInviteToast';
+import {
+  registerForPushNotifications,
+  registerNotificationTapListener,
+} from '../../src/lib/pushNotifications';
 import { colors } from '../../src/theme/colors';
 
 export default function AppLayout() {
@@ -23,6 +27,15 @@ export default function AppLayout() {
     if (ready && !token) {
       router.replace('/(auth)/welcome');
     }
+  }, [ready, token]);
+
+  // Push notifications — register token + tap listener cand user-ul e logat.
+  // Fail soft pe emulator/permission refuzat (lib intoarce null, nu arunca).
+  useEffect(() => {
+    if (!ready || !token) return;
+    void registerForPushNotifications();
+    const cleanup = registerNotificationTapListener();
+    return cleanup;
   }, [ready, token]);
 
   // Auto-start presence engine cand user-ul e logat SI a optat in (default

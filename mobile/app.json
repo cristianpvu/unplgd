@@ -36,6 +36,7 @@
     },
     "android": {
       "package": "com.parvucristian.unplgd",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -108,7 +109,20 @@
         }
       ],
       "expo-asset",
-      "expo-video"
-    ]
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "color": "#7DCEA0"
+        }
+      ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5aa71491-3e8b-491a-b3f7-589bf77fb069"
+      }
+    },
+    "owner": "dinedroid"
   }
 }
