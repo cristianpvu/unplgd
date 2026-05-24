@@ -15,9 +15,11 @@ import { redis } from '../redis.js';
 import { logger } from '../logger.js';
 
 const CACHE_TTL_SEC = 24 * 3600;
-const CACHE_KEY = 'social:park-aggregates:v1';
+const CACHE_KEY = 'social:park-aggregates:v2'; // bumped — schimbam threshold
 const LOOKBACK_DAYS = 60;
-const MIN_KIDS_PER_SLOT = 5; // sub asta nu sugeram slotul (sa nu zicem "vino pt 2 copii")
+// Sub asta nu sugeram slotul. Pe MVP / cu seed sintetic 3 kids/persona, tinem
+// la 2 ca sa avem date eligible. Cand cresc userii reali in prod, urca la 5.
+const MIN_KIDS_PER_SLOT = 2;
 
 // Buckete orare — 4 ferestre acopera tot ce conteaza pt outdoor games.
 // Hunt-urile dureaza 15-45min, asa ca bucket-ul de 3h prinde majoritatea.
