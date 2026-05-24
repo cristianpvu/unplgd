@@ -12,6 +12,8 @@ import {
 } from '../lib/ai/storyPrompts.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
+import { classifyTopic } from '../lib/ai/topicClassify.js';
 import {
   appendChatTurn,
   clearChatHistory,
@@ -618,6 +620,47 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
             'Poveste spusa',
           ),
         ]);
+
+        // Domain extraction din povestea verificata — clasificam o data la
+        // verificare (nu la fiecare listening; cheia pt idempotenta e story.id
+        // ca sa nu hranesc acelasi domeniu de N ori pt o singura poveste).
+        // Fire-and-forget — daca pica clasificarea, XP-ul deja s-a dat.
+        void (async () => {
+          try {
+            const fullStory = await prisma.story.findUnique({
+              where: { id: claim.story.id },
+              select: { body: true, title: true },
+            });
+            if (!fullStory) return;
+            const textForClassify = `${fullStory.title}. ${fullStory.body}`;
+            const cls = await classifyTopic(textForClassify);
+            if (!cls || cls.domain === null || cls.confidence < 0.6) return;
+            // Cheia sourceId = story.id → poveste de un autor cu N listeners,
+            // domeniul lui se acorda O SINGURA DATA pe autor (idempotent).
+            // Si listener-ul primeste pe story_listened ca sa-l hraneasca pe el
+            // pe domeniul respectiv (sourceId distinct claim.id).
+            await Promise.all([
+              awardDomainXp(
+                claim.story.authorId,
+                cls.domain,
+                DOMAIN_REWARDS.STORY_AUTHORED,
+                'story_authored',
+                claim.story.id,
+                `Story domain ${cls.domain}`,
+              ),
+              awardDomainXp(
+                me,
+                cls.domain,
+                DOMAIN_REWARDS.STORY_LISTENED,
+                'story_listened',
+                claim.id,
+                `Story domain ${cls.domain}`,
+              ),
+            ]);
+          } catch (err) {
+            req.log.warn({ err, storyId: claim.story.id }, 'story.domain_extract_failed');
+          }
+        })();
       }
 
       await clearChatHistory(cacheKey);
