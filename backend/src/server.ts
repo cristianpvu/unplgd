@@ -89,6 +89,16 @@ const server = createServer(app);
 initIO(server);
 server.listen(env.PORT, () => {
   logger.info(`unplgd backend listening on http://localhost:${env.PORT} (with socket.io)`);
+  // Job-uri scheduluate (Europe/Bucharest) — daily aggregates refresh + notify
+  // park hints. Pornite DUPA listen ca sa nu blocheze boot-ul daca node-cron
+  // are issues.
+  try {
+    // Import lazy ca sa nu cresca timpul de start in TEST env unde nu vrem
+    // cron-urile sa se inregistreze.
+    void import('./cron/index.js').then(({ startCronJobs }) => startCronJobs());
+  } catch (err) {
+    logger.error({ err }, 'cron.bootstrap_failed');
+  }
 });
 
 async function shutdown(signal: string) {

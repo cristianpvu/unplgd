@@ -117,8 +117,8 @@ adminRouter.get('/social/park-aggregates', async (req, res, next) => {
 });
 
 // POST /admin/social/notify-park-hints?key=<secret>
-// Ruleaza notificatorul pe TOTI userii activi. In productie: apelat de un
-// cron daily dimineata (~8 AM). Pentru moment manual din admin.
+// Ruleaza notificatorul pe TOTI userii activi. Cron-ul daily il apeleaza la
+// 08:00 Europe/Bucharest. Endpoint ramane pt trigger manual / debug.
 adminRouter.post('/social/notify-park-hints', async (req, res, next) => {
   try {
     if (!checkKey(req, res)) return;
