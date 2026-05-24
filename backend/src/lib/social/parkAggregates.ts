@@ -90,18 +90,59 @@ export async function getParkAggregates(
 
   const since = new Date(Date.now() - LOOKBACK_DAYS * 24 * 3600_000);
 
-  // Cele mai recente hunt sessions completate, cu participantii din lobby
-  // (cei care au intrat efectiv, nu doar host-ul).
-  const sessions = await prisma.huntSession.findMany({
+  // Cele mai recente hunt sessions completate. Nu folosim `include: { park }`
+  // pentru ca Prisma crapa daca exista HuntSession-uri orphan (parkId
+  // catre Park sters). In schimb, query-uri separate + join in JS.
+  const sessionsRaw = await prisma.huntSession.findMany({
     where: {
       status: 'COMPLETED',
       startedAt: { gte: since, not: null },
     },
-    include: {
-      park: { select: { id: true, name: true, osmId: true } },
-      lobby: { select: { userId: true } },
+    select: {
+      id: true,
+      hostId: true,
+      parkId: true,
+      startedAt: true,
     },
   });
+
+  const parkIds = [...new Set(sessionsRaw.map((s) => s.parkId))];
+  const parks = await prisma.park.findMany({
+    where: { id: { in: parkIds } },
+    select: { id: true, name: true, osmId: true },
+  });
+  const parkById = new Map(parks.map((p) => [p.id, p]));
+
+  const lobbyMembers = await prisma.huntLobbyMember.findMany({
+    where: { sessionId: { in: sessionsRaw.map((s) => s.id) } },
+    select: { sessionId: true, userId: true },
+  });
+  const lobbyBySession = new Map<string, Array<{ userId: string }>>();
+  for (const m of lobbyMembers) {
+    let arr = lobbyBySession.get(m.sessionId);
+    if (!arr) {
+      arr = [];
+      lobbyBySession.set(m.sessionId, arr);
+    }
+    arr.push({ userId: m.userId });
+  }
+
+  // Reconstituim shape-ul precedent pentru ca restul codului sa nu se schimbe.
+  // Sessions orphan (fara park valid in DB) sunt sarite silentios.
+  const sessions = sessionsRaw
+    .map((s) => {
+      const park = parkById.get(s.parkId);
+      if (!park) return null;
+      return {
+        id: s.id,
+        hostId: s.hostId,
+        parkId: s.parkId,
+        startedAt: s.startedAt,
+        park,
+        lobby: lobbyBySession.get(s.id) ?? [],
+      };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
 
   // Acumulator: cheia "parkId|day|hour" → { sessionCount, uniqueKidIds: Set, parkInfo }
   type Acc = {
