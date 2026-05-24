@@ -19,6 +19,7 @@ import { synthesizeTts } from '../lib/ai/tts.js';
 import { bondProgress } from '../lib/pet/bond.js';
 import { awardTopicFromMessage } from '../lib/pet/topicAward.js';
 import { getOrGenerateDailyHook } from '../lib/pet/dailyHook.js';
+import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
 
 export const petsRouter = Router();
 petsRouter.use(requireAuth);
@@ -470,7 +471,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
     const userId = req.userId!;
     const { message } = chatMessageSchema.parse(req.body);
 
-    const [user, pet] = await Promise.all([
+    const [user, pet, childProfile] = await Promise.all([
       prisma.user.findUniqueOrThrow({
         where: { id: userId },
         select: { id: true, name: true, birthDate: true },
@@ -481,6 +482,10 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
           include: { species: true },
         }),
       ),
+      // Background context concise — pet-ul stie pe ce sa puna accent fara
+      // sa-l listeze. Cached 5min in Redis. Daca pica, prompt-ul cade pe
+      // varianta fara CHILD_PROFILE block (pet-ul ramane generic).
+      getChildProfileSnapshot(userId),
     ]);
 
     const cacheKey = chatCacheKey(userId);
@@ -500,6 +505,7 @@ petsRouter.post('/chat', petChatRateLimit, async (req, res, next) => {
         interests: pet.species.interests,
         childName: user.name,
         childAge: calcAge(user.birthDate),
+        childProfile,
       }),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
     }, 'pet_chat');

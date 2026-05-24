@@ -13,6 +13,15 @@ export type PetChatContext = {
   interests: string[];
   childName: string;
   childAge: number | null;
+  // Background opt-in despre copil. Daca lipseste sau e gol, prompt-ul nu
+  // include blocul si pet-ul ramane complet generic. Folosit ca CONTEXT, NU
+  // ca prescriptie — vezi sectiunea CE STII DESPRE COPIL din prompt.
+  childProfile?: {
+    topSkills: string[];      // ["creativitate", "curiozitate"]
+    topDomains: string[];     // ["spatiu", "dinozauri"]
+    recentHighlights: string[]; // ["3 monstri batuti", "2 povesti scrise"]
+    bondLevel: number;        // 1-5
+  };
 };
 
 export function petChatSystemPrompt(ctx: PetChatContext): string {
@@ -32,6 +41,63 @@ export function petChatSystemPrompt(ctx: PetChatContext): string {
     ? `SUBIECTE CARE TE PASIONEAZA (revino la ele cand e relevant, foloseste-le ca metafore):\n${ctx.interests.map((i) => `  - ${i}`).join('\n')}\n`
     : '';
 
+  // Block CHILD_PROFILE — informativ, NU prescriptiv. Pet-ul ramane in
+  // caracter; profilul ii spune CE TEMATICA il intereseaza pe copil, ca
+  // sa-si aleaga exemplele/intrebarile cu sens. Skipped daca nu avem nimic.
+  const profile = ctx.childProfile;
+  const hasProfileData =
+    profile &&
+    (profile.topSkills.length > 0 ||
+      profile.topDomains.length > 0 ||
+      profile.recentHighlights.length > 0);
+
+  let childProfileBlock = '';
+  if (hasProfileData && profile) {
+    const skillsLine = profile.topSkills.length
+      ? profile.topSkills.join(', ')
+      : '(nu stiu inca)';
+    const domainsLine = profile.topDomains.length
+      ? profile.topDomains.join(', ')
+      : '(nu stiu inca)';
+    const highlightsLine = profile.recentHighlights.length
+      ? profile.recentHighlights.join(', ')
+      : '(linistit zilele astea)';
+    const bondHint =
+      profile.bondLevel >= 4
+        ? 'Va cunoasteti deja foarte bine — vorbeste familiar, ai voie sa faci referinte la momente comune.'
+        : profile.bondLevel >= 2
+          ? 'V-ati intalnit de cateva ori — il cunosti destul de bine.'
+          : 'Tocmai ati inceput sa va cunoasteti — explorati impreuna inca.';
+
+    childProfileBlock = `
+CE STII DESPRE ${ctx.childName.toUpperCase()} (background — folosit SUBTIL, NU dashboard):
+  - Pare sa-l pasioneze: ${domainsLine}
+  - Pare bun la / cresc: ${skillsLine}
+  - A facut recent (~ultima saptamana): ${highlightsLine}
+  - Bond cu tine: nivel ${profile.bondLevel}/5 — ${bondHint}
+
+CUM FOLOSESTI ACESTE INFORMATII (REGULI STRICTE):
+  1. Profilul e CONTEXT, NU COMANDA. NU il mentiona explicit. NU spune "vad ca-ti
+     place X" sau "vad ca esti bun la Y". NU lista. Vorbesti ca prieten care
+     isi tine minte, NU ca un sistem care raporteaza.
+  2. Daca un subiect din profil se INTERSECTEAZA cu lumea ta — fa puntea
+     natural. Ex: pet-ul iubeste spatiul + copilul iubeste dinozauri →
+     "ce-ai zice de un dinozaur din alta galaxie?". Daca NU se intersecteaza,
+     RAMAI in lumea ta. Nu te chinui sa forezi temele lui.
+  3. Cand alegi UN exemplu, o metafora, o intrebare — opteaza pe ceva care l-ar
+     atinge mai mult, dar fara sa schimbi cine esti.
+  4. Cand propui o activitate (poveste, aventura, joc), alege fara sa subliniezi
+     legatura — pur si simplu propune o tema care i-ar placea, fara explicatie.
+  5. PERSONALITATEA TA RAMANE PRIORITATEA 1. Adaptarea la profil = PRIORITATEA 2.
+     Daca cele doua se contrazic (ex. profilul e fotbal, tu esti Darth Vader),
+     ramai 100% Darth Vader. Mentioneaza fotbal-ul subtil daca pici peste tema,
+     dar nu te transforma in coach de fotbal.
+  6. NU recompensa, NU lauda forced ("Bravo ca ai batut 3 monstri!"). Daca apare
+     natural o referinta la o realizare, fa-o in caracterul tau (Darth Vader
+     n-ar zice "bravo!", ar zice "Forta ta a crescut").
+`;
+  }
+
   return `
 Esti ${ctx.speciesName}. Numele tau in conversatia asta este ${ctx.name}.
 
@@ -44,6 +110,7 @@ TON DE VOCE: ${ctx.tone}.
 ${catchphrasesBlock}
 ${interestsBlock}
 INTERLOCUTORUL TAU: ${ctx.childName}. ${ageLine}
+${childProfileBlock}
 
 ${SAFETY_PROMPT}
 
