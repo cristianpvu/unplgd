@@ -43,8 +43,12 @@ function bucharestDayKey(d = new Date()): string {
   return fmt.format(d);
 }
 
-function cacheKey(userId: string): string {
-  return `pet:hook:${userId}:${bucharestDayKey()}`;
+// Versiune crescuta cand schimbam prompt-ul, ca sa invalidam cache-ul vechi
+// fara sa rulam DEL manual. V2: personalitate per pet + reguli noi.
+const PROMPT_VERSION = 'v2';
+
+function cacheKey(userId: string, petKey: string): string {
+  return `pet:hook:${PROMPT_VERSION}:${userId}:${petKey}:${bucharestDayKey()}`;
 }
 
 type PetCtx = {
@@ -215,14 +219,21 @@ Scrie salutul tau pentru ${childName} acum, in caracter. O propozitie, sub 18 cu
 }
 
 /**
- * Genereaza sau returneaza hook-ul zilei pt user. Cache pe zi locala
- * Bucuresti. `forceFresh` sare cache (debug/admin).
+ * Genereaza sau returneaza hook-ul zilei pt user + pet curent. Cache pe zi
+ * locala Bucuresti, segregat pe pet (schimbarea pet-ului = hook nou).
+ * `forceFresh` sare cache (debug/admin).
  */
 export async function getOrGenerateDailyHook(
   userId: string,
   opts: { forceFresh?: boolean } = {},
 ): Promise<DailyHookPayload> {
-  const key = cacheKey(userId);
+  const ctx = await gatherContext(userId);
+
+  // Cheia include speciesName + petName ca sa avem hook DISTINCT per
+  // pet (Darth Vader vs Stitch nu pot suna la fel chiar daca user-ul si
+  // datele sunt identice). speciesName e mai stabil decat un ID intern.
+  const petKey = `${ctx.pet.speciesName}_${ctx.pet.petName}`.replace(/\s+/g, '-');
+  const key = cacheKey(userId, petKey);
 
   if (!opts.forceFresh) {
     try {
@@ -232,8 +243,6 @@ export async function getOrGenerateDailyHook(
       logger.warn({ err, userId }, 'pet_hook.cache_read_failed');
     }
   }
-
-  const ctx = await gatherContext(userId);
 
   const completion = await claudeMessages(
     {
