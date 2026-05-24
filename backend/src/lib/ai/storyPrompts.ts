@@ -1,16 +1,74 @@
 import { SAFETY_PROMPT } from './safetyPrompt.js';
 import { NARRATOR_NAME, NARRATOR_SYSTEM_HINT } from './narrator.js';
 
+// Profil opt-in al copilului care biaseaza propunerile creative ale naratorului.
+// Daca lipseste, naratorul ramane neutru (comportament vechi). Reguli stricte
+// pt cum sa-l foloseasca — vezi blocul CE STII DESPRE COPIL din prompt.
+export type StoryChildContext = {
+  // Domenii preferate root (ex. "spatiu", "dinozauri", "sport"). Naratorul
+  // biaseaza temele, personajele, locurile catre acestea.
+  topDomains: string[];
+  // Skills proeminente. Foloseste-le pt a alege tipul de provocare (curiozitate
+  // -> mistere, perseverenta -> calatorii lungi, empatie -> dileme emotionale).
+  topSkills: string[];
+  // Predictie din Markov: domeniul probabil de interes URMATOR. Naratorul
+  // poate strecura subiectul subtil ca sa pregateasca tranzitia. NULL inseamna
+  // ca nu avem predictie inca.
+  predictedNextDomain?: string | null;
+};
+
+function childContextBlock(ctx: StoryChildContext | undefined, childName: string): string {
+  if (!ctx) return '';
+  const hasAny =
+    ctx.topDomains.length > 0 ||
+    ctx.topSkills.length > 0 ||
+    (ctx.predictedNextDomain != null);
+  if (!hasAny) return '';
+
+  const domainsLine = ctx.topDomains.length > 0 ? ctx.topDomains.join(', ') : '(necunoscute)';
+  const skillsLine = ctx.topSkills.length > 0 ? ctx.topSkills.join(', ') : '(necunoscute)';
+  const nextLine = ctx.predictedNextDomain
+    ? `\n- Pare sa se indrepte catre: ${ctx.predictedNextDomain} (predictie din pattern istoric — nu certitudine)`
+    : '';
+
+  return `
+CE STII DESPRE ${childName.toUpperCase()} (background — folosit SUBTIL):
+- Iubeste subiectele: ${domainsLine}
+- E bun la / creste pe: ${skillsLine}${nextLine}
+
+CUM FOLOSESTI ASTA (REGULI STRICTE):
+1. NU mentiona explicit profilul ("stiu ca-ti plac dinozaurii"). Nu listezi.
+   Naratorul e creativ, nu sistem.
+2. Cand propui idei la "nu stiu" sau cand inventezi personaje/locuri default,
+   ALEGE din pasiunile lui ca optiuni atragatoare. Ex: daca-i place spatiul si
+   dinozaurii, propunerile la blocaj ar putea include "un dinozaur care
+   pilateaza o racheta" in loc de generic.
+3. Daca avem "Pare sa se indrepte catre: X", strecoara subtil tema X ca optiune
+   posibila (1 optiune din 3, nu fortat). Asa povestea il invita catre noul
+   interes inainte sa-l descopere singur.
+4. Daca ${childName} merge intr-o directie complet diferita, mergi cu el — NU
+   forta tu pasiunile pe care le stii. E povestea LUI.
+5. NU promite "asta-ti va placea" — copilul nu e clientul tau, esti un coleg
+   de joc.
+`.trim();
+}
+
 // System prompt pt creare poveste — conversatie LIBERA, nu chestionar. Naratorul
 // e un co-autor creativ care vorbeste natural cu copilul, da idei cand e
 // blocat, reactioneaza la imaginatia lui. Decide singur cand are destul material
 // si emite povestea finala. NU urmeaza un script de 5 intrebari fixate.
-export function storyCreateSystemPrompt(childName: string): string {
+export function storyCreateSystemPrompt(
+  childName: string,
+  childContext?: StoryChildContext,
+): string {
+  const ctxBlock = childContextBlock(childContext, childName);
   return `
 Esti ${NARRATOR_NAME}, ghidul povestilor pt copilul ${childName}.
 ${NARRATOR_SYSTEM_HINT}
 
 ${SAFETY_PROMPT}
+
+${ctxBlock}
 
 OBIECTIV: Creezi o poveste scurta impreuna cu ${childName}. Conversezi natural,
 ca un co-autor entuziast — NU urmezi un chestionar fix. Tu decizi cand ai
@@ -74,16 +132,20 @@ le fi intrebat explicit pe parcurs.
 export function storyExtendSystemPrompt(
   childName: string,
   priorChapters: { authorName: string; body: string }[],
+  childContext?: StoryChildContext,
 ): string {
   const chaptersBlock = priorChapters
     .map((c, i) => `Capitolul ${i + 1} (de la ${c.authorName}):\n${c.body}`)
     .join('\n\n');
+  const ctxBlock = childContextBlock(childContext, childName);
 
   return `
 Esti ${NARRATOR_NAME}, ghidul povestilor pt copilul ${childName}.
 ${NARRATOR_SYSTEM_HINT}
 
 ${SAFETY_PROMPT}
+
+${ctxBlock}
 
 CONTEXT — capitolele anterioare ale povestii (NU le repeta in raspuns, doar
 foloseste-le ca sa pastrezi coerenta):

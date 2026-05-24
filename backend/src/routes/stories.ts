@@ -14,6 +14,7 @@ import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 import { classifyTopic } from '../lib/ai/topicClassify.js';
+import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
 import {
   appendChatTurn,
   clearChatHistory,
@@ -87,10 +88,20 @@ storiesRouter.post('/', async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
+    // Profil copil — naratorul biaseaza propunerile creative catre pasiunile
+    // lui. Cache 5min in Redis, deci nu e cost suplimentar real per mesaj.
+    const profile = await getChildProfileSnapshot(userId);
+    const childCtx = {
+      topDomains: profile.topDomains,
+      topSkills: profile.topSkills,
+      // TODO: cand implementam Markov, populam aici predictia next-domain.
+      predictedNextDomain: null,
+    };
+
     const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
-      system: storyCreateSystemPrompt(user.name),
+      system: storyCreateSystemPrompt(user.name, childCtx),
       messages: [...history, userTurn].map((t) => ({
         role: t.role,
         content: t.content,
@@ -801,12 +812,22 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
     const history = await loadChatHistory(cacheKey);
     const userTurn = { role: 'user' as const, content: message };
 
+    // Profil copil (acelasi pattern ca la create).
+    const profileExt = await getChildProfileSnapshot(me);
+    const childCtxExt = {
+      topDomains: profileExt.topDomains,
+      topSkills: profileExt.topSkills,
+      // TODO: cand implementam Markov, populam aici predictia next-domain.
+      predictedNextDomain: null,
+    };
+
     const completion = await claudeMessages({
       model: ANTHROPIC_MODEL,
       max_tokens: 1024,
       system: storyExtendSystemPrompt(
         user.name,
         ancestry.map((c) => ({ authorName: c.authorName, body: c.body })),
+        childCtxExt,
       ),
       messages: [...history, userTurn].map((t) => ({ role: t.role, content: t.content })),
     }, 'story_extend');
