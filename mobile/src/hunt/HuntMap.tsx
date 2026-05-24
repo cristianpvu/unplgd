@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import MapView, { Circle, Marker, Polygon, PROVIDER_DEFAULT } from 'react-native-maps';
 import type { GeoJsonPolygon, HeartbeatResponse, MonsterType, Warmth } from '../api/hunt';
@@ -87,17 +87,41 @@ export function HuntMap({
   heading,
 }: Props) {
   const mapRef = useRef<MapView | null>(null);
+  // Native map e ready (tile-uri incepute, ref atasat). animateToRegion
+  // apelat inainte de asta se pierde silentios pe Android.
+  const [isMapReady, setIsMapReady] = useState(false);
 
   // Heading-up navigation: rotim camera ca directia in care merge user-ul
   // sa fie mereu "sus". Throttle minimal — animateCamera face interpolation
   // smooth la nivel nativ.
   const lastHeadingRef = useRef<number>(0);
   useEffect(() => {
-    if (heading == null || !mapRef.current) return;
+    if (!isMapReady || heading == null || !mapRef.current) return;
     if (Math.abs(heading - lastHeadingRef.current) < 2) return;
     lastHeadingRef.current = heading;
     mapRef.current.animateCamera({ heading }, { duration: 250 });
-  }, [heading]);
+  }, [heading, isMapReady]);
+
+  // Zoom-in initial pe user — initialRegion arata intreg park-ul (bbox-ul
+  // poligonului), ceea ce e prea larg pt gameplay. Asteptam isMapReady +
+  // coords, apoi zoom-uim. Critic dupa Encounter close: HuntMap se
+  // re-mount-eaza si fara asta ramai cu zoom-out pe tot park-ul.
+  const didInitialZoom = useRef(false);
+  useEffect(() => {
+    if (!isMapReady || didInitialZoom.current || !myCoords || !mapRef.current) {
+      return;
+    }
+    didInitialZoom.current = true;
+    mapRef.current.animateToRegion(
+      {
+        latitude: myCoords.lat,
+        longitude: myCoords.lng,
+        latitudeDelta: 0.003,
+        longitudeDelta: 0.003,
+      },
+      400,
+    );
+  }, [isMapReady, myCoords?.lat, myCoords?.lng]);
 
   const initialRegion = useMemo(() => {
     const bbox = bboxOf(parkPolygon);
@@ -126,6 +150,7 @@ export function HuntMap({
         style={StyleSheet.absoluteFill}
         provider={PROVIDER_DEFAULT}
         initialRegion={initialRegion}
+        onMapReady={() => setIsMapReady(true)}
         showsUserLocation={false}
         showsMyLocationButton={false}
         showsCompass={false}

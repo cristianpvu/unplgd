@@ -572,28 +572,51 @@ function ActiveView({
     return () => clearInterval(id);
   }, []);
 
-  // Foreground location watch — update agresiv (1m, 1s) ca wedge-ul si
-  // warmth-ul recalculate client-side sa fie smooth pe miscare. Inainte de
-  // watch, luam o pozitie instant cu getCurrentPositionAsync ca dot-ul user-ului
-  // pe harta sa apara imediat — watchPositionAsync cu BestForNavigation poate
-  // intarzia cateva secunde primul fix (mai ales indoors).
+  // Foreground location — pipeline in 3 etape pt latenta minima:
+  //   1. getLastKnownPositionAsync (instant, din cache OS) — dot-ul apare ACUM
+  //   2. getCurrentPositionAsync Balanced (fix rapid ~1-2s, network-assisted)
+  //   3. watchPositionAsync BestForNavigation (live update pt warmth/wedge)
+  // Skip-uim etapa 2 daca cache-ul a returnat ceva valid.
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
     let cancelled = false;
     (async () => {
       const perm = await Location.requestForegroundPermissionsAsync();
       if (!perm.granted) return;
+
+      // 1. Last known — instant. In practica intotdeauna exista o pozitie
+      // cachuita de OS (orice app care a folosit GPS recent updateaza cache-ul).
+      let haveRecentFix = false;
       try {
-        const fix = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
+        const last = await Location.getLastKnownPositionAsync({
+          maxAge: 60_000,
+          requiredAccuracy: 200,
         });
-        if (!cancelled) {
-          setCoords({ lat: fix.coords.latitude, lng: fix.coords.longitude });
+        if (last && !cancelled) {
+          setCoords({ lat: last.coords.latitude, lng: last.coords.longitude });
+          haveRecentFix = true;
         }
       } catch {
-        // fallback la watch
+        // ignore — cadem la pasul 2
       }
       if (cancelled) return;
+
+      // 2. Fresh fix Balanced — doar daca cache n-a returnat nimic util.
+      if (!haveRecentFix) {
+        try {
+          const fix = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          if (!cancelled) {
+            setCoords({ lat: fix.coords.latitude, lng: fix.coords.longitude });
+          }
+        } catch {
+          // fallback la watch
+        }
+      }
+      if (cancelled) return;
+
+      // 3. Live watch — high-accuracy pt warmth + halo recalculation.
       sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
