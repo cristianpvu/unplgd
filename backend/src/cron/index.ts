@@ -16,6 +16,7 @@ import { logger } from '../lib/logger.js';
 import { getParkAggregates } from '../lib/social/parkAggregates.js';
 import { runNotifyParkHints } from '../lib/social/notifyParkHints.js';
 import { rebuildDomainTransitionMatrix } from '../lib/social/markov.js';
+import { runNotifyDailyQuests } from '../lib/quests/notify.js';
 
 type JobDef = {
   name: string;
@@ -59,6 +60,17 @@ const JOBS: JobDef[] = [
     fn: async () => {
       const result = await runNotifyParkHints();
       logger.info({ result }, 'cron.notify_park_hints_done');
+    },
+  },
+
+  // 09:00 — notifica userii activi ca au taskuri noi azi. Genereaza lazy
+  // quest-urile zilei + push best-effort. Idempotent pe (user, questDate).
+  {
+    name: 'notify_daily_quests',
+    schedule: '0 9 * * *',
+    fn: async () => {
+      const result = await runNotifyDailyQuests();
+      logger.info({ result }, 'cron.notify_daily_quests_done');
     },
   },
 ];

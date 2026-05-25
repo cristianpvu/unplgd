@@ -876,6 +876,108 @@ async function seedJourneyBackgrounds() {
   console.log(`seedJourneyBackgrounds: ${JOURNEY_BACKGROUNDS.length} fundaluri`);
 }
 
+// Pool de quest templates — selectie aleatorie zilnica (3/zi/user).
+// XP scaleaza cu dificultate: easy 20-30, medium 50-70, hard 100-150.
+// `weekdayBoost` biaseaza spre real-world (NFC, cocreation) in weekend.
+async function seedQuestTemplates() {
+  const templates: {
+    slug: string;
+    kind: string;
+    requiredCount: number;
+    baseXp: number;
+    difficulty: 'easy' | 'medium' | 'hard';
+    weight: number;
+    weekdayBoost?: Record<string, number>;
+    title: string;
+    description: string;
+    icon: string;
+  }[] = [
+    // === REAL-WORLD INTERACTIONS (biased high weight, weekend boost) ===
+    { slug: 'nfc_meet_1', kind: 'nfc_meet', requiredCount: 1, baseXp: 30, difficulty: 'easy',
+      weight: 20, weekdayBoost: { sat: 2, sun: 2 },
+      title: 'Intalneste-te cu 1 prieten', description: 'Scaneaza bratara unui prieten', icon: '🤝' },
+    { slug: 'nfc_meet_2', kind: 'nfc_meet', requiredCount: 2, baseXp: 60, difficulty: 'medium',
+      weight: 15, weekdayBoost: { sat: 2, sun: 2 },
+      title: 'Intalneste-te cu 2 prieteni', description: 'Doua scanari diferite azi', icon: '👥' },
+    { slug: 'nfc_meet_3', kind: 'nfc_meet', requiredCount: 3, baseXp: 120, difficulty: 'hard',
+      weight: 8, weekdayBoost: { sat: 3, sun: 3 },
+      title: 'Intalneste-te cu 3 prieteni', description: 'Trei scanari diferite azi', icon: '🎉' },
+    { slug: 'cocreation_1', kind: 'cocreation', requiredCount: 1, baseXp: 100, difficulty: 'hard',
+      weight: 6, weekdayBoost: { sat: 2, sun: 2 },
+      title: 'Faceti un desen impreuna', description: 'Co-creatie cu un prieten', icon: '🎨' },
+    { slug: 'phonedown_winner_1', kind: 'phonedown_winner', requiredCount: 1, baseXp: 100, difficulty: 'hard',
+      weight: 6, weekdayBoost: { sat: 2, sun: 2 },
+      title: 'Castiga un PhoneDown', description: 'Lasa telefonul jos cel mai mult timp', icon: '🏆' },
+    { slug: 'phonedown_participate_1', kind: 'phonedown_participate', requiredCount: 1, baseXp: 35, difficulty: 'easy',
+      weight: 10, weekdayBoost: { sat: 2, sun: 2 },
+      title: 'Joaca un PhoneDown', description: 'Participa la o sesiune', icon: '📵' },
+
+    // === STORY (creative + social) ===
+    { slug: 'story_verify_1', kind: 'story_verify', requiredCount: 1, baseXp: 30, difficulty: 'easy',
+      weight: 12,
+      title: 'Verifica o poveste', description: 'Asculta si valideaza o poveste de la prieten', icon: '📖' },
+    { slug: 'story_verify_2', kind: 'story_verify', requiredCount: 2, baseXp: 65, difficulty: 'medium',
+      weight: 8,
+      title: 'Verifica 2 povesti', description: 'Doua povesti de la prieteni', icon: '📚' },
+    { slug: 'story_author_1', kind: 'story_author', requiredCount: 1, baseXp: 50, difficulty: 'medium',
+      weight: 10,
+      title: 'Scrie o poveste', description: 'Inventeaza si trimite o poveste', icon: '✍️' },
+    { slug: 'explicit_like_2', kind: 'explicit_like', requiredCount: 2, baseXp: 20, difficulty: 'easy',
+      weight: 8,
+      title: 'Apreciaza 2 povesti', description: 'Inima pe povesti care iti plac', icon: '❤️' },
+
+    // === HUNT / ADVENTURE (in-app activitate solo, backup pt zile de ploaie) ===
+    { slug: 'hunt_win_1', kind: 'hunt_win', requiredCount: 1, baseXp: 70, difficulty: 'medium',
+      weight: 8,
+      title: 'Castiga o vanatoare', description: 'Termina prima la un hunt', icon: '🥇' },
+    { slug: 'hunt_monster_3', kind: 'hunt_monster', requiredCount: 3, baseXp: 30, difficulty: 'easy',
+      weight: 10,
+      title: 'Bate 3 monstri', description: 'In hunt-uri', icon: '👾' },
+    { slug: 'hunt_monster_5', kind: 'hunt_monster', requiredCount: 5, baseXp: 60, difficulty: 'medium',
+      weight: 7,
+      title: 'Bate 5 monstri', description: 'In hunt-uri', icon: '⚔️' },
+    { slug: 'adventure_node_1', kind: 'adventure_node', requiredCount: 1, baseXp: 25, difficulty: 'easy',
+      weight: 10,
+      title: 'Termina un nod aventura', description: 'Un nod in story adventure', icon: '🗺️' },
+    { slug: 'adventure_node_2', kind: 'adventure_node', requiredCount: 2, baseXp: 55, difficulty: 'medium',
+      weight: 7,
+      title: 'Termina 2 noduri aventura', description: 'Doua noduri in story adventure', icon: '🧭' },
+    { slug: 'journey_chapter_1', kind: 'journey_chapter', requiredCount: 1, baseXp: 40, difficulty: 'easy',
+      weight: 10,
+      title: 'Termina un capitol journey', description: 'Un capitol din povestea zilnica', icon: '🌟' },
+  ];
+
+  for (const t of templates) {
+    await prisma.questTemplate.upsert({
+      where: { slug: t.slug },
+      create: {
+        slug: t.slug,
+        kind: t.kind,
+        requiredCount: t.requiredCount,
+        baseXp: t.baseXp,
+        difficulty: t.difficulty,
+        weight: t.weight,
+        weekdayBoost: (t.weekdayBoost ?? {}) as object,
+        title: t.title,
+        description: t.description,
+        icon: t.icon,
+        active: true,
+      },
+      update: {
+        kind: t.kind,
+        requiredCount: t.requiredCount,
+        baseXp: t.baseXp,
+        difficulty: t.difficulty,
+        weight: t.weight,
+        weekdayBoost: (t.weekdayBoost ?? {}) as object,
+        title: t.title,
+        description: t.description,
+        icon: t.icon,
+      },
+    });
+  }
+}
+
 async function main() {
   // Config-ul de cufere ruleaza intotdeauna (idempotent prin upsert, ~7 randuri
   // total) — vrem sa putem ajusta game balance fara FORCE_SEED.
@@ -895,6 +997,9 @@ async function main() {
   // Pool-ul de intrebari journey ruleaza mereu — idempotent prin (domain,prompt).
   // Adaugare intrebari noi → urcari de fisier + container restart.
   await seedJourneyQuestions(prisma);
+
+  // Quest templates (mini-taskuri zilnice). Idempotent prin upsert pe slug.
+  await seedQuestTemplates();
 
   // Taxonomia de domenii ruleaza mereu (upsert pe slug + dezactivare slug-uri
   // disparute). Trebuie sa fie INAINTE de guard-ul de skip ca sa se aplice si

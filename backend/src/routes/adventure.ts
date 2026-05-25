@@ -15,6 +15,7 @@ import {
   type StoryWorldConfig,
 } from '../lib/ai/storyAdventure.js';
 import { logger } from '../lib/logger.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 
 export const adventureRouter = Router();
 adventureRouter.use(requireAuth);
@@ -285,6 +286,7 @@ adventureRouter.post('/runs/:id/node/:nodeIndex/answer', async (req, res, next) 
           'Obstacol Adventure trecut',
         );
       }
+      void bumpQuestProgress(userId, 'adventure_node').catch(() => {});
     }
 
     res.json({

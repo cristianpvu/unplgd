@@ -17,6 +17,7 @@ import { resolvePetImagePath, resolveBackgroundAssets } from '../lib/petImage.js
 import { awardBondXp } from '../lib/pet/bond.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 
 export const journeyRouter = Router();
 journeyRouter.use(requireAuth);
@@ -353,6 +354,8 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
       SKILL_REWARDS.JOURNEY_CHAPTER_COMPLETED,
       `Capitol journey ${body.chapterId} terminat`,
     );
+
+    void bumpQuestProgress(userId, 'journey_chapter').catch(() => {});
 
     let bondAwarded = 0;
     if (body.bondXp && body.bondXp > 0) {

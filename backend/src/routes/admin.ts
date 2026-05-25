@@ -9,6 +9,7 @@ import {
   rebuildDomainTransitionMatrix,
   predictNextRootDomain,
 } from '../lib/social/markov.js';
+import { runNotifyDailyQuests } from '../lib/quests/notify.js';
 
 // Endpoint-uri pentru debug rapid (browser-friendly, fara JWT). Pazite cu
 // ADMIN_KEY din env — query param ?key=<secret>. Daca lipseste cheia, raspund
@@ -161,6 +162,19 @@ adminRouter.post('/markov/rebuild', async (req, res, next) => {
       totalTransitions: m.totalTransitions,
       rowsCount: Object.keys(m.rows).length,
     });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /admin/quests/notify?key=<secret>
+// Trimite notificarile "taskuri noi" pe toti userii activi. Cron-ul ruleaza
+// la 09:00 Bucharest. Idempotent pe zi.
+adminRouter.post('/quests/notify', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const result = await runNotifyDailyQuests();
+    res.json(result);
   } catch (e) {
     next(e);
   }

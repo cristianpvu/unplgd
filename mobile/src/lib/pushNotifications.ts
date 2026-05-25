@@ -110,6 +110,9 @@ function handleNotificationTap(data: Record<string, unknown>) {
       // Deschide chat-ul cu pet-ul — acolo conversatia poate continua firul.
       router.push('/(app)/chat');
       break;
+    case 'daily_quests':
+      router.push('/(app)/quests');
+      break;
     default:
       // Fallback: deschide home si lasa user-ul sa vada notificarea in sheet.
       router.push('/(app)');

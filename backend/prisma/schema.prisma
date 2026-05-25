@@ -62,8 +62,61 @@ model User {
   petMemories             PetMemory[]
   notifications           Notification[]
   storyLikes              StoryLike[]
+  dailyQuests             DailyQuest[]
 
   @@index([email])
+}
+
+// Templates pt mini-taskuri zilnice. Pool-ul global din care daily seed
+// (userId + data) selecteaza 3 quests per user/zi. Fiecare template specifica
+// ce eveniment il avanseaza (kind), cat trebuie facut (requiredCount), si cat
+// XP da la complete. `weekdayBoost` permite biasarea catre real-world in
+// weekend (ex. {"sat":2,"sun":2} face NFC meets de 2x mai probabile).
+//
+// Adaugare quest nou = INSERT in DB via seed sau migrare. Editare baseXp /
+// weight = update direct in DB, fara redeploy.
+model QuestTemplate {
+  slug           String   @id
+  kind           String   // 'nfc_meet' | 'story_verify' | 'story_author' | 'hunt_win' | 'hunt_monster' | 'adventure_node' | 'cocreation' | 'phonedown_winner' | 'phonedown_participate' | 'journey_chapter' | 'explicit_like'
+  requiredCount  Int      @default(1)
+  baseXp         Int
+  difficulty     String   @default("medium") // 'easy' | 'medium' | 'hard' — folosit la chest tier
+  weight         Int      @default(10)       // pondere selectie
+  weekdayBoost   Json     @default("{}")     // ex: {"sat":2,"sun":2}
+  title          String   // afisat la kid: "Intalneste-te cu 2 prieteni"
+  description    String   // hint scurt sub titlu
+  icon           String   @default("✨")
+  active         Boolean  @default(true)
+
+  dailyQuests DailyQuest[]
+}
+
+// Instanta zilnica per user. Populata lazy la primul GET pe zi. Unique pe
+// (userId, questDate, slot) — 3 sloturi per zi (slot 0, 1, 2). `slot` mai
+// degraba decat order pentru indexare stabila daca redeploy intre. `progress`
+// se incrementeaza din lib/quests/progress.ts cand events ruleaza.
+//
+// `chestId` legat la Chest cu sourceType='daily_quest' — acordat cand toate
+// 3 quest-urile zilei sunt completate. Idempotent prin Chest unique
+// (sourceType, sourceId=YYYY-MM-DD).
+model DailyQuest {
+  id            String    @id @default(cuid())
+  userId        String
+  questDate     String    // YYYY-MM-DD pe TZ Europe/Bucharest (string ca sa fie unique-friendly)
+  slot          Int       // 0, 1, 2
+  slug          String
+  requiredCount Int       // cached din template (template-ul poate fi schimbat dupa)
+  xpReward      Int       // cached din template (boost-uri aplicate la generare)
+  progress      Int       @default(0)
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template QuestTemplate @relation(fields: [slug], references: [slug])
+
+  @@unique([userId, questDate, slot])
+  @@index([userId, questDate])
+  @@index([userId, completedAt])
 }
 
 // Notificare in-app (Tier 1 fara push). Folosita momentan pt sugestii de

@@ -34,6 +34,7 @@ import { emitHuntUpdate } from '../lib/socket/huntEmit.js';
 import { generateHuntHints, type HintRun } from '../lib/ai/huntHint.js';
 import { resolvePetImagePath, resolvePetSoundPath } from '../lib/petImage.js';
 import { awardBondXp, bondXpToLevel, BOND_REWARDS } from '../lib/pet/bond.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 
 export const huntRouter = Router();
 huntRouter.use(requireAuth);
@@ -1305,6 +1306,11 @@ huntRouter.post('/sessions/:id/monsters/:mid/finalize', async (req, res, next) =
         }),
       );
 
+      // Quest progress: fiecare membru a batut un monstru.
+      for (const m of monster.team.members) {
+        void bumpQuestProgress(m.userId, 'hunt_monster').catch(() => {});
+      }
+
       emitHuntUpdate(id, 'monster_finalized');
       res.json({
         status: MonsterStatus.DEFEATED,
@@ -1424,6 +1430,10 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
             rankRewards,
             `Hunt rank ${rank + 1}`,
           );
+        }
+        // Quest progress: rank 0 = castigator.
+        if (rank === 0) {
+          void bumpQuestProgress(member.userId, 'hunt_win').catch(() => {});
         }
         xpAwards.push({ userId: member.userId, amount, rank: rank + 1 });
       }

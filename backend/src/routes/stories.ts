@@ -16,6 +16,7 @@ import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 import { classifyTopic } from '../lib/ai/topicClassify.js';
 import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
 import { predictNextRootDomain } from '../lib/social/markov.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 import {
   appendChatTurn,
   clearChatHistory,
@@ -141,6 +142,9 @@ storiesRouter.post('/', async (req, res, next) => {
         data: { chainRootId: story.id },
       });
       await clearChatHistory(cacheKey);
+
+      // Quest progress: a creat o poveste.
+      void bumpQuestProgress(userId, 'story_author').catch(() => {});
 
       // TTS pe body — vocea Povestitorului (fixa pt toti, independent de pet).
       // Daca trece, persistam pe Story (audioUrl + audioProvider).
@@ -646,6 +650,10 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
       let xpListener = 0;
       let xpAuthor = 0;
       if (nextStatus === 'VERIFIED') {
+        // Quest progress: listener-ul a verificat o poveste; author-ul are
+        // o poveste validata (story_author quest e despre creare, dar setam
+        // pe verify ca semnal de "poveste a ajuns la cineva").
+        void bumpQuestProgress(me, 'story_verify').catch(() => {});
         xpListener = XP_REWARDS.STORY_LISTENED_BY_SCORE[json.score] ?? 0;
         xpAuthor = XP_REWARDS.STORY_TOLD_BY_SCORE[json.score] ?? 0;
         await Promise.all([
@@ -1164,6 +1172,13 @@ storiesRouter.post('/:storyId/like', async (req, res, next) => {
       create: { userId: me, storyId },
       update: {},
     });
+
+    // Quest progress: doar la primul like (cand row-ul tocmai s-a creat).
+    // upsert returneaza acelasi like si la re-apel, deci verificam createdAt.
+    const isNew = Date.now() - like.createdAt.getTime() < 5000;
+    if (isNew) {
+      void bumpQuestProgress(me, 'explicit_like').catch(() => {});
+    }
 
     // Award XP fire-and-forget (idempotent oricum) — nu blocheaza raspunsul.
     void (async () => {

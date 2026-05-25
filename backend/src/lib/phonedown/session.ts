@@ -4,6 +4,7 @@ import { logger } from '../logger.js';
 import { emitPhoneDownUpdate } from '../socket/phonedownEmit.js';
 import { awardChestForParticipant } from './award.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../skills.js';
+import { bumpQuestProgress } from '../quests/progress.js';
 
 // Cap silentios la 4h. Peste atat sesiunea se inchide automat indiferent de
 // participantii care n-au cedat. Anti "am uitat telefonul jos toata noaptea".
@@ -146,6 +147,11 @@ export async function endSession(sessionId: string): Promise<void> {
     } catch (err) {
       logger.error({ err, participantId: p.id }, 'phonedown skills award failed');
     }
+    // Quest progress: winner vs participate.
+    void bumpQuestProgress(
+      p.userId,
+      ranked?.isWinner ? 'phonedown_winner' : 'phonedown_participate',
+    ).catch(() => {});
   }
 
   emitPhoneDownUpdate(sessionId, 'ended');

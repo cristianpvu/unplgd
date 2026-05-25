@@ -27,6 +27,7 @@ import { phoneDownRouter } from './routes/phonedown.js';
 import { chestsRouter } from './routes/chests.js';
 import { adventureRouter } from './routes/adventure.js';
 import { journeyRouter } from './routes/journey.js';
+import { questsRouter } from './routes/quests.js';
 import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
@@ -81,6 +82,7 @@ app.use('/phonedown', phoneDownRouter);
 app.use('/chests', chestsRouter);
 app.use('/adventure', adventureRouter);
 app.use('/journey', journeyRouter);
+app.use('/quests', questsRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);

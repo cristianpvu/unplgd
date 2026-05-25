@@ -35,6 +35,7 @@ import {
 } from '../../src/chests/reveal';
 import { listFriends } from '../../src/api/friends';
 import { getMyPet, getPetDailyHook, petImageUrl } from '../../src/api/pets';
+import { getDailyQuests } from '../../src/api/quests';
 import {
   getMyNotifications,
   markAllNotificationsRead,
@@ -174,6 +175,7 @@ export default function Home() {
           </IconButton>
           <CoWalkButton />
           <ChestsSideButton />
+          <QuestsSideButton />
         </View>
 
         <Text style={styles.hello} numberOfLines={1}>
@@ -665,6 +667,51 @@ function ChestsSideButton() {
   );
 }
 
+function QuestsSideButton() {
+  const questsQ = useQuery({
+    queryKey: ['quests', 'today'],
+    queryFn: getDailyQuests,
+    staleTime: 60 * 1000,
+    refetchInterval: 60 * 1000,
+  });
+  const total = questsQ.data?.quests.length ?? 0;
+  const done = questsQ.data?.quests.filter((q) => q.completedAt != null).length ?? 0;
+  const allDone = total > 0 && done === total;
+  const hasChest = allDone && questsQ.data?.chestId && !questsQ.data?.chestOpenedAt;
+
+  return (
+    <Pressable
+      onPress={() => router.push('/(app)/quests')}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+      accessibilityLabel="Taskuri zilnice"
+      hitSlop={8}
+    >
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M4 7h12M4 12h8M4 17h12"
+          stroke={colors.text}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+        />
+        <Path
+          d="M19 5l-3 3-1.5-1.5M19 15l-3 3-1.5-1.5"
+          stroke={colors.accent}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+      {total > 0 && (
+        <View style={hasChest ? styles.questBadgeChest : styles.questBadge}>
+          <Text style={styles.questBadgeText}>
+            {hasChest ? '★' : `${done}/${total}`}
+          </Text>
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
 function ChestIcon({ color = colors.text }: { color?: string }) {
   return (
     <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
@@ -1150,6 +1197,39 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   notifBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  questBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  questBadgeChest: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFB400',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  questBadgeText: {
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '900',

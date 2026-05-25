@@ -13,6 +13,7 @@ import {
 import { generateIllustration, isImagenConfigured } from '../lib/ai/imagen.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 import { getIO, userRoomName } from '../lib/socket/io.js';
 
 export const coCreationsRouter = Router();
@@ -168,6 +169,9 @@ async function runValidationPipeline(cocId: string, imageBase64: string, mimeTyp
         'Co-creatie validata',
       ),
     ]);
+
+    void bumpQuestProgress(c.userAId, 'cocreation').catch(() => {});
+    void bumpQuestProgress(c.userBId, 'cocreation').catch(() => {});
 
     emitStatusChanged(await serialize(cocId, c.userAId));
   } catch (err) {

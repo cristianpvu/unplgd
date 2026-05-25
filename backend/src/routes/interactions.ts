@@ -4,6 +4,7 @@ import { FriendshipStatus, InteractionMethod } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { awardXp, XP_REWARDS } from '../lib/xp.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { bumpQuestProgress } from '../lib/quests/progress.js';
 import { requireAuth } from '../middleware/auth.js';
 import { checkinRateLimit } from '../middleware/rateLimit.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
@@ -98,6 +99,10 @@ interactionsRouter.post('/checkin', checkinRateLimit, async (req, res, next) => 
 
       return { interactionId: a.id, me: meXp, friend: friendXp };
     });
+
+    // Quest progress fire-and-forget pe ambii participanti.
+    void bumpQuestProgress(me, 'nfc_meet').catch(() => {});
+    void bumpQuestProgress(friendUserId, 'nfc_meet').catch(() => {});
 
     res.status(201).json({ alreadyCheckedIn: false, ...result });
   } catch (e) {
@@ -206,6 +211,11 @@ interactionsRouter.post('/scan', checkinRateLimit, async (req, res, next) => {
 
       return { friend: bracelet.user, friendshipCreated, interactionCreated };
     });
+
+    if (result.interactionCreated) {
+      void bumpQuestProgress(me, 'nfc_meet').catch(() => {});
+      void bumpQuestProgress(friendUserId, 'nfc_meet').catch(() => {});
+    }
 
     res.status(201).json(result);
   } catch (e) {
