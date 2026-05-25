@@ -15,6 +15,7 @@ import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
 import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 import { classifyTopic } from '../lib/ai/topicClassify.js';
 import { getChildProfileSnapshot } from '../lib/pet/childProfile.js';
+import { predictNextRootDomain } from '../lib/social/markov.js';
 import {
   appendChatTurn,
   clearChatHistory,
@@ -90,12 +91,14 @@ storiesRouter.post('/', async (req, res, next) => {
 
     // Profil copil — naratorul biaseaza propunerile creative catre pasiunile
     // lui. Cache 5min in Redis, deci nu e cost suplimentar real per mesaj.
-    const profile = await getChildProfileSnapshot(userId);
+    const [profile, prediction] = await Promise.all([
+      getChildProfileSnapshot(userId),
+      predictNextRootDomain(userId).catch(() => null),
+    ]);
     const childCtx = {
       topDomains: profile.topDomains,
       topSkills: profile.topSkills,
-      // TODO: cand implementam Markov, populam aici predictia next-domain.
-      predictedNextDomain: null,
+      predictedNextDomain: prediction?.name ?? null,
     };
 
     const completion = await claudeMessages({
@@ -813,12 +816,14 @@ storiesRouter.post('/:storyId/extend', async (req, res, next) => {
     const userTurn = { role: 'user' as const, content: message };
 
     // Profil copil (acelasi pattern ca la create).
-    const profileExt = await getChildProfileSnapshot(me);
+    const [profileExt, predictionExt] = await Promise.all([
+      getChildProfileSnapshot(me),
+      predictNextRootDomain(me).catch(() => null),
+    ]);
     const childCtxExt = {
       topDomains: profileExt.topDomains,
       topSkills: profileExt.topSkills,
-      // TODO: cand implementam Markov, populam aici predictia next-domain.
-      predictedNextDomain: null,
+      predictedNextDomain: predictionExt?.name ?? null,
     };
 
     const completion = await claudeMessages({

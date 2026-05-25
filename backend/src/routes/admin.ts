@@ -4,6 +4,11 @@ import { getUsageStats } from '../lib/ai/usage.js';
 import { rebuildGraphFromScratch } from '../lib/graphSync.js';
 import { getParkAggregates } from '../lib/social/parkAggregates.js';
 import { runNotifyParkHints } from '../lib/social/notifyParkHints.js';
+import {
+  getDomainTransitionMatrix,
+  rebuildDomainTransitionMatrix,
+  predictNextRootDomain,
+} from '../lib/social/markov.js';
 
 // Endpoint-uri pentru debug rapid (browser-friendly, fara JWT). Pazite cu
 // ADMIN_KEY din env — query param ?key=<secret>. Daca lipseste cheia, raspund
@@ -124,6 +129,56 @@ adminRouter.post('/social/notify-park-hints', async (req, res, next) => {
     if (!checkKey(req, res)) return;
     const result = await runNotifyParkHints();
     res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /admin/markov/matrix?key=<secret>[&fresh=1]
+// Inspecteaza matricea de tranzitii pe root domains. Util ca sa vezi ce
+// directii sunt populare in cohorta inainte ca naratorul sa injecteze
+// predictia in povesti.
+adminRouter.get('/markov/matrix', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const fresh = req.query.fresh === '1';
+    const m = await getDomainTransitionMatrix({ forceFresh: fresh });
+    res.json(m);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /admin/markov/rebuild?key=<secret>
+// Rebuild brute al matricii (sare peste cache). Cron-ul de 06:15 il face zilnic.
+adminRouter.post('/markov/rebuild', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const m = await rebuildDomainTransitionMatrix();
+    res.json({
+      builtAt: m.builtAt,
+      totalUsers: m.totalUsers,
+      totalTransitions: m.totalTransitions,
+      rowsCount: Object.keys(m.rows).length,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /admin/markov/predict?key=<secret>&userId=<id>
+// Debug — vezi ce predictie ar primi un user concret. Acelasi rezultat care
+// ajunge in storyPrompts ca predictedNextDomain.
+adminRouter.get('/markov/predict', async (req, res, next) => {
+  try {
+    if (!checkKey(req, res)) return;
+    const userId = typeof req.query.userId === 'string' ? req.query.userId : '';
+    if (!userId) {
+      res.status(400).json({ error: 'userId required' });
+      return;
+    }
+    const prediction = await predictNextRootDomain(userId);
+    res.json({ userId, prediction });
   } catch (e) {
     next(e);
   }

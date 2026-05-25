@@ -15,6 +15,7 @@ import cron from 'node-cron';
 import { logger } from '../lib/logger.js';
 import { getParkAggregates } from '../lib/social/parkAggregates.js';
 import { runNotifyParkHints } from '../lib/social/notifyParkHints.js';
+import { rebuildDomainTransitionMatrix } from '../lib/social/markov.js';
 
 type JobDef = {
   name: string;
@@ -23,6 +24,22 @@ type JobDef = {
 };
 
 const JOBS: JobDef[] = [
+  // 06:15 — rebuild matrix Markov de tranzitii pe root domains. Cache 24h,
+  // citita la fiecare apel de story create/extend pt a injecta predictia in
+  // naratorul Claude. Rulam inainte de park_aggregates ca sa fim siguri ca-i
+  // gata cand vine valul de useri dimineata.
+  {
+    name: 'markov_matrix_rebuild',
+    schedule: '15 6 * * *',
+    fn: async () => {
+      const m = await rebuildDomainTransitionMatrix();
+      logger.info(
+        { users: m.totalUsers, transitions: m.totalTransitions, rows: Object.keys(m.rows).length },
+        'cron.markov_matrix_rebuilt',
+      );
+    },
+  },
+
   // 06:30 — preincalzim cache-ul de aggregates. Asa notify-ul de 08:00 (si
   // primele requests ale user-ilor) au date fresh fara latenta de fetch.
   {
