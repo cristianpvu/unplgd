@@ -15,6 +15,7 @@ import {
   claimCheckpoint,
   fetchJourneyQuestions,
   getRandomFriendPet,
+  submitJourneyAnswer,
   synthesizeJourneyTts,
   type CheckpointReward,
   type JourneyQuestionDto,
@@ -292,6 +293,9 @@ export function useStoryEngine(
     pendingAnswerRef.current = null;
     if (!isMine(myToken)) return;
     const correct = chosen === question.correctIndex;
+    // Fire-and-forget la backend — server valideaza si acorda domain/skill XP
+    // idempotent pe questionId. Nu blocam UX-ul.
+    void submitJourneyAnswer(question.id, chosen).catch(() => {});
     await playLine(correct ? question.successLine : question.failLine, 'pet', myToken);
     if (!isMine(myToken)) return;
     // La GRESIT: naratorul spune intai care era raspunsul corect, apoi explicatia.

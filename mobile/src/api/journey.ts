@@ -61,6 +61,20 @@ export function fetchJourneyQuestions(domain: string, count: number) {
   );
 }
 
+// Trimite raspunsul la backend. Fire-and-forget — UI nu asteapta. Server
+// valideaza correctIndex si acorda XP idempotent pe questionId.
+export type JourneyAnswerResponse = {
+  correct: boolean;
+  awarded: { domain: number; domainSlug?: string; skills: number };
+};
+
+export function submitJourneyAnswer(questionId: string, chosenIndex: number) {
+  return api<JourneyAnswerResponse>('/journey/answer', {
+    method: 'POST',
+    body: { questionId, chosenIndex },
+  });
+}
+
 export function getJourneyProgress(petSlug: string) {
   return api<{ petSlug: string; completedChapters: string[] }>(
     `/journey/progress?petSlug=${encodeURIComponent(petSlug)}`,

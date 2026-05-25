@@ -16,6 +16,7 @@ import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.j
 import { resolvePetImagePath, resolveBackgroundAssets } from '../lib/petImage.js';
 import { awardBondXp } from '../lib/pet/bond.js';
 import { awardSkillsForEvent, SKILL_REWARDS } from '../lib/skills.js';
+import { awardDomainXp, DOMAIN_REWARDS } from '../lib/domains.js';
 
 export const journeyRouter = Router();
 journeyRouter.use(requireAuth);
@@ -221,6 +222,75 @@ journeyRouter.get('/questions', async (req, res, next) => {
   }
 });
 
+// POST /journey/answer
+// Granularitate per intrebare. Mobile face validare locala pt UX instant,
+// dar trimite raspunsul aici fire-and-forget ca sa hranim domain XP + skill XP
+// pe domain-ul intrebarii. Idempotent: re-apel cu acelasi (userId, questionId)
+// = no-op. Server valideaza correctIndex (chiar daca mobile a vazut deja
+// raspunsul corect — vrem sa fim siguri pe semnal).
+//
+// Greselile NU se rasplatesc dar le logam pt analytics (ce domenii/varste sunt
+// grele). NU exista penalty XP.
+const answerSchema = z.object({
+  questionId: z.string().min(1).max(64),
+  chosenIndex: z.number().int().min(0).max(20),
+});
+
+journeyRouter.post('/answer', async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const body = answerSchema.parse(req.body);
+
+    const question = await prisma.journeyQuestion.findUnique({
+      where: { id: body.questionId },
+      select: { id: true, domain: true, correctIndex: true },
+    });
+    if (!question) throw notFound('question_not_found', 'Intrebare inexistenta');
+
+    const correct = body.chosenIndex === question.correctIndex;
+
+    if (!correct) {
+      // Logam pt analytics — nu acordam XP la greseala.
+      logger.info(
+        { userId, questionId: question.id, domain: question.domain, chosenIndex: body.chosenIndex },
+        'journey.answer_incorrect',
+      );
+      res.json({ correct: false, awarded: { domain: 0, skills: 0 } });
+      return;
+    }
+
+    // Award XP idempotent pe questionId.
+    const [domainAward] = await Promise.all([
+      awardDomainXp(
+        userId,
+        question.domain,
+        DOMAIN_REWARDS.JOURNEY_QUESTION_CORRECT,
+        'journey_question',
+        question.id,
+        `Intrebare corecta ${question.domain}`,
+      ),
+      awardSkillsForEvent(
+        userId,
+        'journey_question',
+        question.id,
+        SKILL_REWARDS.JOURNEY_QUESTION_CORRECT,
+        `Intrebare corecta ${question.domain}`,
+      ),
+    ]);
+
+    res.json({
+      correct: true,
+      awarded: {
+        domain: domainAward.alreadyAwarded ? 0 : domainAward.amount,
+        domainSlug: question.domain,
+        skills: domainAward.alreadyAwarded ? 0 : 1, // bool simplu pt mobile
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /journey/checkpoint
 // Acordat cand mobile ajunge la o scena de tip checkpoint. Idempotent:
 //   - bond xp prin BondXpTransaction unique (petId, 'journey_checkpoint', sceneId)
@@ -274,9 +344,8 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
     }
 
     // Skill award la chapter completed (perseverenta + curiozitate). Idempotent
-    // pe chapterId. NB: per-question correct nu se acorda inca — mobile valideaza
-    // local, nu trimite back-end fiecare raspuns. Daca vrem granularitate, adaugam
-    // POST /journey/answer in viitor.
+    // pe chapterId. Granularitatea per intrebare e acordata separat prin
+    // POST /journey/answer (fire-and-forget din mobile pe fiecare raspuns).
     await awardSkillsForEvent(
       userId,
       'journey_chapter',
