@@ -55,6 +55,10 @@ export const SKILL_REWARDS = {
   // Pet chat (un increment mic per mesaj — capped client-side la zi)
   PET_MESSAGE: { curiozitate: 1 },
 
+  // Like explicit pe o poveste — semnal puternic ca a rezonat cu el. Mic boost
+  // pe `curiozitate` (e ales activ, nu doar consumat pasiv).
+  EXPLICIT_LIKE: { curiozitate: 5 },
+
   // PhoneDown — rezistenta = perseverenta
   PHONE_DOWN_WINNER: { perseverenta: 30 },
   PHONE_DOWN_PARTICIPATION: { perseverenta: 10, sociabilitate: 3 },

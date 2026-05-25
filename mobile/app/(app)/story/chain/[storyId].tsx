@@ -9,10 +9,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SvgXml } from 'react-native-svg';
 import {
   getStoryChain,
+  likeStory,
+  unlikeStory,
   absoluteAudioUrl,
   type ChainChapter,
 } from '../../../../src/api/stories';
@@ -175,6 +177,66 @@ function ChapterCard({
         </Pressable>
       </View>
       <Text style={styles.body}>{chapter.body}</Text>
+      <LikeRow chapter={chapter} />
+    </View>
+  );
+}
+
+function LikeRow({ chapter }: { chapter: ChainChapter }) {
+  const [liked, setLiked] = useState(chapter.likedByMe);
+  const [count, setCount] = useState(chapter.likeCount);
+  const qc = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (next: boolean) =>
+      next ? likeStory(chapter.storyId) : unlikeStory(chapter.storyId),
+    onSuccess: (data) => {
+      setCount(data.likeCount);
+      qc.invalidateQueries({ queryKey: ['stories', 'chain'] });
+    },
+    onError: () => {
+      setLiked((v) => !v);
+      setCount((c) => (liked ? c + 1 : c - 1));
+    },
+  });
+
+  function toggle() {
+    if (mutation.isPending || chapter.isMine) return;
+    const next = !liked;
+    setLiked(next);
+    setCount((c) => c + (next ? 1 : -1));
+    mutation.mutate(next);
+  }
+
+  // Pe propriile capitole afisam doar count-ul (read-only) — semnal de
+  // popularitate dar fara self-like (ar polua ML-ul).
+  if (chapter.isMine) {
+    return (
+      <View style={styles.likeRow}>
+        <View style={[styles.likeBtn, styles.likeBtnDisabled]}>
+          <Text style={styles.likeIcon}>♡</Text>
+          <Text style={styles.likeCount}>{count}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.likeRow}>
+      <Pressable
+        onPress={toggle}
+        hitSlop={8}
+        style={({ pressed }) => [
+          styles.likeBtn,
+          liked && styles.likeBtnActive,
+          pressed && styles.btnPressed,
+        ]}
+      >
+        <Text style={[styles.likeIcon, liked && styles.likeIconActive]}>
+          {liked ? '♥' : '♡'}
+        </Text>
+        <Text style={[styles.likeCount, liked && styles.likeCountActive]}>{count}</Text>
+      </Pressable>
     </View>
   );
 }
@@ -256,6 +318,28 @@ const styles = StyleSheet.create({
   playBtnActive: { backgroundColor: colors.accent },
   playIcon: { color: colors.text, fontSize: 18, fontWeight: '800' },
   body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+
+  likeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 4,
+  },
+  likeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: colors.cardAlt,
+  },
+  likeBtnActive: { backgroundColor: '#FCE4E4' },
+  likeBtnDisabled: { opacity: 0.7 },
+  likeIcon: { color: colors.textMuted, fontSize: 18, fontWeight: '700' },
+  likeIconActive: { color: '#E5484D' },
+  likeCount: { color: colors.textMuted, fontSize: 13, fontWeight: '800' },
+  likeCountActive: { color: '#E5484D' },
 
   btnPressed: { transform: [{ scale: 0.95 }], opacity: 0.85 },
   errorText: { color: colors.danger, textAlign: 'center', marginTop: 24 },

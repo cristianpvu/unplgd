@@ -61,6 +61,7 @@ model User {
   domainXpTransactions    DomainXpTransaction[]
   petMemories             PetMemory[]
   notifications           Notification[]
+  storyLikes              StoryLike[]
 
   @@index([email])
 }
@@ -696,6 +697,10 @@ model Story {
   chainRootId   String?
   audioUrl      String?
   audioProvider String?
+  // Domain-ul povestii — populat de classifier la prima verificare reusita.
+  // Cache local pe Story ca sa avem un singur slug stabil pe care sa-l folosim
+  // si la EXPLICIT_LIKE, fara re-clasificare.
+  domainSlug    String?
   createdAt     DateTime @default(now())
 
   author      User         @relation(fields: [authorId], references: [id], onDelete: Cascade)
@@ -703,10 +708,29 @@ model Story {
   children    Story[]      @relation("StoryChain")
   claims      StoryClaim[]
   coCreations CoCreation[]
+  likes       StoryLike[]
 
   @@index([authorId, createdAt])
   @@index([chainRootId])
   @@index([parentStoryId])
+}
+
+// Explicit "imi place" pe o poveste — semnal puternic de preferinta vs activitate
+// pasiva. La primul like primesti +XP pe domeniul povestii (EXPLICIT_LIKE) si pe
+// skill-ul `curiozitate`. Unlike sterge randul DAR XP-ul ramane (idempotent
+// pe sourceId=storyId — semnalul istoric e stabil, ca Spotify hearts).
+model StoryLike {
+  id        String   @id @default(cuid())
+  userId    String
+  storyId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([storyId])
+  @@index([userId, createdAt])
 }
 
 enum StoryClaimStatus {

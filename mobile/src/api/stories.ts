@@ -5,6 +5,8 @@ export type Story = {
   title: string;
   body: string;
   createdAt: string;
+  likeCount?: number;
+  likedByMe?: boolean;
 };
 
 export type FinalStory = Story & {
@@ -150,10 +152,28 @@ export type ChainChapter = {
   audioProvider: 'eleven' | 'edge' | null;
   createdAt: string;
   author: { id: string; name: string; avatarSvg: string | null };
+  isMine: boolean;
+  likeCount: number;
+  likedByMe: boolean;
 };
 
 export function getStoryChain(storyId: string) {
   return api<{ chainRootId: string; chainLength: number; chapters: ChainChapter[] }>(
     `/stories/${storyId}/chain`,
+  );
+}
+
+// Like/unlike pe poveste. Backend e idempotent — re-apel = aceeasi stare.
+export function likeStory(storyId: string) {
+  return api<{ liked: true; likeCount: number; likeId: string }>(
+    `/stories/${storyId}/like`,
+    { method: 'POST' },
+  );
+}
+
+export function unlikeStory(storyId: string) {
+  return api<{ liked: false; likeCount: number }>(
+    `/stories/${storyId}/like`,
+    { method: 'DELETE' },
   );
 }

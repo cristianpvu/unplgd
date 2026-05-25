@@ -271,9 +271,24 @@ storiesRouter.get('/mine', async (req, res, next) => {
     const stories = await prisma.story.findMany({
       where: { authorId: userId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, title: true, body: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        createdAt: true,
+        _count: { select: { likes: true } },
+      },
     });
-    res.json({ stories });
+    res.json({
+      stories: stories.map((s) => ({
+        id: s.id,
+        title: s.title,
+        body: s.body,
+        createdAt: s.createdAt,
+        likeCount: s._count.likes,
+        likedByMe: false, // autorul nu se vede ca a apreciat propria poveste
+      })),
+    });
   } catch (e) {
     next(e);
   }
@@ -302,9 +317,29 @@ storiesRouter.get('/by-friend/:friendId', async (req, res, next) => {
     const stories = await prisma.story.findMany({
       where: { authorId: friendId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, title: true, body: true, createdAt: true },
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        createdAt: true,
+        _count: { select: { likes: true } },
+      },
     });
-    res.json({ stories });
+    const myLikes = await prisma.storyLike.findMany({
+      where: { userId: me, storyId: { in: stories.map((s) => s.id) } },
+      select: { storyId: true },
+    });
+    const likedSet = new Set(myLikes.map((l) => l.storyId));
+    res.json({
+      stories: stories.map((s) => ({
+        id: s.id,
+        title: s.title,
+        body: s.body,
+        createdAt: s.createdAt,
+        likeCount: s._count.likes,
+        likedByMe: likedSet.has(s.id),
+      })),
+    });
   } catch (e) {
     next(e);
   }
@@ -639,16 +674,28 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
         // verificare (nu la fiecare listening; cheia pt idempotenta e story.id
         // ca sa nu hranesc acelasi domeniu de N ori pt o singura poveste).
         // Fire-and-forget — daca pica clasificarea, XP-ul deja s-a dat.
+        // La final, backfill EXPLICIT_LIKE pt useri care au dat like inainte
+        // sa fi fost clasificata povestea (idempotent oricum).
         void (async () => {
           try {
             const fullStory = await prisma.story.findUnique({
               where: { id: claim.story.id },
-              select: { body: true, title: true },
+              select: { body: true, title: true, domainSlug: true },
             });
             if (!fullStory) return;
-            const textForClassify = `${fullStory.title}. ${fullStory.body}`;
-            const cls = await classifyTopic(textForClassify);
-            if (!cls || cls.domain === null || cls.confidence < 0.6) return;
+
+            let domain = fullStory.domainSlug;
+            if (!domain) {
+              const textForClassify = `${fullStory.title}. ${fullStory.body}`;
+              const cls = await classifyTopic(textForClassify);
+              if (!cls || cls.domain === null || cls.confidence < 0.6) return;
+              domain = cls.domain;
+              // Persistam pe Story — refolosit la EXPLICIT_LIKE fara reclassify.
+              await prisma.story
+                .update({ where: { id: claim.story.id }, data: { domainSlug: domain } })
+                .catch(() => {});
+            }
+
             // Cheia sourceId = story.id → poveste de un autor cu N listeners,
             // domeniul lui se acorda O SINGURA DATA pe autor (idempotent).
             // Si listener-ul primeste pe story_listened ca sa-l hraneasca pe el
@@ -656,21 +703,38 @@ storiesRouter.post('/claims/:claimId/answer', async (req, res, next) => {
             await Promise.all([
               awardDomainXp(
                 claim.story.authorId,
-                cls.domain,
+                domain,
                 DOMAIN_REWARDS.STORY_AUTHORED,
                 'story_authored',
                 claim.story.id,
-                `Story domain ${cls.domain}`,
+                `Story domain ${domain}`,
               ),
               awardDomainXp(
                 me,
-                cls.domain,
+                domain,
                 DOMAIN_REWARDS.STORY_LISTENED,
                 'story_listened',
                 claim.id,
-                `Story domain ${cls.domain}`,
+                `Story domain ${domain}`,
               ),
             ]);
+
+            // Backfill EXPLICIT_LIKE pt likes preexistente fara domain
+            // cunoscut. Idempotent pe (userId, sourceType, sourceId=storyId).
+            const existingLikes = await prisma.storyLike.findMany({
+              where: { storyId: claim.story.id },
+              select: { userId: true },
+            });
+            for (const like of existingLikes) {
+              await awardDomainXp(
+                like.userId,
+                domain,
+                DOMAIN_REWARDS.EXPLICIT_LIKE,
+                'explicit_like',
+                claim.story.id,
+                'Backfill: like dat inainte de clasificare',
+              ).catch(() => {});
+            }
           } catch (err) {
             req.log.warn({ err, storyId: claim.story.id }, 'story.domain_extract_failed');
           }
@@ -1016,6 +1080,21 @@ storiesRouter.get('/:storyId/chain', async (req, res, next) => {
     }
     if (!allowed) throw notFound('story_not_found', 'Povestea nu exista');
 
+    const orderedIds = ordered.map((s) => s.id);
+    const [likeCounts, myLikes] = await Promise.all([
+      prisma.storyLike.groupBy({
+        by: ['storyId'],
+        where: { storyId: { in: orderedIds } },
+        _count: { _all: true },
+      }),
+      prisma.storyLike.findMany({
+        where: { userId: me, storyId: { in: orderedIds } },
+        select: { storyId: true },
+      }),
+    ]);
+    const countByStory = new Map(likeCounts.map((c) => [c.storyId, c._count._all]));
+    const likedSet = new Set(myLikes.map((l) => l.storyId));
+
     res.json({
       chainRootId,
       chainLength: ordered.length,
@@ -1032,6 +1111,9 @@ storiesRouter.get('/:storyId/chain', async (req, res, next) => {
           name: s.author.name,
           avatarSvg: s.author.avatar?.svg ?? null,
         },
+        isMine: s.authorId === me,
+        likeCount: countByStory.get(s.id) ?? 0,
+        likedByMe: likedSet.has(s.id) && s.authorId !== me,
       })),
     });
   } catch (e) {
@@ -1048,6 +1130,87 @@ storiesRouter.delete('/:storyId/extend/draft', async (req, res, next) => {
     if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
     await clearChatHistory(`story:extend:${me}:${storyId}`);
     res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /stories/:storyId/like — toggle on. Idempotent: re-apel = no-op pe XP
+// (sourceId=storyId), si row-ul StoryLike e protejat de unique constraint.
+// La primul like: +EXPLICIT_LIKE domain XP (daca avem domainSlug) + curiozitate
+// skill XP. Daca povestea n-a fost clasificata inca, primesti skill XP acum si
+// domain XP la backfill cand classifier-ul ruleaza la prima verificare.
+storiesRouter.post('/:storyId/like', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { storyId } = req.params;
+    if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
+
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: { id: true, authorId: true, domainSlug: true },
+    });
+    if (!story) throw notFound('story_not_found', 'Povestea nu exista');
+
+    // Self-like blocat — semnal de preferinta = doar de la listeners. Pe lant
+    // un author la el insusi nu spune nimic, si ar polua ML-ul.
+    if (story.authorId === me) {
+      throw badRequest('cannot_like_own', 'Nu poti aprecia propria poveste');
+    }
+
+    // Upsert idempotent — re-apel = exact aceeasi stare.
+    const like = await prisma.storyLike.upsert({
+      where: { userId_storyId: { userId: me, storyId } },
+      create: { userId: me, storyId },
+      update: {},
+    });
+
+    // Award XP fire-and-forget (idempotent oricum) — nu blocheaza raspunsul.
+    void (async () => {
+      try {
+        await awardSkillsForEvent(
+          me,
+          'explicit_like',
+          storyId,
+          SKILL_REWARDS.EXPLICIT_LIKE,
+          'Like pe poveste',
+        );
+        if (story.domainSlug) {
+          await awardDomainXp(
+            me,
+            story.domainSlug,
+            DOMAIN_REWARDS.EXPLICIT_LIKE,
+            'explicit_like',
+            storyId,
+            'Like pe poveste',
+          );
+        }
+      } catch (err) {
+        req.log.warn({ err, storyId }, 'story.like_award_failed');
+      }
+    })();
+
+    const likeCount = await prisma.storyLike.count({ where: { storyId } });
+    res.json({ liked: true, likeCount, likeId: like.id });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// DELETE /stories/:storyId/like — sterge marcajul vizibil. XP-ul ramane in DB
+// (sursa de adevar istorica pt ML). Idempotent — delete pe inexistent = ok.
+storiesRouter.delete('/:storyId/like', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { storyId } = req.params;
+    if (!storyId) throw badRequest('missing_id', 'storyId lipsa');
+
+    await prisma.storyLike
+      .delete({ where: { userId_storyId: { userId: me, storyId } } })
+      .catch(() => {}); // ignore not-found
+
+    const likeCount = await prisma.storyLike.count({ where: { storyId } });
+    res.json({ liked: false, likeCount });
   } catch (e) {
     next(e);
   }
