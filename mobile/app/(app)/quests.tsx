@@ -1,5 +1,9 @@
+import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,20 +13,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { getDailyQuests, type QuestSlot } from '../../src/api/quests';
+import Svg, { Path, Circle } from 'react-native-svg';
+import { getDailyQuests, type QuestSlot, type DailyQuestsState } from '../../src/api/quests';
 import { colors } from '../../src/theme/colors';
-
-const DIFFICULTY_LABEL: Record<QuestSlot['difficulty'], string> = {
-  easy: 'Usor',
-  medium: 'Mediu',
-  hard: 'Greu',
-};
-
-const DIFFICULTY_COLOR: Record<QuestSlot['difficulty'], string> = {
-  easy: colors.success,
-  medium: colors.secondary,
-  hard: colors.accent,
-};
 
 const TIER_LABEL: Record<'BRONZE' | 'SILVER' | 'GOLD', string> = {
   BRONZE: 'Cufar de bronz',
@@ -30,7 +23,7 @@ const TIER_LABEL: Record<'BRONZE' | 'SILVER' | 'GOLD', string> = {
   GOLD: 'Cufar de aur',
 };
 
-export default function QuestsScreen() {
+export default function QuestsModal() {
   const questsQ = useQuery({
     queryKey: ['quests', 'today'],
     queryFn: getDailyQuests,
@@ -41,245 +34,310 @@ export default function QuestsScreen() {
   const done = data?.quests.filter((q) => q.completedAt != null).length ?? 0;
   const total = data?.quests.length ?? 0;
 
+  // Slide-up + fade pe mount pentru senzatie de panel, nu pagina.
+  const slide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(slide, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [slide]);
+
+  const translateY = slide.interpolate({
+    inputRange: [0, 1],
+    outputRange: [Dimensions.get('window').height * 0.5, 0],
+  });
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <Text style={styles.back}>←</Text>
-        </Pressable>
-        <Text style={styles.headerTitle}>Taskurile zilei</Text>
-        <View style={{ width: 44 }} />
-      </View>
+    <View style={styles.overlay}>
+      <Animated.View style={[styles.backdrop, { opacity: slide }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => router.back()} />
+      </Animated.View>
 
-      {questsQ.isPending && (
-        <ActivityIndicator color={colors.accent} style={{ marginTop: 60 }} />
-      )}
+      <Animated.View style={[styles.panel, { transform: [{ translateY }], opacity: slide }]}>
+        <SafeAreaView edges={['bottom']}>
+          <View style={styles.grip} />
 
-      {questsQ.error && (
-        <Text style={styles.errorText}>Nu am putut incarca taskurile</Text>
-      )}
-
-      {data && (
-        <ScrollView contentContainerStyle={styles.list}>
-          <View style={styles.summaryCard}>
-            <Text style={styles.summaryTitle}>{done} din {total} terminate</Text>
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: total > 0 ? `${(done / total) * 100}%` : '0%' },
-                ]}
-              />
-            </View>
-            <Text style={styles.summaryHint}>
-              {data.allComplete
-                ? 'Bravo! Ai terminat tot azi.'
-                : 'Termina toate 3 ca sa primesti un cufar.'}
-            </Text>
-          </View>
-
-          {data.quests.map((q) => (
-            <QuestCard key={q.slot} quest={q} />
-          ))}
-
-          {/* Chest reward zone */}
-          <View
-            style={[styles.chestCard, data.allComplete && styles.chestCardReady]}
-          >
-            <Text style={styles.chestEmoji}>{data.allComplete ? '🎁' : '🔒'}</Text>
+          <View style={styles.header}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.chestTitle}>
-                {data.allComplete && data.chestTier
-                  ? TIER_LABEL[data.chestTier]
-                  : 'Cufar bonus'}
-              </Text>
-              <Text style={styles.chestHint}>
-                {data.allComplete
-                  ? data.chestOpenedAt
-                    ? 'Deja deschis — bravo!'
-                    : 'Te asteapta la cuferele tale!'
-                  : `Termina toate ${total} taskuri ca sa-l deblochezi`}
+              <Text style={styles.title}>Taskurile zilei</Text>
+              <Text style={styles.subtitle}>
+                {total > 0 ? `${done} din ${total} gata` : 'Se incarca...'}
               </Text>
             </View>
-            {data.allComplete && data.chestId && !data.chestOpenedAt && (
-              <Pressable
-                onPress={() => router.push('/(app)/chests')}
-                style={({ pressed }) => [styles.chestBtn, pressed && styles.pressed]}
-              >
-                <Text style={styles.chestBtnText}>Deschide</Text>
-              </Pressable>
-            )}
+            <Pressable onPress={() => router.back()} hitSlop={12} style={styles.closeBtn}>
+              <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M6 6l12 12M18 6L6 18"
+                  stroke={colors.textMuted}
+                  strokeWidth={2.4}
+                  strokeLinecap="round"
+                />
+              </Svg>
+            </Pressable>
           </View>
 
-          <Text style={styles.footerHint}>
-            Taskurile noi apar in fiecare dimineata. Cele mai multe te incurajeaza
-            sa te vezi cu prietenii in realitate!
-          </Text>
-        </ScrollView>
-      )}
-    </SafeAreaView>
+          {questsQ.isPending && (
+            <ActivityIndicator color={colors.accent} style={{ marginVertical: 40 }} />
+          )}
+          {questsQ.error && (
+            <Text style={styles.errorText}>Nu am putut incarca taskurile</Text>
+          )}
+
+          {data && (
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.list}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.card}>
+                {data.quests.map((q, i) => (
+                  <QuestRow key={q.slot} quest={q} last={i === data.quests.length - 1} />
+                ))}
+              </View>
+
+              <ChestRow data={data} total={total} />
+
+              <Text style={styles.footerHint}>
+                Taskuri noi in fiecare dimineata. Cele mai multe te trimit sa te
+                vezi cu prietenii in realitate.
+              </Text>
+            </ScrollView>
+          )}
+        </SafeAreaView>
+      </Animated.View>
+    </View>
   );
 }
 
-function QuestCard({ quest }: { quest: QuestSlot }) {
+function QuestRow({ quest, last }: { quest: QuestSlot; last: boolean }) {
   const completed = quest.completedAt != null;
-  const ratio = quest.requiredCount > 0
-    ? Math.min(1, quest.progress / quest.requiredCount)
-    : 0;
+  const multi = quest.requiredCount > 1;
 
   return (
-    <View style={[styles.card, completed && styles.cardDone]}>
-      <View style={styles.cardLeft}>
-        <Text style={styles.cardIcon}>{completed ? '✅' : quest.icon}</Text>
-      </View>
+    <View style={[styles.row, !last && styles.rowBorder]}>
+      <Check completed={completed} />
       <View style={{ flex: 1 }}>
-        <View style={styles.cardTitleRow}>
-          <Text style={[styles.cardTitle, completed && styles.cardTitleDone]} numberOfLines={2}>
-            {quest.title}
+        <Text
+          style={[styles.rowTitle, completed && styles.rowTitleDone]}
+          numberOfLines={2}
+        >
+          {quest.title}
+        </Text>
+        {!completed && (
+          <Text style={styles.rowDesc} numberOfLines={2}>
+            {quest.description}
           </Text>
-          <View
-            style={[
-              styles.diffChip,
-              { backgroundColor: DIFFICULTY_COLOR[quest.difficulty] },
-            ]}
-          >
-            <Text style={styles.diffChipText}>{DIFFICULTY_LABEL[quest.difficulty]}</Text>
-          </View>
-        </View>
-        <Text style={styles.cardDesc}>{quest.description}</Text>
-
-        {quest.requiredCount > 1 && !completed && (
-          <View style={styles.miniTrack}>
-            <View style={[styles.miniFill, { width: `${ratio * 100}%` }]} />
-          </View>
         )}
-
-        <View style={styles.cardFooter}>
-          {quest.requiredCount > 1 && (
-            <Text style={styles.progressText}>
-              {quest.progress}/{quest.requiredCount}
-            </Text>
-          )}
-          <Text style={styles.xpText}>+{quest.xpReward} XP</Text>
-        </View>
+      </View>
+      <View style={styles.rowRight}>
+        <Text style={[styles.xp, completed && styles.xpDone]}>+{quest.xpReward}</Text>
+        {multi && !completed && (
+          <Text style={styles.count}>
+            {quest.progress}/{quest.requiredCount}
+          </Text>
+        )}
       </View>
     </View>
   );
 }
 
+function Check({ completed }: { completed: boolean }) {
+  if (completed) {
+    return (
+      <View style={styles.checkDone}>
+        <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+          <Path
+            d="M5 12.5l4.5 4.5L19 7.5"
+            stroke="#FFFFFF"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </Svg>
+      </View>
+    );
+  }
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={colors.border} strokeWidth={2.4} />
+    </Svg>
+  );
+}
+
+function ChestRow({ data, total }: { data: DailyQuestsState; total: number }) {
+  const ready = data.allComplete;
+  const tier = data.chestTier;
+
+  return (
+    <View style={[styles.chest, ready && styles.chestReady]}>
+      {ready ? (
+        <ChestGlyph color="#F1B23E" />
+      ) : (
+        <LockGlyph color={colors.textMuted} />
+      )}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.chestTitle}>
+          {ready && tier ? TIER_LABEL[tier] : 'Cufar bonus'}
+        </Text>
+        <Text style={styles.chestHint}>
+          {ready
+            ? data.chestOpenedAt
+              ? 'Deja deschis.'
+              : 'Te asteapta la cufere.'
+            : `Termina toate ${total} ca sa-l deblochezi.`}
+        </Text>
+      </View>
+      {ready && data.chestId && !data.chestOpenedAt && (
+        <Pressable
+          onPress={() => {
+            router.back();
+            router.push('/(app)/chests');
+          }}
+          style={({ pressed }) => [styles.chestBtn, pressed && styles.pressed]}
+        >
+          <Text style={styles.chestBtnText}>Deschide</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function ChestGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M4 11V8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v3"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M4 13h16" stroke={color} strokeWidth={2.2} strokeLinecap="round" />
+      <Path
+        d="M11 13v3h2v-3"
+        stroke={color}
+        strokeWidth={2.2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+function LockGlyph({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M6 11a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-8Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+      <Path d="M8 10V8a4 4 0 0 1 8 0v2" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(45, 42, 74, 0.45)' },
+
+  panel: {
+    backgroundColor: colors.bgAlt,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    maxHeight: '88%',
   },
-  backBtn: {
+  grip: {
+    alignSelf: 'center',
     width: 44,
-    height: 44,
-    borderRadius: 22,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+    marginBottom: 12,
+  },
+
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  title: { color: colors.text, fontSize: 22, fontWeight: '900', letterSpacing: 0.2 },
+  subtitle: { color: colors.textMuted, fontSize: 13, fontWeight: '700', marginTop: 2 },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
   },
-  back: { color: colors.text, fontSize: 22, fontWeight: '700' },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800', flex: 1, textAlign: 'center' },
 
-  list: { padding: 16, gap: 12, paddingBottom: 40 },
+  scroll: { flexGrow: 0 },
+  list: { gap: 12, paddingBottom: 20 },
 
-  summaryCard: {
-    backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 16,
-    gap: 10,
-  },
-  summaryTitle: { color: colors.text, fontSize: 17, fontWeight: '800' },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.cardAlt,
-    overflow: 'hidden',
-  },
-  progressFill: { height: '100%', backgroundColor: colors.success, borderRadius: 5 },
-  summaryHint: { color: colors.textMuted, fontSize: 13, fontWeight: '600' },
-
+  // Un singur card alb cu randuri separate de o linie subtire = look de checklist.
   card: {
-    flexDirection: 'row',
     backgroundColor: colors.card,
-    borderRadius: 18,
-    padding: 14,
-    gap: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderRadius: 20,
+    paddingHorizontal: 16,
   },
-  cardDone: { borderColor: colors.success, opacity: 0.85 },
-  cardLeft: { width: 44, alignItems: 'center', justifyContent: 'center' },
-  cardIcon: { fontSize: 30 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  cardTitle: { color: colors.text, fontSize: 15, fontWeight: '800', flex: 1 },
-  cardTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },
-  cardDesc: { color: colors.textMuted, fontSize: 13, marginTop: 2 },
-  diffChip: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
-  diffChipText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.bgAlt },
+  rowTitle: { color: colors.text, fontSize: 15.5, fontWeight: '800', lineHeight: 20 },
+  rowTitleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
+  rowDesc: { color: colors.textMuted, fontSize: 13, marginTop: 3, lineHeight: 18 },
+  rowRight: { alignItems: 'flex-end' },
+  xp: { color: colors.accent, fontSize: 15, fontWeight: '900' },
+  xpDone: { color: colors.textMuted },
+  count: { color: colors.textMuted, fontSize: 12, fontWeight: '700', marginTop: 2 },
 
-  miniTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.cardAlt,
-    overflow: 'hidden',
-    marginTop: 8,
+  checkDone: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.success,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  miniFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 3 },
 
-  cardFooter: {
+  chest: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 8,
-  },
-  progressText: { color: colors.textMuted, fontSize: 12, fontWeight: '700' },
-  xpText: { color: colors.accent, fontSize: 14, fontWeight: '900' },
-
-  chestCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: colors.cardAlt,
-    borderRadius: 18,
+    gap: 14,
+    backgroundColor: colors.card,
+    borderRadius: 20,
     padding: 16,
     borderWidth: 2,
     borderColor: 'transparent',
-    marginTop: 4,
   },
-  chestCardReady: { borderColor: '#FFB400', backgroundColor: '#FFF6D8' },
-  chestEmoji: { fontSize: 34 },
-  chestTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
-  chestHint: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  chestReady: { borderColor: '#F1B23E', backgroundColor: '#FFF6DD' },
+  chestTitle: { color: colors.text, fontSize: 15.5, fontWeight: '800' },
+  chestHint: { color: colors.textMuted, fontSize: 12.5, marginTop: 3, lineHeight: 17 },
   chestBtn: {
-    backgroundColor: '#FFB400',
+    backgroundColor: '#F1B23E',
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  chestBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  chestBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' },
 
   footerHint: {
     color: colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 12,
+    marginTop: 6,
+    paddingHorizontal: 16,
     lineHeight: 18,
   },
 
   pressed: { transform: [{ scale: 0.96 }], opacity: 0.85 },
-  errorText: { color: colors.danger, textAlign: 'center', marginTop: 24 },
+  errorText: { color: colors.danger, textAlign: 'center', marginVertical: 30 },
 });

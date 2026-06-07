@@ -77,7 +77,19 @@ export default function AppLayout() {
           // Default lock pe portrait. Doar /journey override-uieste la landscape.
           orientation: 'portrait',
         }}
-      />
+      >
+        {/* Taskurile zilei = panel modal slide-up peste home (fundal transparent),
+            nu pagina full-screen. Ruta ramane /quests ca push-ul din notificari
+            sa functioneze neschimbat. */}
+        <Stack.Screen
+          name="quests"
+          options={{
+            presentation: 'transparentModal',
+            animation: 'fade',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+      </Stack>
       <CoWalkToast />
       <PhoneDownInviteToast />
     </View>
