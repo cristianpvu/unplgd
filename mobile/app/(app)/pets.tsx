@@ -23,7 +23,6 @@ import {
   scanPetCard,
 } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
-import { getBackgrounds, selectBackground } from '../../src/api/adventure';
 import { cancelTagRead, isNfcAvailable, readTagUid } from '../../src/lib/nfc';
 import { colors } from '../../src/theme/colors';
 
@@ -35,21 +34,6 @@ export default function Pets() {
   });
   const [scanning, setScanning] = useState(false);
   const [nfcAvailable, setNfcAvailable] = useState<boolean | null>(null);
-
-  const backgroundsQuery = useQuery({
-    queryKey: ['adventure', 'backgrounds'],
-    queryFn: getBackgrounds,
-  });
-  const selectBgMut = useMutation({
-    mutationFn: (key: string | null) => selectBackground(key),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adventure', 'backgrounds'] });
-      // Profilul (/users/:id) si home (/me) afiseaza fundalul — invalidam
-      // ambele ca sa se reincarce la urmatoarea deschidere.
-      qc.invalidateQueries({ queryKey: ['users'] });
-      qc.invalidateQueries({ queryKey: ['me'] });
-    },
-  });
 
   useEffect(() => {
     isNfcAvailable().then(setNfcAvailable);
@@ -273,48 +257,8 @@ export default function Pets() {
         </View>
 
         {/* Intrarea in aventura traieste acum in chat-ul cu pet-ul — vezi
-            chat.tsx, componenta AdventureInvite. */}
-
-        {/* Fundaluri deblocate — selectabile pt profil */}
-        {backgroundsQuery.data && backgroundsQuery.data.backgrounds.length > 0 && (
-          <View style={styles.bgSection}>
-            <Text style={styles.bgSectionTitle}>Fundalul profilului</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.bgScroll}
-            >
-              {/* Optiunea "fara fundal" */}
-              <Pressable
-                onPress={() => selectBgMut.mutate(null)}
-                style={[
-                  styles.bgOption,
-                  styles.bgOptionNone,
-                  backgroundsQuery.data.selectedKey === null && styles.bgOptionActive,
-                ]}
-              >
-                <Text style={styles.bgNoneText}>Fara</Text>
-              </Pressable>
-              {backgroundsQuery.data.backgrounds.map((b) => {
-                const active = backgroundsQuery.data!.selectedKey === b.key;
-                return (
-                  <Pressable
-                    key={b.key}
-                    onPress={() => selectBgMut.mutate(b.key)}
-                    style={[styles.bgOption, active && styles.bgOptionActive]}
-                  >
-                    <Image source={{ uri: b.imageUrl }} style={styles.bgOptionImg} resizeMode="cover" />
-                    {active && (
-                      <View style={styles.bgActiveBadge}>
-                        <Text style={styles.bgActiveBadgeText}>✓</Text>
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
+            chat.tsx, componenta AdventureInvite. Alegerea fundalului de profil
+            s-a mutat in pagina de profil (preview live cu avatarul). */}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Colectia ta</Text>
@@ -600,47 +544,16 @@ const styles = StyleSheet.create({
   adventureSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 2 },
   adventureArrow: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
 
-  bgSection: { marginBottom: 16, gap: 8 },
-  bgSectionTitle: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  bgScroll: { gap: 10, paddingRight: 4 },
-  bgOption: {
-    width: 92,
-    height: 60,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: 'transparent',
-    backgroundColor: colors.cardAlt,
-  },
-  bgOptionActive: { borderColor: colors.accent },
-  bgOptionImg: { width: '100%', height: '100%' },
-  bgOptionNone: { alignItems: 'center', justifyContent: 'center' },
-  bgNoneText: { color: colors.textMuted, fontSize: 12, fontWeight: '800' },
-  bgActiveBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bgActiveBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   bubble: {
     marginTop: 12,
     backgroundColor: colors.bgAlt,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    maxWidth: '95%',
+    // Numeric, NU procent: maxWidth: '%' se rezolva uneori la o latime gresita
+    // la masurare, textul ramane pe o linie si e taiat (vezi PetSpeechBubble,
+    // care merge cu maxWidth numeric). Parintele capeaza oricum pe ecrane mici.
+    maxWidth: 320,
   },
   bubbleText: {
     color: colors.text,

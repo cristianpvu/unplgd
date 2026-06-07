@@ -25,10 +25,11 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SvgXml } from 'react-native-svg';
 import { BackgroundMedia } from '../../../../src/ui/BackgroundMedia';
 import { getMe } from '../../../../src/api/me';
+import { getBackgrounds, selectBackground } from '../../../../src/api/adventure';
 import { getUserCoCreations, getUserProfile } from '../../../../src/api/users';
 import {
   getUserSkills,
@@ -66,6 +67,7 @@ export default function ProfileScreen() {
   // pe inaltime (depinde de safe area + header + page indicator).
   const [constellationSize, setConstellationSize] = useState({ w: 0, h: 0 });
 
+  const qc = useQueryClient();
   const me = useQuery({ queryKey: ['me'], queryFn: getMe });
   const profile = useQuery({
     queryKey: ['users', id],
@@ -86,6 +88,22 @@ export default function ProfileScreen() {
     queryKey: ['users', id, 'domains-top'],
     queryFn: () => getUserDomainsTop(id!, 10),
     enabled: !!id,
+  });
+  // Fundalurile deblocate — doar pe profilul propriu. Selectarea updateaza
+  // backend-ul, apoi invalidam profilul + /me ca avatarul de sus (preview live)
+  // sa se reincarce cu noul fundal.
+  const backgroundsQ = useQuery({
+    queryKey: ['adventure', 'backgrounds'],
+    queryFn: getBackgrounds,
+    enabled: !!id && me.data?.id === id,
+  });
+  const selectBgMut = useMutation({
+    mutationFn: (key: string | null) => selectBackground(key),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adventure', 'backgrounds'] });
+      qc.invalidateQueries({ queryKey: ['users', id] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+    },
   });
 
   const [selectedDomain, setSelectedDomain] = useState<DomainScore | null>(null);
@@ -209,6 +227,52 @@ export default function ProfileScreen() {
                       onPress={() => router.push('/(app)/chests')}
                     />
                   </>
+                )}
+
+                {isMe && backgroundsQ.data && backgroundsQ.data.backgrounds.length > 0 && (
+                  <View style={styles.bgSection}>
+                    <Text style={styles.bgSectionTitle}>Fundalul profilului</Text>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.bgScroll}
+                    >
+                      {/* "Fara fundal" */}
+                      <Pressable
+                        onPress={() => selectBgMut.mutate(null)}
+                        disabled={selectBgMut.isPending}
+                        style={[
+                          styles.bgOption,
+                          styles.bgOptionNone,
+                          backgroundsQ.data.selectedKey === null && styles.bgOptionActive,
+                        ]}
+                      >
+                        <Text style={styles.bgNoneText}>Fara</Text>
+                      </Pressable>
+                      {backgroundsQ.data.backgrounds.map((b) => {
+                        const active = backgroundsQ.data!.selectedKey === b.key;
+                        return (
+                          <Pressable
+                            key={b.key}
+                            onPress={() => selectBgMut.mutate(b.key)}
+                            disabled={selectBgMut.isPending}
+                            style={[styles.bgOption, active && styles.bgOptionActive]}
+                          >
+                            <Image
+                              source={{ uri: b.imageUrl }}
+                              style={styles.bgOptionImg}
+                              resizeMode="cover"
+                            />
+                            {active && (
+                              <View style={styles.bgActiveBadge}>
+                                <Text style={styles.bgActiveBadgeText}>✓</Text>
+                              </View>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </View>
                 )}
 
                 <Text style={styles.sectionTitle}>
@@ -530,6 +594,41 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 999 },
+
+  bgSection: { gap: 8, marginTop: 4 },
+  bgSectionTitle: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  bgScroll: { gap: 10, paddingRight: 4 },
+  bgOption: {
+    width: 92,
+    height: 60,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'transparent',
+    backgroundColor: colors.cardAlt,
+  },
+  bgOptionActive: { borderColor: colors.accent },
+  bgOptionImg: { width: '100%', height: '100%' },
+  bgOptionNone: { alignItems: 'center', justifyContent: 'center' },
+  bgNoneText: { color: colors.textMuted, fontSize: 12, fontWeight: '800' },
+  bgActiveBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bgActiveBadgeText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
 
   sectionTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginTop: 8 },
   emptyBox: { alignItems: 'center', padding: 24, gap: 8 },
