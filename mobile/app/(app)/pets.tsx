@@ -23,6 +23,8 @@ import {
   scanPetCard,
 } from '../../src/api/pets';
 import { ApiError } from '../../src/api/client';
+import { getJourneyProgress } from '../../src/api/journey';
+import { getStoryForPet } from '../../src/journey/stories';
 import { cancelTagRead, isNfcAvailable, readTagUid } from '../../src/lib/nfc';
 import { colors } from '../../src/theme/colors';
 
@@ -34,6 +36,14 @@ export default function Pets() {
   });
   const [scanning, setScanning] = useState(false);
   const [nfcAvailable, setNfcAvailable] = useState<boolean | null>(null);
+
+  // Progresul in journey-ul pet-ului activ (per specie). Folosit de cardul de
+  // aventura de sub hero.
+  const journeyProgressQ = useQuery({
+    queryKey: ['journey-progress', data?.pet.species.slug],
+    queryFn: () => getJourneyProgress(data!.pet.species.slug),
+    enabled: !!data?.pet.species.slug,
+  });
 
   useEffect(() => {
     isNfcAvailable().then(setNfcAvailable);
@@ -162,6 +172,13 @@ export default function Pets() {
 
   const { pet, cards, defaultSpecies, defaultEquipped } = data;
   const heroUri = petImageUrl(pet.species.imagePath);
+
+  const story = getStoryForPet(pet.species.slug);
+  const completedSet = new Set(journeyProgressQ.data?.completedChapters ?? []);
+  const totalChapters = story?.chapters.length ?? 0;
+  const completedCount = story
+    ? story.chapters.filter((c) => completedSet.has(c.id)).length
+    : 0;
   const equipPendingFor =
     equip.isPending && typeof equip.variables === 'string' ? equip.variables : null;
 
@@ -249,16 +266,23 @@ export default function Pets() {
                 : `${pet.bond.xp} XP total`}
             </Text>
           </View>
+
+          {/* Aventura (journey) — linie compacta integrata in cardul petului,
+              mutata din chat. Fundalul de profil s-a mutat in pagina de profil. */}
+          {story && totalChapters > 0 && (
+            <JourneyRow
+              completedCount={completedCount}
+              totalChapters={totalChapters}
+              onPress={() => router.push('/(app)/journey')}
+            />
+          )}
+
           {heroCatchphrase && (
             <View style={styles.bubble}>
               <Text style={styles.bubbleText}>{`„${heroCatchphrase}”`}</Text>
             </View>
           )}
         </View>
-
-        {/* Intrarea in aventura traieste acum in chat-ul cu pet-ul — vezi
-            chat.tsx, componenta AdventureInvite. Alegerea fundalului de profil
-            s-a mutat in pagina de profil (preview live cu avatarul). */}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Colectia ta</Text>
@@ -321,6 +345,41 @@ export default function Pets() {
         </Text>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+// Aventura ca linie compacta in cardul petului — sub bara de Legatura, acelasi
+// limbaj vizual (titlu mic + bara + meta), fara bloc separat greoi.
+function JourneyRow({
+  completedCount,
+  totalChapters,
+  onPress,
+}: {
+  completedCount: number;
+  totalChapters: number;
+  onPress: () => void;
+}) {
+  const done = totalChapters > 0 && completedCount >= totalChapters;
+  const isNew = completedCount === 0;
+  const cta = done ? 'Reia' : isNew ? 'Incepe' : 'Continua';
+  const left = done
+    ? 'Aventura · terminata'
+    : `Aventura · cap. ${completedCount + 1} din ${totalChapters}`;
+  const pct = totalChapters > 0 ? Math.round((completedCount / totalChapters) * 100) : 0;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.journeyRow, pressed && styles.journeyRowPressed]}
+    >
+      <View style={styles.journeyHead}>
+        <Text style={styles.journeyText}>{left}</Text>
+        <Text style={styles.journeyCta}>{cta} ›</Text>
+      </View>
+      <View style={styles.journeyBar}>
+        <View style={[styles.journeyBarFill, { width: `${pct}%` }]} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -544,16 +603,38 @@ const styles = StyleSheet.create({
   adventureSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600', marginTop: 2 },
   adventureArrow: { color: '#FFFFFF', fontSize: 22, fontWeight: '900' },
 
+  journeyRow: {
+    width: '100%',
+    marginTop: 10,
+    gap: 8,
+    backgroundColor: colors.cardAlt,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  journeyRowPressed: { opacity: 0.7 },
+  journeyHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  journeyText: { color: colors.text, fontSize: 13, fontWeight: '800', flex: 1 },
+  journeyCta: { color: colors.accent, fontSize: 13, fontWeight: '900' },
+  journeyBar: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: colors.bgAlt,
+    overflow: 'hidden',
+  },
+  journeyBarFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 999 },
+
   bubble: {
     marginTop: 12,
     backgroundColor: colors.bgAlt,
     borderRadius: 18,
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 10,
-    // Numeric, NU procent: maxWidth: '%' se rezolva uneori la o latime gresita
-    // la masurare, textul ramane pe o linie si e taiat (vezi PetSpeechBubble,
-    // care merge cu maxWidth numeric). Parintele capeaza oricum pe ecrane mici.
-    maxWidth: 320,
+    // Latime DEFINITA (cat cardul), nu derivata din continut: sub un parinte
+    // centrat, bula content-sized masura latimea gresit (~0) la prima trecere
+    // si textul se infasura la prima pauza, restul ramanand ascuns ("„Naga,").
+    // alignSelf: stretch da o latime clara → textul nu mai colapseaza.
+    alignSelf: 'stretch',
   },
   bubbleText: {
     color: colors.text,

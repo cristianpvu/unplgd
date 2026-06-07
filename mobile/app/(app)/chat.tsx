@@ -26,8 +26,6 @@ import {
   petImageUrl,
   sendPetChat,
 } from '../../src/api/pets';
-import { getJourneyProgress } from '../../src/api/journey';
-import { getStoryForPet } from '../../src/journey/stories';
 import { ApiError } from '../../src/api/client';
 import {
   ensureMicPermission,
@@ -81,21 +79,6 @@ export default function PetChat() {
   const pet = petQuery.data?.pet;
   const petImage = petImageUrl(pet?.species.imagePath ?? null);
   const petName = pet?.name ?? 'Pet';
-
-  // Daca pet-ul are povesti scrise si user-ul n-a terminat-o, afisam un card
-  // de invitatie in chat — "Hai in aventura cu mine!".
-  const progressQuery = useQuery({
-    queryKey: ['journey-progress', pet?.species.slug],
-    queryFn: () => getJourneyProgress(pet!.species.slug),
-    enabled: !!pet?.species.slug,
-  });
-  const story = pet ? getStoryForPet(pet.species.slug) : null;
-  const completed = new Set(progressQuery.data?.completedChapters ?? []);
-  const totalChapters = story?.chapters.length ?? 0;
-  const completedCount = story
-    ? story.chapters.filter((c) => completed.has(c.id)).length
-    : 0;
-  const hasAdventureToContinue = !!story && completedCount < totalChapters;
 
   useEffect(() => {
     if (!historyQuery.data) return;
@@ -430,16 +413,6 @@ export default function PetChat() {
           {bubbles.map((b) => (
             <BubbleRow key={b.id} bubble={b} />
           ))}
-          {/* Invitatie aventura — apare dupa ce am avut macar un mesaj de pet
-              si pet-ul are povesti necompletate. Discret, deasupra input-ului. */}
-          {hasAdventureToContinue && bubbles.length > 0 && (
-            <AdventureInvite
-              petName={petName}
-              completedCount={completedCount}
-              totalChapters={totalChapters}
-              onAccept={() => router.push('/(app)/journey')}
-            />
-          )}
           {send.isPending && (
             <View style={styles.typing}>
               <ActivityIndicator color={colors.accent} size="small" />
@@ -564,55 +537,6 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
   );
 }
 
-function AdventureInvite({
-  petName,
-  completedCount,
-  totalChapters,
-  onAccept,
-}: {
-  petName: string;
-  completedCount: number;
-  totalChapters: number;
-  onAccept: () => void;
-}) {
-  const isNew = completedCount === 0;
-  const headline = isNew
-    ? `Vrei in prima aventura cu ${petName}?`
-    : `Continuam aventura, ${petName}?`;
-  const sub = isNew
-    ? 'Mergem impreuna prin lumea lui si invatam jucandu-ne.'
-    : `Capitolul ${completedCount + 1} din ${totalChapters} ne asteapta.`;
-  return (
-    <View style={styles.adventureCard}>
-      <View style={styles.adventureBody}>
-        <Text style={styles.adventureTitle}>{headline}</Text>
-        <Text style={styles.adventureSub}>{sub}</Text>
-        <View style={styles.adventureProgressTrack}>
-          <View
-            style={[
-              styles.adventureProgressFill,
-              {
-                width: `${
-                  totalChapters > 0 ? Math.round((completedCount / totalChapters) * 100) : 0
-                }%`,
-              },
-            ]}
-          />
-        </View>
-        <Text style={styles.adventureSteps}>
-          {completedCount} / {totalChapters} capitole
-        </Text>
-      </View>
-      <Pressable
-        onPress={onAccept}
-        style={({ pressed }) => [styles.adventureBtn, pressed && styles.adventureBtnPressed]}
-      >
-        <Text style={styles.adventureBtnText}>Hai!</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
 
@@ -663,47 +587,6 @@ const styles = StyleSheet.create({
   bubbleRow: { alignItems: 'flex-start' },
   bubbleRowMe: { alignItems: 'flex-end' },
 
-  // Card invitatie aventura — stil distinctiv, sa nu fie confundat cu un bubble.
-  adventureCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.accent,
-    borderRadius: 18,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginVertical: 12,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  adventureBody: { flex: 1, gap: 4 },
-  adventureTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  adventureSub: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '600' },
-  adventureProgressTrack: {
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    overflow: 'hidden',
-    marginTop: 4,
-  },
-  adventureProgressFill: { height: '100%', backgroundColor: '#FFFFFF', borderRadius: 999 },
-  adventureSteps: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  adventureBtn: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 14,
-  },
-  adventureBtnPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
-  adventureBtnText: { color: colors.accent, fontWeight: '900', fontSize: 14 },
   bubble: {
     maxWidth: '82%',
     borderRadius: 18,
