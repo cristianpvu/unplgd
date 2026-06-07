@@ -104,7 +104,15 @@ export function registerNotificationTapListener(): () => void {
 }
 
 function handleNotificationTap(data: Record<string, unknown>) {
-  const kind = data.kind as string | undefined;
+  routeForNotification(data.kind as string | undefined);
+}
+
+/**
+ * Sursa unica de adevar pentru rutarea unei notificari dupa `kind`. Folosita
+ * atat la tap pe push (background) cat si la tap pe notificarea din sheet-ul
+ * in-app, ca destinatia sa fie mereu identica.
+ */
+export function routeForNotification(kind: string | undefined) {
   switch (kind) {
     case 'park_hint':
       // Deschide chat-ul cu pet-ul — acolo conversatia poate continua firul.
@@ -114,7 +122,7 @@ function handleNotificationTap(data: Record<string, unknown>) {
       router.push('/(app)/quests');
       break;
     default:
-      // Fallback: deschide home si lasa user-ul sa vada notificarea in sheet.
+      // Fallback: deschide home (notificarea ramane vizibila in sheet).
       router.push('/(app)');
       break;
   }

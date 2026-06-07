@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   Easing,
   Image,
   Modal,
@@ -44,6 +45,7 @@ import {
 } from '../../src/api/notifications';
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
+import { routeForNotification } from '../../src/lib/pushNotifications';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
 import { PetBadge } from '../../src/ui/PetBadge';
@@ -304,12 +306,10 @@ export default function Home() {
                     n={n}
                     onPress={() => {
                       if (!n.readAt) markReadMut.mutate(n.id);
-                      // Park hint tap = deschide chat-ul cu pet-ul ca sa
-                      // continue conversatia natural acolo.
-                      if (n.kind === 'park_hint') {
-                        setSheet(null);
-                        router.push('/(app)/chat');
-                      }
+                      // Acelasi routing ca la tap pe push (sursa unica), ca
+                      // destinatia sa fie identica indiferent de unde dai tap.
+                      setSheet(null);
+                      routeForNotification(n.kind);
                     }}
                   />
                 ))}
@@ -801,7 +801,13 @@ function BottomSheet({
         <View style={styles.sheet}>
           <View style={styles.sheetGrip} />
           <Text style={styles.sheetTitle}>{title}</Text>
-          {children}
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={styles.sheetScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {children}
+          </ScrollView>
         </View>
       </SafeAreaView>
     </Modal>
@@ -1062,6 +1068,10 @@ const styles = StyleSheet.create({
   },
   sheetTitle: { color: colors.text, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   sheetEmpty: { color: colors.textMuted, fontSize: 14, lineHeight: 20, paddingBottom: 8 },
+  // Cap inaltimea continutului ca lista lunga (notificari/prieteni) sa scrolleze
+  // in loc sa creasca sheet-ul peste ecran.
+  sheetScroll: { maxHeight: Math.round(Dimensions.get('window').height * 0.6) },
+  sheetScrollContent: { paddingBottom: 4 },
   sheetList: { gap: 2, paddingBottom: 4 },
   sheetItem: { paddingVertical: 14, paddingHorizontal: 4 },
   sheetItemPressed: { opacity: 0.55 },
