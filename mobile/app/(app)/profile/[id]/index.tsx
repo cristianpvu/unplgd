@@ -26,7 +26,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { SvgXml } from 'react-native-svg';
+import { SvgXml, Svg, Path, Circle, G } from 'react-native-svg';
 import { BackgroundMedia } from '../../../../src/ui/BackgroundMedia';
 import { getMe } from '../../../../src/api/me';
 import { getBackgrounds, selectBackground } from '../../../../src/api/adventure';
@@ -129,7 +129,18 @@ export default function ProfileScreen() {
           <IconArrowLeft size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>{isMe ? 'Profilul meu' : u?.name ?? 'Profil'}</Text>
-        <View style={{ width: 44 }} />
+        {isMe ? (
+          <Pressable
+            onPress={() => router.push('/(app)/chests')}
+            hitSlop={12}
+            accessibilityLabel="Cuferele mele (istoric)"
+            style={({ pressed }) => [styles.chestsBtn, pressed && styles.chestsBtnPressed]}
+          >
+            <ChestHistoryIcon size={22} color={colors.text} />
+          </Pressable>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
       {profile.isPending && (
@@ -220,11 +231,6 @@ export default function ProfileScreen() {
                       label="Personalizeaza avatar"
                       variant="secondary"
                       onPress={() => router.push('/(app)/avatar-edit')}
-                    />
-                    <Button
-                      label="Cufere"
-                      variant="secondary"
-                      onPress={() => router.push('/(app)/chests')}
                     />
                   </>
                 )}
@@ -452,6 +458,50 @@ function scoreHint(score: number, level: number): string {
   return 'Inceput de aventura intr-un domeniu nou.';
 }
 
+// Acelasi cufar ca butonul de pe home, dar cu o insigna-ceas in colt care
+// semnaleaza ca aici e VIZUALIZARE/istoric, nu cufere active de deschis.
+function ChestHistoryIcon({ size = 22, color = colors.text }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      {/* Cufarul, usor micsorat spre stanga-sus ca sa faca loc insignei. */}
+      <G transform="translate(-1.5,-1.5) scale(0.84)">
+        <Path
+          d="M4 11a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-8Z"
+          stroke={color}
+          strokeWidth={2.4}
+          strokeLinejoin="round"
+        />
+        <Path
+          d="M4 11V8a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v3"
+          stroke={color}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <Path d="M4 13h16" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+        <Path
+          d="M11 13v3h2v-3"
+          stroke={color}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </G>
+      {/* Insigna ceas (istoric) jos-dreapta. Cercul plin = culoarea butonului,
+          decupeaza curat cufarul de dedesubt. */}
+      <Circle cx={17.5} cy={17.5} r={6} fill={colors.card} />
+      <Circle cx={17.5} cy={17.5} r={5} stroke={color} strokeWidth={1.6} />
+      <Path
+        d="M17.5 14.8V17.5l1.9 1.1"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
 function PartnerThumb({ svg }: { svg: string | null }) {
   const SIZE = 32;
   if (!svg) {
@@ -594,6 +644,21 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 999 },
+
+  chestsBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.card,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  chestsBtnPressed: { transform: [{ scale: 0.94 }], opacity: 0.85 },
 
   bgSection: { gap: 8, marginTop: 4 },
   bgSectionTitle: {
