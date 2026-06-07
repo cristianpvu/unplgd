@@ -34,11 +34,13 @@ export type PetCardDto = {
   species: PetSpeciesDto;
 };
 
+export type StarterDto = PetSpeciesDto & { equipped: boolean };
+
 export type PetMeResponse = {
   pet: PetDto;
   cards: PetCardDto[];
-  defaultSpecies: PetSpeciesDto;
-  defaultEquipped: boolean;
+  // Startere gratuite (Scout + Buddy). Cel auto-selectat e primul.
+  starters: StarterDto[];
 };
 
 export type ScanResponse = {
@@ -68,8 +70,11 @@ export function equipPetCard(cardId: string) {
   return api<EquipResponse>('/pets/equip', { method: 'POST', body: { cardId } });
 }
 
-export function equipDefaultPet() {
-  return api<EquipDefaultResponse>('/pets/equip-default', { method: 'POST' });
+export function equipDefaultPet(slug?: string) {
+  return api<EquipDefaultResponse>('/pets/equip-default', {
+    method: 'POST',
+    body: slug ? { slug } : {},
+  });
 }
 
 export function renamePetCard(cardId: string, nickname: string) {

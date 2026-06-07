@@ -35,7 +35,7 @@ const GAMES: GameDef[] = [
   {
     key: 'story',
     title: 'Spune o poveste',
-    subtitle: 'Inventeaza o poveste cu Buddy si spune-o unui prieten',
+    subtitle: 'Inventeaza o poveste cu Scout si spune-o unui prieten',
     route: '/(app)/story',
     bg: '#F4EFFF',
     fg: '#2A1A6E',

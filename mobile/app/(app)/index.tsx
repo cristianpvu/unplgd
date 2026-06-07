@@ -212,7 +212,7 @@ export default function Home() {
               <View style={styles.bubbleAnchor} pointerEvents="box-none">
                 <PetSpeechBubble
                   phrases={bubblePhrases}
-                  petName={petName ?? 'Buddy'}
+                  petName={petName ?? 'Scout'}
                   onPress={() => router.push('/(app)/chat')}
                 />
               </View>

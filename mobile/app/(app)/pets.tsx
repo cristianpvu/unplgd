@@ -63,7 +63,7 @@ export default function Pets() {
           ...prev,
           pet: res.pet,
           cards: hasIt ? cards : [...cards, { ...res.card, equipped: true }],
-          defaultEquipped: false,
+          starters: prev.starters.map((s) => ({ ...s, equipped: false })),
         };
       });
       void refetch();
@@ -94,7 +94,7 @@ export default function Pets() {
           ...prev,
           pet: res.pet,
           cards: prev.cards.map((c) => ({ ...c, equipped: c.id === res.card.id })),
-          defaultEquipped: false,
+          starters: prev.starters.map((s) => ({ ...s, equipped: false })),
         };
       });
       // Backend a sters chat history-ul la /equip — invalidate ca la urmatoarea
@@ -106,8 +106,8 @@ export default function Pets() {
     },
   });
 
-  const equipDefault = useMutation({
-    mutationFn: () => equipDefaultPet(),
+  const equipStarter = useMutation({
+    mutationFn: (slug: string) => equipDefaultPet(slug),
     onSuccess: (res) => {
       qc.setQueryData<PetMeResponse | undefined>(['pet'], (prev) => {
         if (!prev) return prev;
@@ -115,13 +115,16 @@ export default function Pets() {
           ...prev,
           pet: res.pet,
           cards: prev.cards.map((c) => ({ ...c, equipped: false })),
-          defaultEquipped: true,
+          starters: prev.starters.map((s) => ({
+            ...s,
+            equipped: s.slug === res.pet.species.slug,
+          })),
         };
       });
       qc.invalidateQueries({ queryKey: ['pet', 'chat'] });
     },
     onError: (err: any) => {
-      Alert.alert('Eroare', err?.message ?? 'Nu am putut activa Buddy');
+      Alert.alert('Eroare', err?.message ?? 'Nu am putut activa pet-ul');
     },
   });
 
@@ -170,8 +173,9 @@ export default function Pets() {
     );
   }
 
-  const { pet, cards, defaultSpecies, defaultEquipped } = data;
+  const { pet, cards, starters } = data;
   const heroUri = petImageUrl(pet.species.imagePath);
+  const autoPetName = starters[0]?.name ?? pet.name;
 
   const story = getStoryForPet(pet.species.slug);
   const completedSet = new Set(journeyProgressQ.data?.completedChapters ?? []);
@@ -287,21 +291,25 @@ export default function Pets() {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Colectia ta</Text>
-          <Text style={styles.sectionCount}>{cards.length + 1}</Text>
+          <Text style={styles.sectionCount}>{cards.length + starters.length}</Text>
         </View>
 
         <View style={styles.grid}>
-          <PetTile
-            kind="default"
-            species={defaultSpecies}
-            name="Buddy"
-            active={defaultEquipped}
-            pending={equipDefault.isPending}
-            onPress={() => {
-              if (defaultEquipped || equipDefault.isPending) return;
-              equipDefault.mutate();
-            }}
-          />
+          {/* Startere gratuite (Scout + Buddy) — disponibile fara card. */}
+          {starters.map((s) => (
+            <PetTile
+              key={s.slug}
+              kind="default"
+              species={s}
+              name={s.name}
+              active={s.equipped}
+              pending={equipStarter.isPending && equipStarter.variables === s.slug}
+              onPress={() => {
+                if (s.equipped || equipStarter.isPending) return;
+                equipStarter.mutate(s.slug);
+              }}
+            />
+          ))}
 
           {cards.map((c) => (
             <PetTile
@@ -309,10 +317,10 @@ export default function Pets() {
               kind="card"
               species={c.species}
               name={c.nickname ?? c.species.name}
-              active={c.equipped && !defaultEquipped}
+              active={c.equipped}
               pending={equipPendingFor === c.id}
               onPress={() => {
-                if (c.equipped && !defaultEquipped) return;
+                if (c.equipped) return;
                 equip.mutate(c.id);
               }}
             />
@@ -342,7 +350,7 @@ export default function Pets() {
         </View>
 
         <Text style={styles.hint}>
-          Apasa pe un pet ca sa-l activezi. Buddy e mereu cu tine — poti reveni la el oricand.
+          Apasa pe un pet ca sa-l activezi. {autoPetName} e mereu cu tine — poti reveni la el oricand.
         </Text>
       </ScrollView>
     </SafeAreaView>
