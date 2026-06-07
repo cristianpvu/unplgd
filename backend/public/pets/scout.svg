@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="630" viewBox="0 0 200 210">
+  <!-- Scout — mascota default Unplgd. Exporta ca PNG (scout.png) la 600x630.
+       Antene = senzori de prieteni (tema proximitate). -->
+
+  <!-- antene -->
+  <line x1="84" y1="58" x2="78" y2="32" stroke="#5B3FD6" stroke-width="5" stroke-linecap="round"/>
+  <line x1="116" y1="58" x2="122" y2="32" stroke="#5B3FD6" stroke-width="5" stroke-linecap="round"/>
+  <!-- inele radar (statice in PNG) -->
+  <circle cx="78" cy="28" r="16" stroke="#5BCEFA" stroke-width="2.5" fill="none" opacity="0.35"/>
+  <circle cx="122" cy="28" r="16" stroke="#5BCEFA" stroke-width="2.5" fill="none" opacity="0.35"/>
+  <circle cx="78" cy="28" r="8" fill="#5BCEFA"/>
+  <circle cx="122" cy="28" r="8" fill="#5BCEFA"/>
+
+  <!-- picioare -->
+  <ellipse cx="78" cy="184" rx="17" ry="10" fill="#5B3FD6"/>
+  <ellipse cx="122" cy="184" rx="17" ry="10" fill="#5B3FD6"/>
+
+  <!-- corp -->
+  <ellipse cx="100" cy="118" rx="70" ry="68" fill="#7C5CFC"/>
+  <ellipse cx="100" cy="134" rx="46" ry="44" fill="#C9BBFF"/>
+
+  <!-- obraji -->
+  <circle cx="52" cy="132" r="10" fill="rgba(255,120,150,0.45)"/>
+  <circle cx="148" cy="132" r="10" fill="rgba(255,120,150,0.45)"/>
+
+  <!-- ochi (deschisi) -->
+  <ellipse cx="74" cy="108" rx="17" ry="20" fill="#FFFFFF"/>
+  <ellipse cx="126" cy="108" rx="17" ry="20" fill="#FFFFFF"/>
+  <circle cx="78" cy="112" r="8" fill="#2D2A4A"/>
+  <circle cx="122" cy="112" r="8" fill="#2D2A4A"/>
+  <circle cx="74" cy="107" r="3" fill="#FFFFFF"/>
+  <circle cx="118" cy="107" r="3" fill="#FFFFFF"/>
+
+  <!-- zambet -->
+  <path d="M82 142 Q100 160 118 142" stroke="#2D2A4A" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+</svg>
