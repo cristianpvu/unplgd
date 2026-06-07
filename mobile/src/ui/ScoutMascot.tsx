@@ -10,11 +10,26 @@ const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 // prin swap intre 2 stari de ochi (ca avatarul de pe home), nu prin scalare.
 // Self-contained: blink + ping ruleaza singure. Animatiile de plutire/intrare
 // se aplica de catre parinte (vezi welcome.tsx).
-export function ScoutMascot({ size = 196 }: { size?: number }) {
-  const BODY = '#7C5CFC';
-  const BODY_DARK = '#5B3FD6';
-  const BELLY = '#C9BBFF';
-  const MINT = colors.secondary;
+export type MascotPalette = {
+  body: string;
+  bodyDark: string;
+  belly: string;
+  antenna: string;
+};
+
+// Paleta implicita = Scout (mov). Pentru un "prieten" distinct, paseaza alta.
+export const FRIEND_PALETTE: MascotPalette = {
+  body: '#FF9F5C',
+  bodyDark: '#E07A3A',
+  belly: '#FFD9BC',
+  antenna: '#FF6F91',
+};
+
+export function ScoutMascot({ size = 196, palette }: { size?: number; palette?: MascotPalette }) {
+  const BODY = palette?.body ?? '#7C5CFC';
+  const BODY_DARK = palette?.bodyDark ?? '#5B3FD6';
+  const BELLY = palette?.belly ?? '#C9BBFF';
+  const MINT = palette?.antenna ?? colors.secondary;
   const DARK = colors.text;
 
   const [closed, setClosed] = useState(false);

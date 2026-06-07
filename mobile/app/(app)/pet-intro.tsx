@@ -10,7 +10,7 @@ import {
   stopRemoteAudio,
 } from '../../src/lib/speech';
 import { absoluteAudioUrl, ttsSynthesize } from '../../src/api/stories';
-import { ScoutMascot } from '../../src/ui/ScoutMascot';
+import { ScoutMascot, FRIEND_PALETTE } from '../../src/ui/ScoutMascot';
 import { colors } from '../../src/theme/colors';
 
 // Onboarding narativ — Scout iti povesteste conceptul, pas cu pas. Fiecare pas
@@ -160,10 +160,6 @@ function ScoutActor({ act, stepKey }: { act: Act; stepKey: number }) {
     transform.push({
       rotate: t.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['-4deg', '4deg', '-4deg'] }),
     });
-  } else if (act === 'walk') {
-    // se misca stanga-dreapta cu hopuri — "iesi afara"
-    transform.push({ translateX: t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, 26, 0, -26, 0] }) });
-    transform.push({ translateY: t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, -12, 0, -12, 0] }) });
   } else if (act === 'grow') {
     // creste si revine — "crestem impreuna"
     transform.push({ scale: t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.22, 1] }) });
@@ -176,6 +172,11 @@ function ScoutActor({ act, stepKey }: { act: Act; stepKey: number }) {
   const shadowScale = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 0.8, 1] });
   const shadowOpacity = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.16, 0.09, 0.16] });
 
+  // Pasul "iesi afara" = scena de intalnire: Scout + un prieten care se apropie.
+  if (act === 'walk') {
+    return <MeetScene t={t} intro={intro} />;
+  }
+
   return (
     <View style={styles.actorZone}>
       {act === 'scan' && <RadarRings />}
@@ -184,6 +185,40 @@ function ScoutActor({ act, stepKey }: { act: Act; stepKey: number }) {
       <Animated.View style={[styles.actorShadow, { opacity: shadowOpacity, transform: [{ scaleX: shadowScale }] }]} />
       <Animated.View style={{ transform }}>
         <ScoutMascot size={188} />
+      </Animated.View>
+    </View>
+  );
+}
+
+// Scout (stanga) + un prieten (dreapta, alta culoare) care se apropie unul de
+// altul cu hopuri, cu o inima care apare intre ei = "fa-ti prieteni".
+function MeetScene({ t, intro }: { t: Animated.Value; intro: Animated.Value }) {
+  const introScale = intro.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
+  // se apropie: Scout vine din stanga spre centru, prietenul din dreapta.
+  const scoutX = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [-6, 14, -6] });
+  const friendX = t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [6, -14, 6] });
+  const hop = t.interpolate({ inputRange: [0, 0.25, 0.5, 0.75, 1], outputRange: [0, -10, 0, -10, 0] });
+  // inima apare cand sunt aproape (mijlocul buclei)
+  const heartO = t.interpolate({ inputRange: [0, 0.35, 0.5, 0.65, 1], outputRange: [0, 0, 1, 0, 0] });
+  const heartScale = t.interpolate({ inputRange: [0.35, 0.5, 0.65], outputRange: [0.6, 1.2, 0.6] });
+  const heartY = t.interpolate({ inputRange: [0.35, 0.65], outputRange: [0, -16] });
+
+  return (
+    <View style={styles.meetZone}>
+      <Animated.View style={[styles.heart, { opacity: heartO, transform: [{ scale: heartScale }, { translateY: heartY }] }]}>
+        <Svg width={34} height={34} viewBox="0 0 24 24">
+          <Path
+            d="M12 20s-7-4.3-7-9.3A4.2 4.2 0 0 1 12 7a4.2 4.2 0 0 1 7 3.7C19 15.7 12 20 12 20Z"
+            fill={colors.accent}
+          />
+        </Svg>
+      </Animated.View>
+
+      <Animated.View style={{ transform: [{ scale: introScale }, { translateX: scoutX }, { translateY: hop }] }}>
+        <ScoutMascot size={130} />
+      </Animated.View>
+      <Animated.View style={{ transform: [{ scale: introScale }, { translateX: friendX }, { translateY: hop }] }}>
+        <ScoutMascot size={130} palette={FRIEND_PALETTE} />
       </Animated.View>
     </View>
   );
@@ -286,6 +321,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: colors.text,
   },
+
+  meetZone: {
+    width: 260,
+    height: 240,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  heart: { position: 'absolute', top: 50, alignSelf: 'center', zIndex: 2 },
 
   ringsLayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   ring: {
