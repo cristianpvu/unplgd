@@ -47,6 +47,8 @@ import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { routeForNotification } from '../../src/lib/pushNotifications';
 import { PlaySheet } from '../../src/play/PlaySheet';
+import { SpotlightTutorial, type SpotlightStep, type Rect } from '../../src/ui/SpotlightTutorial';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
 import { PetBadge } from '../../src/ui/PetBadge';
@@ -77,6 +79,15 @@ export default function Home() {
   const avatarRef = useRef<AvatarHeadHandle>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
   const [playOpen, setPlayOpen] = useState(false);
+
+  // Tutorial home (prima accesare): refs pe tinte + pasii cu spotlight.
+  const rootRef = useRef<View>(null);
+  const notifRef = useRef<View>(null);
+  const sideRef = useRef<View>(null);
+  const avatarBoxRef = useRef<View>(null);
+  const petRef = useRef<View>(null);
+  const playRef = useRef<View>(null);
+  const [tutorialSteps, setTutorialSteps] = useState<SpotlightStep[] | null>(null);
   const friendsQuery = useQuery({
     queryKey: ['friends'],
     queryFn: listFriends,
@@ -127,10 +138,75 @@ export default function Home() {
     }
   }, [avatarError]);
 
+  // Tutorial home la prima accesare: masuram tintele si pornim spotlight-ul.
+  // Doar dupa ce avatarul s-a incarcat (layout stabil) si nu s-a vazut deja.
+  // Flag PER-USER (nu global pe device) ca fiecare cont nou sa-l vada o data.
+  const tutorialKey = me?.id ? `home_tutorial_v1:${me.id}` : null;
+  useEffect(() => {
+    if (!avatar || !tutorialKey || tutorialSteps) return;
+    let cancelled = false;
+
+    const measure = (ref: React.RefObject<View>): Promise<Rect | null> =>
+      new Promise((resolve) => {
+        const node = ref.current;
+        if (!node) return resolve(null);
+        node.measureInWindow((x, y, width, height) => {
+          if (!width || !height) return resolve(null);
+          resolve({ x, y, width, height });
+        });
+      });
+
+    (async () => {
+      const seen = await AsyncStorage.getItem(tutorialKey);
+      if (cancelled || seen) return;
+      // Lasam un tick ca layout-ul sa fie asezat inainte de masurare.
+      await new Promise((r) => setTimeout(r, 450));
+      if (cancelled) return;
+
+      const [root, notif, side, avatarBox, pet, play] = await Promise.all([
+        measure(rootRef),
+        measure(notifRef),
+        measure(sideRef),
+        measure(avatarBoxRef),
+        measure(petRef),
+        measure(playRef),
+      ]);
+      if (cancelled) return;
+
+      // measureInWindow da coordonate fata de fereastra; overlay-ul porneste de
+      // la originea root-ului. Scadem offset-ul root-ului ca highlight-urile sa
+      // cada EXACT pe componente (fix edge-to-edge / status bar).
+      const ox = root?.x ?? 0;
+      const oy = root?.y ?? 0;
+      const off = (r: Rect | null): Rect | null =>
+        r ? { x: r.x - ox, y: r.y - oy, width: r.width, height: r.height } : null;
+
+      const steps: SpotlightStep[] = [
+        { rect: null, title: 'Salut din nou!', body: 'Eu sunt Scout. Hai sa-ti arat repede ce putem face aici.' },
+        { rect: off(pet), title: 'Eu sunt aici', body: 'Atinge-ma sa stam de vorba. Tine apasat ca sa-mi schimbi colegii.', shape: 'rect' },
+        { rect: off(avatarBox), title: 'Avatarul tau', body: 'Atinge-l ca sa-l imbraci si sa-l personalizezi.', shape: 'rect' },
+        { rect: off(play), title: 'Hai la joaca', body: 'De aici pornesti jocurile: povesti, desene, vanatori in parc.', shape: 'rect' },
+        { rect: off(side), title: 'Meniul tau', body: 'Prieteni, cufere si taskurile zilei — toate aici.', shape: 'rect' },
+        { rect: off(notif), title: 'Vesti', body: 'Aici primesti sugestii si noutati de la mine.', shape: 'circle' },
+        { rect: null, title: 'Gata!', body: 'Acum iesi afara si distreaza-te. Ne vedem la joaca!' },
+      ];
+      setTutorialSteps(steps);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [avatar, tutorialKey, tutorialSteps]);
+
+  function finishTutorial() {
+    setTutorialSteps(null);
+    if (tutorialKey) void AsyncStorage.setItem(tutorialKey, '1');
+  }
+
   const progress = me ? xpProgress(me.xp, me.level) : null;
 
   return (
-    <View style={styles.root}>
+    <View ref={rootRef} collapsable={false} style={styles.root}>
       {/* Fundal fullscreen sub TOT (status bar inclusiv). Poster + video opt
           live. Cand user n-are fundal selectat, ramane colors.bg din `root`. */}
       {me?.background && (
@@ -142,7 +218,7 @@ export default function Home() {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.container}>
         <View style={styles.topRow}>
-          <View>
+          <View ref={notifRef} collapsable={false}>
             <IconButton
               onPress={() => setSheet('notifications')}
               accessibilityLabel="Notificari"
@@ -173,7 +249,7 @@ export default function Home() {
           </IconButton>
         </View>
 
-        <View style={styles.sideMenu} pointerEvents="box-none">
+        <View ref={sideRef} collapsable={false} style={styles.sideMenu} pointerEvents="box-none">
           <IconButton onPress={() => setSheet('friends')} accessibilityLabel="Prieteni">
             <FriendsIcon />
           </IconButton>
@@ -188,13 +264,16 @@ export default function Home() {
 
         <View style={styles.scene}>
           <View style={styles.avatarStage}>
+            <View ref={avatarBoxRef} collapsable={false}>
+              <Pressable
+                onPressIn={() => avatarRef.current?.bounce()}
+                onPress={() => router.push('/(app)/avatar-edit')}
+              >
+                <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={420} />
+              </Pressable>
+            </View>
             <Pressable
-              onPressIn={() => avatarRef.current?.bounce()}
-              onPress={() => router.push('/(app)/avatar-edit')}
-            >
-              <AvatarHead ref={avatarRef} svg={avatar?.svg} svgBlink={avatar?.svgBlink} height={420} />
-            </Pressable>
-            <Pressable
+              ref={petRef}
               style={({ pressed }) => [styles.petContainer, pressed && styles.petContainerPressed]}
               onPress={() => router.push('/(app)/chat')}
               onLongPress={() => router.push('/(app)/pets')}
@@ -230,6 +309,7 @@ export default function Home() {
         )}
 
         <Pressable
+          ref={playRef}
           onPress={() => setPlayOpen(true)}
           style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
         >
@@ -356,6 +436,10 @@ export default function Home() {
 
       <PlaySheet visible={playOpen} onClose={() => setPlayOpen(false)} />
       </SafeAreaView>
+
+      {tutorialSteps && (
+        <SpotlightTutorial steps={tutorialSteps} onDone={finishTutorial} />
+      )}
     </View>
   );
 }
