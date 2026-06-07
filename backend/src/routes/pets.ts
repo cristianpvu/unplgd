@@ -4,7 +4,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { petChatRateLimit } from '../middleware/rateLimit.js';
-import { ensureDefaultPet } from '../lib/pet.js';
+import { ensureDefaultPet, AUTO_PET_SLUG } from '../lib/pet.js';
 import { badRequest, conflict, forbidden, notFound, serverError } from '../lib/errors.js';
 import { resolvePetImagePath } from '../lib/petImage.js';
 import { ANTHROPIC_MODEL } from '../lib/ai/client.js';
@@ -76,7 +76,7 @@ petsRouter.get('/me', async (req, res, next) => {
     const userId = req.userId!;
     await ensureDefaultPet(userId);
 
-    const [pet, cards, defaultSpecies] = await Promise.all([
+    const [pet, cards, starters] = await Promise.all([
       prisma.pet.findUniqueOrThrow({
         where: { userId },
         include: { species: true },
@@ -86,16 +86,23 @@ petsRouter.get('/me', async (req, res, next) => {
         include: { species: true },
         orderBy: { claimedAt: 'asc' },
       }),
-      prisma.petSpecies.findFirst({ where: { isDefault: true } }),
+      // Toate starterele gratuite (isDefault). Cel auto-selectat (AUTO_PET_SLUG)
+      // primul, restul dupa nume.
+      prisma.petSpecies.findMany({ where: { isDefault: true } }),
     ]);
 
-    if (!defaultSpecies) {
-      throw serverError('no_default_species', 'Specia default nu e seedata');
+    if (starters.length === 0) {
+      throw serverError('no_default_species', 'Niciun starter (isDefault) seedat');
     }
+    starters.sort((a, b) => {
+      if (a.slug === AUTO_PET_SLUG) return -1;
+      if (b.slug === AUTO_PET_SLUG) return 1;
+      return a.name.localeCompare(b.name);
+    });
 
-    const [petSpecies, defaultSpeciesDto, cardSpecies] = await Promise.all([
+    const [petSpecies, starterDtos, cardSpecies] = await Promise.all([
       speciesDto(pet.species),
-      speciesDto(defaultSpecies),
+      Promise.all(starters.map((s) => speciesDto(s))),
       Promise.all(cards.map((c) => speciesDto(c.species))),
     ]);
 
@@ -107,8 +114,11 @@ petsRouter.get('/me', async (req, res, next) => {
         bond: bondProgress(pet.bondXp),
         species: petSpecies,
       },
-      defaultSpecies: defaultSpeciesDto,
-      defaultEquipped: pet.speciesId === defaultSpecies.id,
+      // Startere gratuite: fiecare cu flag equipped. Mobile randeaza cate un tile.
+      starters: starters.map((s, i) => ({
+        ...starterDtos[i]!,
+        equipped: pet.speciesId === s.id,
+      })),
       cards: cards.map((c, i) => ({
         id: c.id,
         uid: c.uid,
@@ -198,24 +208,29 @@ petsRouter.post('/scan', async (req, res, next) => {
   }
 });
 
-// POST /pets/equip-default — revino la Buddy default. Nu necesita card —
-// specia default e disponibila tuturor userilor mereu. Resetam si numele
-// la "Buddy" (cel default) ca sa nu pastram nickname-ul vechi de card.
+// POST /pets/equip-default — echipeaza un starter gratuit (isDefault). Nu
+// necesita card. Body optional { slug }: daca lipseste, echipeaza auto-pet-ul
+// (AUTO_PET_SLUG). Numele pet-ului se reseteaza la numele speciei.
+const equipDefaultSchema = z.object({ slug: z.string().min(1).max(64).optional() });
+
 petsRouter.post('/equip-default', async (req, res, next) => {
   try {
     const userId = req.userId!;
+    const { slug } = equipDefaultSchema.parse(req.body ?? {});
+    const wantSlug = slug ?? AUTO_PET_SLUG;
 
-    const defaultSpecies = await prisma.petSpecies.findFirst({
-      where: { isDefault: true },
-    });
-    if (!defaultSpecies) {
-      throw serverError('no_default_species', 'Specia default nu e seedata');
+    // Doar startere (isDefault) sunt echipabile fara card.
+    const starter =
+      (await prisma.petSpecies.findFirst({ where: { slug: wantSlug, isDefault: true } })) ??
+      (slug ? null : await prisma.petSpecies.findFirst({ where: { isDefault: true } }));
+    if (!starter) {
+      throw notFound('starter_not_found', 'Specia nu e un starter disponibil');
     }
 
     await ensureDefaultPet(userId);
     const pet = await prisma.pet.update({
       where: { userId },
-      data: { speciesId: defaultSpecies.id, name: 'Buddy' },
+      data: { speciesId: starter.id, name: starter.name },
       include: { species: true },
     });
     // Chat-ul pet-ului anterior nu mai are sens cu specia noua (alta voce,

@@ -21,6 +21,9 @@ COPY --from=builder /app/dist ./dist
 # Asseturi statice citite de seed (chest visual SVG-uri). Editand fisierele si
 # re-deploy → seed-ul detecteaza schimbarea si re-scrie continutul in DB.
 COPY assets ./assets
+# PNG-uri pet species servite static la /pets/<slug>.png (vezi server.ts).
+# Comise in repo; fara COPY aici, /pets/*.png da 404 in productie.
+COPY public ./public
 # Scripts de QA/admin — ruleaza ad-hoc cu `docker compose exec backend npx tsx
 # scripts/<name>.ts ...`. Include si src/ pentru ca scripturile importa din
 # `../src/...`.

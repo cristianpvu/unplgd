@@ -449,6 +449,9 @@ model PetSpecies {
   name             String
   voiceId          String
   systemHint       String
+  // Starter gratuit, disponibil tuturor din start, fara card NFC. Pot fi mai
+  // multe (ex. Scout + Buddy). Care se auto-echipeaza la cont nou = constanta
+  // AUTO_PET_SLUG din lib/pet.ts (nu un flag separat).
   isDefault        Boolean  @default(false)
   imagePath        String?
   // Theme song redat la podium hunt cand leaderul echipei castigatoare are
