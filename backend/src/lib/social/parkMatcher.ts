@@ -62,11 +62,6 @@ function cosineSimilarity(a: Map<string, number>, b: Record<string, number>): nu
   return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
-/**
- * Top N matches pt user. Skip slot-urile parcurilor in care user-ul deja
- * frecventeaza puternic (>5 sessions) — sugeram destinatii noi, nu unde deja
- * merge. Daca user-ul nu are nicio activitate, return [].
- */
 export async function getTopParkMatchesForUser(
   userId: string,
   limit: number = 3,

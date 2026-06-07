@@ -66,26 +66,6 @@ const GAMES: GameDef[] = [
     accent: '#9F84FF',
     Icon: ({ color }: { color: string }) => <IconLock size={26} color={color} />,
   },
-  {
-    key: 'duel',
-    title: 'Duel',
-    subtitle: 'Provocare 1 la 1',
-    bg: '#FFE7EC',
-    fg: '#6B0E20',
-    accent: '#E74C5C',
-    Icon: SwordIcon,
-    badge: 'In curand',
-  },
-  {
-    key: 'daily',
-    title: 'Provocarea zilei',
-    subtitle: 'Misiunea zilnica',
-    bg: '#E5F2FF',
-    fg: '#0F3463',
-    accent: '#2F86E0',
-    Icon: ({ color }: { color: string }) => <IconUsers size={24} color={color} />,
-    badge: 'In curand',
-  },
 ];
 
 export default function Play() {

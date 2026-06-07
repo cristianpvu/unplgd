@@ -34,21 +34,13 @@ export async function filterRecentlyLeft(userIds: string[]): Promise<Set<string>
 
 export const PARTICIPANT_GRACE_MS = 90_000;
 export const COWALK_MIN_DURATION_MS = 10 * 60 * 1000;
-// Prag total de pasi pana la primul award. Tinut conservator dar nu strict —
-// pedometrul Android e burst-y si raporteaza adesea sub iOS pentru aceeasi
-// plimbare. La 10 min de mers normal, 100 pasi se ating fara probleme.
 export const COWALK_MIN_STEPS = 100;
 export const COWALK_MIN_RSSI_STDDEV_DBM = 1.5;
 export const COWALK_MIN_RSSI_SAMPLES = 30;
 export const RSSI_SAMPLES_CAP = 1200;
-// Grace dupa pragul de 10min in care anti-cheat-ul mai poate trece (user e
-// aproape de 100 pasi etc). Dupa expirare, sesiunea esueaza explicit cu motiv,
-// in loc sa curga timerul la infinit fara award.
 export const COWALK_FAIL_GRACE_MS = 60_000;
 
-// Early-fail anti-cheat: daca dupa 5 min de sesiune user-ul are sub pragul
-// proportional de pasi, considerat clar "telefon pe masa" si fail-uim instant.
-// Asa elibram user-ul rapid sa porneasca o sesiune noua daca a fost greseala.
+
 export const COWALK_EARLY_CHECK_MS = 5 * 60 * 1000;
 export const COWALK_EARLY_MIN_STEPS = 25;
 
@@ -557,9 +549,6 @@ export async function tickHeartbeat(
         startedAt: p.joinedAt,
       });
       p.awarded = true;
-      // Baseline acordat la minutul 10 → tick-urile urmatoare incep de la
-      // minutul 11. Daca lastTickXpMinute = 10, urmatorul tick va acoperi
-      // minutele care s-au scurs deja (in caz de heartbeat ratat / reconnect).
       p.lastTickXpMinute = 10;
       events.push({
         type: 'completed',
@@ -567,12 +556,10 @@ export async function tickHeartbeat(
         userId: p.userId,
         durationSec,
         squadSize,
-        // Anuntam toti membrii activi: cel care a luat XP afla pt confeti,
-        // ceilalti vad pe progress card un mesaj "X a primit XP".
         recipients: activeIds,
       });
     } catch {
-      // best-effort: la urmatorul tick reincercam.
+      // skip pe urmatorul tick
     }
   }
 
@@ -586,8 +573,6 @@ export async function tickHeartbeat(
     const currentMinute = Math.floor(eff / 60_000);
     if (currentMinute <= p.lastTickXpMinute) continue;
     for (let m = p.lastTickXpMinute + 1; m <= currentMinute; m++) {
-      // Rate-ul minutului m e dat de palierul in care a INTRAT acel minut.
-      // Eff la inceputul minutului m = (m-1) * 60_000.
       const { rate, tier } = xpTierForElapsed((m - 1) * 60_000);
       if (rate === 0) continue;
       try {

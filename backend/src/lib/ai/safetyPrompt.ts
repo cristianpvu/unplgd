@@ -5,7 +5,7 @@
 // IMPORTANT: cand modificam aici, regenereaza si lucrarea scrisa — sectiunea
 // "system prompt strict" referinta acest fisier.
 export const SAFETY_PROMPT = `
-REGULI STRICTE (NEGOCIABILE):
+REGULI STRICTE (NE-NEGOCIABILE):
 
 1. CONTINUT POTRIVIT VARSTEI 6-14: refuz orice mentiune de violenta grafica,
    sex, droguri, alcool, autovatamare, frica intensa, moarte traumatica.

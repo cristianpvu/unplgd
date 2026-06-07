@@ -2,14 +2,6 @@ import Foundation
 import CoreBluetooth
 import React
 
-// Modul nativ care emite advertising BLE GATT cu Service UUID + Local Name.
-// Apple permite in CBPeripheralManager.startAdvertising doar 2 chei: Service
-// UUIDs si Local Name. Token-ul nostru de 8 chars hex (4 bytes) intra in
-// Local Name — perfect compatibil cu scan generic pe iOS si Android.
-//
-// Note: NU folosim iBeacon (companyID=Apple + manufacturerData) pt ca Apple
-// filtreaza iBeacon-uri din scan-ul generic CoreBluetooth pe iOS. Service
-// UUIDs sunt vizibile pe ambele platforme, fara restrictii.
 @objc(BlePresence)
 class BlePresence: RCTEventEmitter, CBPeripheralManagerDelegate {
 
@@ -41,8 +33,7 @@ class BlePresence: RCTEventEmitter, CBPeripheralManagerDelegate {
   override func startObserving() { hasListeners = true }
   override func stopObserving() { hasListeners = false }
 
-  // Porneste advertising. Daca radio-ul nu e poweredOn inca, salvam parametrii
-  // si reincercam in peripheralManagerDidUpdateState.
+.
   @objc(startAdvertising:localName:resolve:reject:)
   func startAdvertising(_ serviceUuid: String,
                         localName: String,
@@ -153,7 +144,6 @@ class BlePresence: RCTEventEmitter, CBPeripheralManagerDelegate {
 
 private extension CBUUID {
   static func fromOptional(_ s: String) -> CBUUID? {
-    // CBUUID(string:) crapa pe input invalid; ne aparam.
     let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }
     return CBUUID(string: trimmed)

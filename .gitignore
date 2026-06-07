@@ -45,3 +45,5 @@ yarn-error.log*
 # Backend (cand vine)
 backend/node_modules/
 backend/dist/
+
+docs/
