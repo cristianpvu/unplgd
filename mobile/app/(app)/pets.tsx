@@ -273,6 +273,7 @@ export default function Pets() {
             <JourneyRow
               completedCount={completedCount}
               totalChapters={totalChapters}
+              completedToday={journeyProgressQ.data?.completedToday ?? false}
               onPress={() => router.push('/(app)/journey')}
             />
           )}
@@ -353,19 +354,26 @@ export default function Pets() {
 function JourneyRow({
   completedCount,
   totalChapters,
+  completedToday,
   onPress,
 }: {
   completedCount: number;
   totalChapters: number;
+  completedToday: boolean;
   onPress: () => void;
 }) {
   const done = totalChapters > 0 && completedCount >= totalChapters;
   const isNew = completedCount === 0;
-  const cta = done ? 'Reia' : isNew ? 'Incepe' : 'Continua';
+  // Blocat: a terminat un capitol azi si mai sunt capitole. Max 1 capitol/zi.
+  const locked = completedToday && !done;
+  const pct = totalChapters > 0 ? Math.round((completedCount / totalChapters) * 100) : 0;
+
   const left = done
     ? 'Aventura · terminata'
-    : `Aventura · cap. ${completedCount + 1} din ${totalChapters}`;
-  const pct = totalChapters > 0 ? Math.round((completedCount / totalChapters) * 100) : 0;
+    : locked
+      ? 'Aventura · revino maine'
+      : `Aventura · cap. ${completedCount + 1} din ${totalChapters}`;
+  const cta = done ? 'Revezi' : locked ? 'Maine' : isNew ? 'Incepe' : 'Continua';
 
   return (
     <Pressable
@@ -374,10 +382,16 @@ function JourneyRow({
     >
       <View style={styles.journeyHead}>
         <Text style={styles.journeyText}>{left}</Text>
-        <Text style={styles.journeyCta}>{cta} ›</Text>
+        <Text style={[styles.journeyCta, locked && styles.journeyCtaLocked]}>{cta}{locked ? '' : ' ›'}</Text>
       </View>
       <View style={styles.journeyBar}>
-        <View style={[styles.journeyBarFill, { width: `${pct}%` }]} />
+        <View
+          style={[
+            styles.journeyBarFill,
+            { width: `${pct}%` },
+            locked && styles.journeyBarFillLocked,
+          ]}
+        />
       </View>
     </Pressable>
   );
@@ -616,6 +630,7 @@ const styles = StyleSheet.create({
   journeyHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   journeyText: { color: colors.text, fontSize: 13, fontWeight: '800', flex: 1 },
   journeyCta: { color: colors.accent, fontSize: 13, fontWeight: '900' },
+  journeyCtaLocked: { color: colors.textMuted },
   journeyBar: {
     height: 6,
     borderRadius: 999,
@@ -623,6 +638,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   journeyBarFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 999 },
+  journeyBarFillLocked: { backgroundColor: colors.textMuted },
 
   bubble: {
     marginTop: 12,

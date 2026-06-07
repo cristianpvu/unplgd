@@ -8,8 +8,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
-import { badRequest, notFound } from '../lib/errors.js';
+import { badRequest, notFound, conflict } from '../lib/errors.js';
 import { ensureDefaultPet } from '../lib/pet.js';
+import { questDateForNow } from '../lib/quests/daily.js';
 import { logger } from '../lib/logger.js';
 import { synthesizeTts } from '../lib/ai/tts.js';
 import { NARRATOR_EDGE_VOICE, narratorElevenVoiceId } from '../lib/ai/narrator.js';
@@ -319,6 +320,23 @@ type CheckpointResponse = {
   } | null;
 };
 
+// Limita: maxim un capitol nou de journey pe zi (Bucharest), GLOBAL pe toate
+// pet-urile. Scop: copiii nu stau pe telefon sa termine toata povestea dintr-o
+// data. `excludeChapterId` = capitolul curent, ca re-claim-ul aceluiasi capitol
+// (idempotent) sa nu fie considerat "alt capitol azi".
+async function hasCompletedChapterToday(userId: string, excludeChapterId?: string): Promise<boolean> {
+  const latest = await prisma.journeyChapterProgress.findFirst({
+    where: {
+      userId,
+      ...(excludeChapterId ? { chapterId: { not: excludeChapterId } } : {}),
+    },
+    orderBy: { completedAt: 'desc' },
+    select: { completedAt: true },
+  });
+  if (!latest) return false;
+  return questDateForNow(latest.completedAt) === questDateForNow();
+}
+
 journeyRouter.post('/checkpoint', async (req, res, next) => {
   try {
     const userId = req.userId!;
@@ -330,6 +348,16 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
       include: { species: true },
     });
     const petSlug = body.petSlug ?? pet.species.slug;
+
+    // Backstop limita zilnica: daca e capitol NOU (nu re-claim) si user-ul a mai
+    // terminat un capitol azi, refuzam. Frontend-ul oricum blocheaza intrarea;
+    // asta e plasa de siguranta pe API.
+    const alreadyDone = await prisma.journeyChapterProgress.findUnique({
+      where: { userId_chapterId: { userId, chapterId: body.chapterId } },
+    });
+    if (!alreadyDone && (await hasCompletedChapterToday(userId, body.chapterId))) {
+      throw conflict('journey_daily_limit', 'Ai terminat deja un capitol azi. Revino maine!');
+    }
 
     // Inregistram capitolul ca terminat. Idempotent prin unique (userId, chapterId).
     try {
@@ -416,6 +444,9 @@ journeyRouter.post('/checkpoint', async (req, res, next) => {
 type ProgressResponse = {
   petSlug: string | null;
   completedChapters: string[];
+  // True daca user-ul a terminat deja un capitol AZI (global, orice pet). Cand
+  // e true, mobile blocheaza pornirea unui capitol nou ("Revino maine").
+  completedToday: boolean;
 };
 
 journeyRouter.get('/progress', async (req, res, next) => {
@@ -424,13 +455,17 @@ journeyRouter.get('/progress', async (req, res, next) => {
     const petSlug = typeof req.query.petSlug === 'string' ? req.query.petSlug : null;
     const where: { userId: string; petSlug?: string } = { userId };
     if (petSlug) where.petSlug = petSlug;
-    const rows = await prisma.journeyChapterProgress.findMany({
-      where,
-      select: { chapterId: true },
-    });
+    const [rows, completedToday] = await Promise.all([
+      prisma.journeyChapterProgress.findMany({
+        where,
+        select: { chapterId: true },
+      }),
+      hasCompletedChapterToday(userId),
+    ]);
     const response: ProgressResponse = {
       petSlug,
       completedChapters: rows.map((r) => r.chapterId),
+      completedToday,
     };
     res.json(response);
   } catch (e) {

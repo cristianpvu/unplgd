@@ -76,7 +76,7 @@ export function submitJourneyAnswer(questionId: string, chosenIndex: number) {
 }
 
 export function getJourneyProgress(petSlug: string) {
-  return api<{ petSlug: string; completedChapters: string[] }>(
+  return api<{ petSlug: string; completedChapters: string[]; completedToday: boolean }>(
     `/journey/progress?petSlug=${encodeURIComponent(petSlug)}`,
   );
 }

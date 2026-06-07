@@ -17,7 +17,7 @@ import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Rect } from 'react-native-svg';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getMyPet, petImageUrl } from '../../../src/api/pets';
 import { colors } from '../../../src/theme/colors';
 import { Scene } from '../../../src/journey/Scene';
@@ -39,6 +39,7 @@ const STACK_OPTIONS = {
 
 export default function JourneyScreen() {
   const insets = useSafeAreaInsets();
+  const qc = useQueryClient();
   const petQuery = useQuery({ queryKey: ['my-pet'], queryFn: getMyPet });
   const pet = petQuery.data?.pet ?? null;
   const petImg = petImageUrl(pet?.species.imagePath ?? null);
@@ -63,6 +64,20 @@ export default function JourneyScreen() {
     [story, completedSet],
   );
 
+  // Limita: max 1 capitol/zi. Daca mai e un capitol dar user-ul a terminat deja
+  // unul azi, blocam pornirea (engine ramane oprit) si aratam ecran "revino maine".
+  const completedToday = progressQuery.data?.completedToday ?? false;
+  const dailyLocked = !!chapter && completedToday;
+
+  // La iesirea din ecran (inclusiv dupa ce a terminat capitolul de azi),
+  // invalidam progresul ca pagina pet sa arate starea proaspata (lock/terminat).
+  // Pe unmount, ca sa NU comutam ecranul peste cardul de reward in timpul jocului.
+  useEffect(() => {
+    return () => {
+      qc.invalidateQueries({ queryKey: ['journey-progress'] });
+    };
+  }, [qc]);
+
   // Intro cinematic — daca capitolul are unul, il jucam inainte sa porneasca
   // engine-ul. introDone gateaza pornirea engine-ului (chapter=null pana atunci).
   const [introDone, setIntroDone] = useState(false);
@@ -72,7 +87,7 @@ export default function JourneyScreen() {
   }, [chapter?.id, chapter?.introCinematic]);
 
   const { state, answerChallenge, skipCurrent } = useStoryEngine(
-    introDone ? chapter : null,
+    introDone && !dailyLocked ? chapter : null,
     pet?.species.slug ?? null,
   );
 
@@ -127,6 +142,57 @@ export default function JourneyScreen() {
           <Pressable onPress={() => router.back()} style={styles.backBtnInline}>
             <Text style={styles.backInlineText}>Inapoi</Text>
           </Pressable>
+        </View>
+      </>
+    );
+  }
+
+  // Toate capitolele terminate — ecran de final, nu mesajul "fara povesti".
+  if (story && !chapter) {
+    return (
+      <>
+        <Stack.Screen options={STACK_OPTIONS} />
+        <StatusBar hidden />
+        <View style={[styles.fullScreen, styles.center]}>
+          <View style={styles.endCard}>
+            {petImg && (
+              <Image source={{ uri: petImg }} style={styles.endPet} resizeMode="contain" />
+            )}
+            <Text style={styles.endTag}>AVENTURA TERMINATA</Text>
+            <Text style={styles.endTitle}>{story.title}</Text>
+            <Text style={styles.endSub}>
+              Ai parcurs toate cele {story.chapters.length} capitole alaturi de {pet.name}. Felicitari!
+            </Text>
+            <Pressable onPress={() => router.back()} style={styles.endBtn}>
+              <Text style={styles.endBtnText}>Inapoi la pet</Text>
+            </Pressable>
+          </View>
+        </View>
+      </>
+    );
+  }
+
+  // Limita zilnica: mai e un capitol, dar user-ul a terminat deja unul azi.
+  if (story && chapter && dailyLocked) {
+    return (
+      <>
+        <Stack.Screen options={STACK_OPTIONS} />
+        <StatusBar hidden />
+        <View style={[styles.fullScreen, styles.center]}>
+          <View style={styles.endCard}>
+            {petImg && (
+              <Image source={{ uri: petImg }} style={styles.endPet} resizeMode="contain" />
+            )}
+            <Text style={styles.endTag}>PE MAINE</Text>
+            <Text style={styles.endTitle}>Capitolul de azi e gata</Text>
+            <Text style={styles.endSub}>
+              {pet.name} continua povestea cu un capitol nou in fiecare zi. Revino maine pentru
+              urmatorul!
+            </Text>
+            <Pressable onPress={() => router.back()} style={styles.endBtn}>
+              <Text style={styles.endBtnText}>Inapoi la pet</Text>
+            </Pressable>
+          </View>
         </View>
       </>
     );
@@ -414,6 +480,45 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backInlineText: { color: colors.text, fontWeight: '700' },
+
+  // Ecran final / blocat azi — card centrat pe fundalul aplicatiei.
+  endCard: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: 28,
+    paddingHorizontal: 26,
+    paddingVertical: 28,
+    marginHorizontal: 28,
+    gap: 8,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 1,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  endPet: { width: 120, height: 120, marginBottom: 4 },
+  endTag: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 1.4,
+  },
+  endTitle: { color: colors.text, fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  endSub: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  endBtn: {
+    marginTop: 14,
+    backgroundColor: colors.accent,
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
+  },
+  endBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' },
   topPill: {
     flexDirection: 'row',
     alignItems: 'center',
