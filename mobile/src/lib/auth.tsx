@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { clearToken, loadToken, saveToken } from './authStore';
+import { queryClient } from './queryClient';
 
 type AuthState = {
   token: string | null;
@@ -24,11 +25,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (newToken: string) => {
     await saveToken(newToken);
+    // Golim cache-ul ca sa nu ramana datele user-ului anterior (me/pet/avatar
+    // sunt keyed stabil si fresh 30s — altfel noul cont vede datele vechi).
+    queryClient.clear();
     setToken(newToken);
   }, []);
 
   const signOut = useCallback(async () => {
     await clearToken();
+    queryClient.clear();
     setToken(null);
   }, []);
 

@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useKeepAwake } from 'expo-keep-awake';
+import { useKeepAwakeSafe } from '../../src/lib/useKeepAwakeSafe';
 import { useAuth } from '../../src/lib/auth';
 import { ApiError } from '../../src/api/client';
 import { getMe } from '../../src/api/me';
@@ -466,7 +466,7 @@ function Playing({
   session: PhoneDownSessionDto;
   myUserId: string;
 }) {
-  useKeepAwake('phonedown-play');
+  useKeepAwakeSafe('phonedown-play');
   const me = session.participants.find((p) => p.userId === myUserId);
 
   // Dimming mode — pe OLED, tot negru = lumini stinse → consum aproape zero.

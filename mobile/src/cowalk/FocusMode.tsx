@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { useKeepAwake } from 'expo-keep-awake';
+import { useKeepAwakeSafe } from '../lib/useKeepAwakeSafe';
 import Svg, { Circle } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
@@ -51,7 +51,7 @@ export function FocusMode({
   onExit: () => void;
   onSessionLost: () => void;
 }) {
-  useKeepAwake('focus-mode');
+  useKeepAwakeSafe('focus-mode');
 
   const me = session?.members.find((m) => m.isMe) ?? null;
   const others = session?.members.filter((m) => !m.isMe) ?? [];
