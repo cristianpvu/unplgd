@@ -309,7 +309,12 @@ export default function Home() {
                       // Acelasi routing ca la tap pe push (sursa unica), ca
                       // destinatia sa fie identica indiferent de unde dai tap.
                       setSheet(null);
-                      routeForNotification(n.kind);
+                      routeForNotification({
+                        kind: n.kind,
+                        title: n.title,
+                        body: n.body,
+                        payload: n.payload,
+                      });
                     }}
                   />
                 ))}

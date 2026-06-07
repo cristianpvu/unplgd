@@ -89,6 +89,16 @@ export default function AppLayout() {
             contentStyle: { backgroundColor: 'transparent' },
           }}
         />
+        {/* Recomandare parc (notificare park_hint) = modal cu textul complet +
+            buton de indicatii spre parc. Tot transparentModal peste home. */}
+        <Stack.Screen
+          name="park-hint"
+          options={{
+            presentation: 'transparentModal',
+            animation: 'fade',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
       </Stack>
       <CoWalkToast />
       <PhoneDownInviteToast />

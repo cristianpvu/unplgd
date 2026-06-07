@@ -97,26 +97,50 @@ export async function registerForPushNotifications(): Promise<string | null> {
  */
 export function registerNotificationTapListener(): () => void {
   const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data ?? {};
-    handleNotificationTap(data);
+    handleNotificationTap(response);
   });
   return () => sub.remove();
 }
 
-function handleNotificationTap(data: Record<string, unknown>) {
-  routeForNotification(data.kind as string | undefined);
+function handleNotificationTap(response: Notifications.NotificationResponse) {
+  const content = response.notification.request.content;
+  const data = (content.data ?? {}) as Record<string, unknown>;
+  // La push, payload-ul backend e aplatizat in `data`; title/body stau in content.
+  routeForNotification({
+    kind: data.kind as string | undefined,
+    title: content.title ?? undefined,
+    body: content.body ?? undefined,
+    payload: data,
+  });
 }
 
+export type NotificationLike = {
+  kind?: string;
+  title?: string;
+  body?: string;
+  payload?: Record<string, unknown>;
+};
+
 /**
- * Sursa unica de adevar pentru rutarea unei notificari dupa `kind`. Folosita
- * atat la tap pe push (background) cat si la tap pe notificarea din sheet-ul
- * in-app, ca destinatia sa fie mereu identica.
+ * Sursa unica de adevar pentru rutarea unei notificari. Folosita atat la tap pe
+ * push (background) cat si la tap pe notificarea din sheet-ul in-app, ca
+ * destinatia sa fie mereu identica.
  */
-export function routeForNotification(kind: string | undefined) {
-  switch (kind) {
+export function routeForNotification(n: NotificationLike) {
+  const p = n.payload ?? {};
+  switch (n.kind) {
     case 'park_hint':
-      // Deschide chat-ul cu pet-ul — acolo conversatia poate continua firul.
-      router.push('/(app)/chat');
+      // Modal cu textul complet + buton de indicatii spre parc.
+      router.push({
+        pathname: '/(app)/park-hint',
+        params: {
+          title: n.title ?? 'Idee pentru tine',
+          body: n.body ?? '',
+          parkName: str(p.parkName),
+          lat: str(p.lat),
+          lng: str(p.lng),
+        },
+      });
       break;
     case 'daily_quests':
       router.push('/(app)/quests');
@@ -126,4 +150,8 @@ export function routeForNotification(kind: string | undefined) {
       router.push('/(app)');
       break;
   }
+}
+
+function str(v: unknown): string {
+  return v == null ? '' : String(v);
 }

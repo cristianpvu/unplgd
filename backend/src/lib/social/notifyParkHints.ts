@@ -130,11 +130,19 @@ export async function runNotifyParkHints(): Promise<NotifyResult> {
         continue;
       }
 
-      // Pet name + pushToken intr-un singur query.
-      const [pet, userInfo] = await Promise.all([
+      // Pet name + pushToken + bbox parc intr-un Promise.all. Centrul bbox-ului
+      // serveste ca destinatie pentru butonul de indicatii din modal.
+      const [pet, userInfo, park] = await Promise.all([
         prisma.pet.findUnique({ where: { userId }, select: { name: true } }),
         prisma.user.findUnique({ where: { id: userId }, select: { pushToken: true } }),
+        prisma.park.findUnique({
+          where: { id: eligibleMatch.parkId },
+          select: { bboxMinLat: true, bboxMaxLat: true, bboxMinLng: true, bboxMaxLng: true },
+        }),
       ]);
+
+      const lat = park ? (park.bboxMinLat + park.bboxMaxLat) / 2 : null;
+      const lng = park ? (park.bboxMinLng + park.bboxMaxLng) / 2 : null;
 
       const title = buildTitle(pet?.name ?? null);
       const body = buildBody(eligibleMatch);
@@ -148,6 +156,8 @@ export async function runNotifyParkHints(): Promise<NotifyResult> {
         hourEnd: eligibleMatch.hourEnd,
         similarity: eligibleMatch.similarity,
         sharedDomains: eligibleMatch.sharedDomains.map((d) => d.slug),
+        lat,
+        lng,
       };
 
       const created = await prisma.notification.create({
