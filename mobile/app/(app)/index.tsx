@@ -46,6 +46,7 @@ import {
 import { ApiError } from '../../src/api/client';
 import { useAuth } from '../../src/lib/auth';
 import { routeForNotification } from '../../src/lib/pushNotifications';
+import { PlaySheet } from '../../src/play/PlaySheet';
 import { AvatarHead, type AvatarHeadHandle } from '../../src/avatar/AvatarHead';
 import { PetSpeechBubble } from '../../src/ui/PetSpeechBubble';
 import { PetBadge } from '../../src/ui/PetBadge';
@@ -75,6 +76,7 @@ export default function Home() {
   });
   const avatarRef = useRef<AvatarHeadHandle>(null);
   const [sheet, setSheet] = useState<SheetKind>(null);
+  const [playOpen, setPlayOpen] = useState(false);
   const friendsQuery = useQuery({
     queryKey: ['friends'],
     queryFn: listFriends,
@@ -228,7 +230,7 @@ export default function Home() {
         )}
 
         <Pressable
-          onPress={() => router.push('/(app)/play')}
+          onPress={() => setPlayOpen(true)}
           style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
         >
           <Text style={styles.playButtonText}>Hai la joaca!</Text>
@@ -351,6 +353,8 @@ export default function Home() {
           </View>
         )}
       </BottomSheet>
+
+      <PlaySheet visible={playOpen} onClose={() => setPlayOpen(false)} />
       </SafeAreaView>
     </View>
   );

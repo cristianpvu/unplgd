@@ -1,28 +1,34 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
-import { colors } from '../../src/theme/colors';
+import { useEffect, useRef } from 'react';
 import {
-  IconArrowLeft,
-  IconChevronRight,
-  IconLock,
-  IconUsers,
-} from '../../src/ui/icons';
-import Svg, { Path, Line, Polyline, G } from 'react-native-svg';
+  Animated,
+  Easing,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { router } from 'expo-router';
+import { BlurView } from 'expo-blur';
+import Svg, { Path, G } from 'react-native-svg';
+import { colors } from '../theme/colors';
+import { IconChevronRight, IconLock } from '../ui/icons';
 
-// Hub central pentru jocuri / activitati. Cardurile au identitate vizuala
-// proprie (culoare + iconografie line-art custom), fara emoji.
+const AnimatedBlur = Animated.createAnimatedComponent(BlurView);
+
+// Overlay full-screen de pe home: optiunile de joaca plutesc centrate, cu home-ul
+// estompat in spate. Cardurile intra animat, una cate una. Fara emoji.
 
 type GameDef = {
   key: string;
   title: string;
   subtitle: string;
-  route?: string;
+  route: string;
   bg: string;
   fg: string;
   accent: string;
+  dark?: boolean;
   Icon: React.FC<{ color: string }>;
-  badge?: string;
 };
 
 const GAMES: GameDef[] = [
@@ -39,7 +45,7 @@ const GAMES: GameDef[] = [
   {
     key: 'co-create',
     title: 'Deseneaza impreuna',
-    subtitle: 'Desenati o scena cu un prieten si AI-ul o transforma in ilustratie',
+    subtitle: 'Desenati o scena cu un prieten, AI-ul o ilustreaza',
     route: '/(app)/co-create',
     bg: '#FFF1E8',
     fg: '#7A3A0E',
@@ -49,7 +55,7 @@ const GAMES: GameDef[] = [
   {
     key: 'hunt',
     title: 'Vanatoare in parc',
-    subtitle: 'Cu prietenii in parc, gasiti monstri pe harta si invingeti-i pe echipe',
+    subtitle: 'Gasiti monstri pe harta si invingeti-i pe echipe',
     route: '/(app)/hunt',
     bg: '#E4F5EA',
     fg: '#0F4F2C',
@@ -64,119 +70,133 @@ const GAMES: GameDef[] = [
     bg: '#0F1020',
     fg: '#FFFFFF',
     accent: '#9F84FF',
+    dark: true,
     Icon: ({ color }: { color: string }) => <IconLock size={26} color={color} />,
   },
 ];
 
-export default function Play() {
-  return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
-          <IconArrowLeft size={22} color={colors.text} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Hai la joaca</Text>
-        <View style={{ width: 44 }} />
-      </View>
+export function PlaySheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const t = useRef(new Animated.Value(0)).current;
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {GAMES.map((g) => (
-          <GameCard key={g.key} game={g} />
-        ))}
-      </ScrollView>
-    </SafeAreaView>
+  useEffect(() => {
+    if (!visible) return;
+    t.setValue(0);
+    Animated.timing(t, {
+      toValue: 1,
+      duration: 480,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [visible, t]);
+
+  function openGame(route: string) {
+    onClose();
+    router.push(route as never);
+  }
+
+  // Intrare in cascada: cardul i apare intre start..end pe axa 0..1.
+  function cardAnim(i: number) {
+    const start = 0.08 + i * 0.1;
+    const end = Math.min(1, start + 0.55);
+    return {
+      opacity: t.interpolate({ inputRange: [start, end], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: [
+        {
+          translateY: t.interpolate({
+            inputRange: [start, end],
+            outputRange: [26, 0],
+            extrapolate: 'clamp',
+          }),
+        },
+      ],
+    };
+  }
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.root}>
+        {/* Fundal blurat: home-ul ramane vizibil dar estompat. Pe Android, blur
+            real cere experimentalBlurMethod. Tint-ul intunecat suplimentar da
+            contrast pt textul alb. */}
+        <AnimatedBlur
+          style={[StyleSheet.absoluteFill, { opacity: t }]}
+          intensity={48}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+        >
+          <View style={styles.tint} />
+          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        </AnimatedBlur>
+
+        {/* Continut centrat care pluteste peste home. box-none ca tap-ul pe gol
+            sa ajunga la scrim (inchidere), dar cardurile sa fie interactive. */}
+        <View style={styles.center} pointerEvents="box-none">
+          <Animated.Text style={[styles.title, { opacity: t }]}>Joaca-te</Animated.Text>
+
+          {GAMES.map((g, i) => (
+            <Animated.View key={g.key} style={[styles.cardWrap, cardAnim(i)]}>
+              <GameCard game={g} onPress={() => openGame(g.route)} />
+            </Animated.View>
+          ))}
+
+          <Animated.View style={{ opacity: t }}>
+            <Pressable onPress={onClose} hitSlop={10} style={styles.closeBtn}>
+              <Text style={styles.closeText}>Inchide</Text>
+            </Pressable>
+          </Animated.View>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
-function GameCard({ game }: { game: GameDef }) {
-  const disabled = !!game.badge;
+function GameCard({ game, onPress }: { game: GameDef; onPress: () => void }) {
   return (
     <Pressable
-      onPress={() => {
-        if (disabled || !game.route) return;
-        router.push(game.route as any);
-      }}
+      onPress={onPress}
       style={({ pressed }) => [
         styles.card,
         { backgroundColor: game.bg },
-        pressed && !disabled && styles.cardPressed,
-        disabled && { opacity: 0.85 },
+        pressed && styles.cardPressed,
       ]}
     >
       <View
         style={[
           styles.cardIconWrap,
-          {
-            backgroundColor:
-              game.bg === '#0F1020'
-                ? 'rgba(255,255,255,0.08)'
-                : 'rgba(255,255,255,0.55)',
-          },
+          { backgroundColor: game.dark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.6)' },
         ]}
       >
         <game.Icon color={game.accent} />
       </View>
       <View style={styles.cardText}>
-        {game.badge && (
-          <View
-            style={[
-              styles.cardBadge,
-              {
-                backgroundColor:
-                  game.bg === '#0F1020' ? 'rgba(255,255,255,0.1)' : 'rgba(15,16,32,0.08)',
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.cardBadgeText,
-                { color: game.bg === '#0F1020' ? '#FFFFFF' : colors.text },
-              ]}
-            >
-              {game.badge}
-            </Text>
-          </View>
-        )}
-        <Text style={[styles.cardTitle, { color: game.fg }]}>{game.title}</Text>
+        <Text style={[styles.cardTitle, { color: game.fg }]} numberOfLines={1}>
+          {game.title}
+        </Text>
         <Text
-          style={[
-            styles.cardSubtitle,
-            { color: game.bg === '#0F1020' ? 'rgba(255,255,255,0.65)' : `${game.fg}99` },
-          ]}
+          style={[styles.cardSub, { color: game.dark ? 'rgba(255,255,255,0.65)' : `${game.fg}99` }]}
+          numberOfLines={2}
         >
           {game.subtitle}
         </Text>
       </View>
-      {!disabled && (
-        <View style={styles.cardChevron}>
-          <IconChevronRight
-            size={18}
-            color={game.bg === '#0F1020' ? 'rgba(255,255,255,0.5)' : `${game.fg}80`}
-          />
-        </View>
-      )}
+      <IconChevronRight
+        size={18}
+        color={game.dark ? 'rgba(255,255,255,0.5)' : `${game.fg}80`}
+      />
     </Pressable>
   );
 }
 
-// ---------- Iconite specifice activitatilor (line-art) ----------
+// ---------- Iconite line-art (fara emoji) ----------
 
-// Story icon — adaptat din story-svgrepo-com.svg (viewBox 512).
 function BookIcon({ color }: { color: string }) {
   return (
     <Svg width={28} height={28} viewBox="0 0 512 512" fill={color}>
       <G>
         <Path d="M349.867,392.533c4.71,0,8.533-3.823,8.533-8.533v-8.533h8.533c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533H358.4v-8.533c0-4.71-3.823-8.533-8.533-8.533s-8.533,3.823-8.533,8.533v8.533H332.8c-4.71,0-8.533,3.823-8.533,8.533s3.823,8.533,8.533,8.533h8.533V384C341.333,388.71,345.156,392.533,349.867,392.533z" />
-        <Path d="M469.333,59.733c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533c0-4.71-3.823-8.533-8.533-8.533s-8.533,3.823-8.533,8.533c-4.71,0-8.533,3.823-8.533,8.533S464.623,59.733,469.333,59.733z" />
         <Path d="M256,102.4c-65.877,0-119.467,53.589-119.467,119.467c0,4.71,3.823,8.533,8.533,8.533c4.71,0,8.533-3.823,8.533-8.533c0-56.465,45.935-102.4,102.4-102.4s102.4,45.935,102.4,102.4c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533C375.467,155.989,321.877,102.4,256,102.4z" />
-        <Path d="M332.8,25.6c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533c4.71,0,8.533-3.823,8.533-8.533s-3.823-8.533-8.533-8.533c0-4.71-3.823-8.533-8.533-8.533S332.8,3.823,332.8,8.533c-4.71,0-8.533,3.823-8.533,8.533S328.09,25.6,332.8,25.6z" />
         <Path d="M76.8,230.4c4.71,0,8.533-3.823,8.533-8.533C85.333,127.761,161.894,51.2,256,51.2s170.667,76.561,170.667,170.667c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533c0-103.518-84.215-187.733-187.733-187.733S68.267,118.349,68.267,221.867C68.267,226.577,72.09,230.4,76.8,230.4z" />
-        <Path d="M177.92,299.947l-7.424-37.086c-0.794-3.994-4.292-6.861-8.363-6.861c-4.07,0-7.569,2.867-8.363,6.861l-7.424,37.086l-37.086,7.424c-3.994,0.794-6.861,4.292-6.861,8.363c0,4.07,2.867,7.569,6.861,8.363l37.086,7.424l7.424,37.086c0.794,3.994,4.292,6.861,8.363,6.861c4.07,0,7.569-2.867,8.363-6.861l7.424-37.086l37.086-7.424c3.994-0.794,6.861-4.292,6.861-8.363c0-4.07-2.867-7.569-6.861-8.363L177.92,299.947z M168.994,315.904c-3.379,0.674-6.016,3.311-6.69,6.69l-0.171,0.828l-0.171-0.828c-0.674-3.379-3.311-6.016-6.69-6.69l-0.828-0.171l0.828-0.171c3.379-0.674,6.016-3.311,6.69-6.69l0.171-0.828l0.171,0.828c0.674,3.379,3.311,6.016,6.69,6.69l0.828,0.171L168.994,315.904z" />
         <Path d="M503.467,128c-4.71,0-8.533,3.823-8.533,8.533v332.8c0,14.114-11.486,25.6-25.6,25.6h-204.8v-19.635c12.442-4.352,44.843-14.498,76.8-14.498c74.325,0,124.8,16.461,125.312,16.631c2.586,0.862,5.453,0.418,7.68-1.178c2.219-1.604,3.541-4.181,3.541-6.921V93.867c0-3.413-2.031-6.502-5.171-7.842c-0.759-0.324-18.91-7.962-54.349-10.914c-4.753-0.435-8.815,3.098-9.207,7.791c-0.393,4.702,3.098,8.823,7.791,9.216c21.982,1.826,36.668,5.572,43.87,7.808v358.067c-19.337-5.069-62.276-14.259-119.467-14.259c-37.18,0-73.702,12.211-85.001,16.35c-10.044-4.437-40.405-16.35-77.133-16.35c-58.778,0-107.204,9.694-128,14.618V100.463c7.987-1.971,23.287-5.436,43.409-8.533c4.659-0.717,7.859-5.069,7.142-9.728c-0.725-4.659-5.12-7.876-9.728-7.134C60.749,79.872,41.139,85.427,40.32,85.666c-3.661,1.041-6.187,4.395-6.187,8.201v375.467c0,2.671,1.254,5.197,3.388,6.81c1.502,1.135,3.311,1.724,5.146,1.724c0.785,0,1.57-0.111,2.338-0.333c0.589-0.162,59.597-16.734,134.195-16.734c31.198,0,57.856,9.711,68.267,14.071v20.062h-204.8c-14.114,0-25.6-11.486-25.6-25.6v-332.8c0-4.71-3.823-8.533-8.533-8.533S0,131.823,0,136.533v332.8C0,492.86,19.14,512,42.667,512h426.667C492.86,512,512,492.86,512,469.333v-332.8C512,131.823,508.177,128,503.467,128z" />
-        <Path d="M76.8,34.133h8.533v8.533c0,4.71,3.823,8.533,8.533,8.533c4.71,0,8.533-3.823,8.533-8.533v-8.533h8.533c4.71,0,8.533-3.823,8.533-8.533c0-4.71-3.823-8.533-8.533-8.533H102.4V8.533C102.4,3.823,98.577,0,93.867,0c-4.71,0-8.533,3.823-8.533,8.533v8.533H76.8c-4.71,0-8.533,3.823-8.533,8.533C68.267,30.31,72.09,34.133,76.8,34.133z" />
         <Path d="M247.467,145.067V435.2c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533V145.067c0-4.71-3.823-8.533-8.533-8.533S247.467,140.356,247.467,145.067z" />
         <Path d="M401.067,230.4c4.71,0,8.533-3.823,8.533-8.533c0-84.693-68.907-153.6-153.6-153.6s-153.6,68.907-153.6,153.6c0,4.71,3.823,8.533,8.533,8.533s8.533-3.823,8.533-8.533c0-75.281,61.252-136.533,136.533-136.533s136.533,61.252,136.533,136.533C392.533,226.577,396.356,230.4,401.067,230.4z" />
       </G>
@@ -184,7 +204,6 @@ function BookIcon({ color }: { color: string }) {
   );
 }
 
-// Draw icon — adaptat din draw-svgrepo-com.svg.
 function BrushIcon({ color }: { color: string }) {
   return (
     <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
@@ -199,7 +218,6 @@ function BrushIcon({ color }: { color: string }) {
   );
 }
 
-// Treasure map icon — adaptat din treasure-map-svgrepo-com.svg.
 function TargetIcon({ color }: { color: string }) {
   return (
     <Svg width={28} height={28} viewBox="0 0 24 24" fill={color}>
@@ -213,84 +231,56 @@ function TargetIcon({ color }: { color: string }) {
   );
 }
 
-function SwordIcon({ color }: { color: string }) {
-  return (
-    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
-      <Polyline
-        points="14 6 3 6 14 17 21 10 14 6"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinejoin="round"
-        fill="none"
-      />
-      <Line x1="3" y1="6" x2="14" y2="17" stroke={color} strokeWidth={2} />
-      <Line x1="14" y1="17" x2="11" y2="21" stroke={color} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.card,
-    alignItems: 'center',
+  root: { flex: 1 },
+  // Strat subtire peste blur pt contrast text (blur singur poate fi prea luminos).
+  tint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(18, 16, 36, 0.34)' },
+
+  center: {
+    flex: 1,
     justifyContent: 'center',
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 6,
-    elevation: 2,
+    paddingHorizontal: 22,
+    gap: 12,
   },
-  headerTitle: { color: colors.text, fontSize: 18, fontWeight: '800' },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  },
 
-  scroll: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 32, gap: 12 },
-
+  cardWrap: { width: '100%' },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     borderRadius: 22,
     padding: 16,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 6,
   },
+  cardPressed: { transform: [{ scale: 0.98 }], opacity: 0.95 },
   cardIconWrap: {
-    width: 56,
-    height: 56,
+    width: 54,
+    height: 54,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardText: { flex: 1, gap: 2 },
-  cardBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    marginBottom: 4,
-  },
-  cardBadgeText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
   cardTitle: { fontSize: 17, fontWeight: '900', letterSpacing: -0.2 },
-  cardSubtitle: { fontSize: 12.5, fontWeight: '500', lineHeight: 17 },
-  cardChevron: { paddingLeft: 4 },
+  cardSub: { fontSize: 12.5, fontWeight: '500', lineHeight: 17 },
 
-  cardPressed: { transform: [{ scale: 0.98 }] },
+  closeBtn: { alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 24, marginTop: 6 },
+  closeText: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
 });

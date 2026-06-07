@@ -17,6 +17,7 @@
     "expo": "~54.0.33",
     "expo-asset": "~12.0.13",
     "expo-audio": "^55.0.14",
+    "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-constants": "~18.0.13",
     "expo-dev-client": "~6.0.20",
