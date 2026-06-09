@@ -53,6 +53,15 @@ export async function registerForPushNotifications(): Promise<string | null> {
       lightColor: '#7DCEA0',
       vibrationPattern: [0, 250, 250, 250],
     });
+    // Canal separat pentru invitatii intre prieteni (Phone Down, co-walk).
+    // User-ul le poate toggla independent de sugestiile de parc in Setari.
+    await Notifications.setNotificationChannelAsync('social', {
+      name: 'Invitatii de la prieteni',
+      description: 'Cand un prieten te invita la un joc (Last Phone Standing).',
+      importance: Notifications.AndroidImportance.HIGH,
+      lightColor: '#7C5CFC',
+      vibrationPattern: [0, 250, 250, 250],
+    });
   }
 
   // projectId din EAS config — necesar in bare/dev build pt ca SDK-ul sa
@@ -144,6 +153,15 @@ export function routeForNotification(n: NotificationLike) {
       break;
     case 'daily_quests':
       router.push('/(app)/quests');
+      break;
+    case 'phonedown_invite':
+      // Deschidem ecranul Last Phone Standing pe sesiunea invitata. `join=1`
+      // semnaleaza ecranului sa adere automat (invitatul nu e inca participant,
+      // deci fetch-ul de sesiune ar da 403 fara join).
+      router.push({
+        pathname: '/(app)/phonedown',
+        params: { sessionId: str(p.sessionId), join: '1' },
+      });
       break;
     default:
       // Fallback: deschide home (notificarea ramane vizibila in sheet).

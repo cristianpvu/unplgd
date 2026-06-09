@@ -65,9 +65,15 @@ const PD = {
 };
 
 export default function PhoneDownScreen() {
-  const params = useLocalSearchParams<{ sessionId?: string }>();
+  const params = useLocalSearchParams<{ sessionId?: string; join?: string }>();
   const { token } = useAuth();
+  const qc = useQueryClient();
   const initialSessionId = typeof params.sessionId === 'string' ? params.sessionId : undefined;
+  // Venit dintr-un push de invitatie: invitatul inca nu e participant, deci
+  // trebuie sa adere intai (altfel GET /sessions/:id da 403). joinSession e
+  // idempotent, deci e safe si daca a aderat deja prin toast.
+  const shouldJoin = params.join === '1' && !!initialSessionId;
+  const [joinDone, setJoinDone] = useState(!shouldJoin);
 
   const meQuery = useQuery({
     queryKey: ['me'],
@@ -82,10 +88,41 @@ export default function PhoneDownScreen() {
     refetchInterval: false,
   });
 
+  useEffect(() => {
+    if (!shouldJoin || joinDone || !initialSessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await joinSession(initialSessionId);
+        if (cancelled) return;
+        qc.setQueryData(['phonedown', 'session', initialSessionId], session);
+        qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
+      } catch (e) {
+        if (cancelled) return;
+        const msg =
+          e instanceof ApiError
+            ? e.code === 'lobby_closed'
+              ? 'Lobby-ul nu mai e disponibil — host-ul a pornit deja runda sau a iesit.'
+              : e.code === 'already_in_session'
+                ? 'Esti deja intr-o sesiune Last Phone Standing. Iesi din ea intai.'
+                : e.message
+            : 'Nu pot intra in lobby acum.';
+        Alert.alert('Nu pot intra', msg, [
+          { text: 'OK', onPress: () => router.replace('/(app)') },
+        ]);
+      } finally {
+        if (!cancelled) setJoinDone(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shouldJoin, joinDone, initialSessionId, qc]);
+
   const sessionId =
     initialSessionId ?? currentQuery.data?.session?.id ?? undefined;
 
-  if (!token || !meQuery.data || currentQuery.isLoading) {
+  if (!token || !meQuery.data || currentQuery.isLoading || !joinDone) {
     return (
       <SafeAreaView style={styles.safeLoading} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />

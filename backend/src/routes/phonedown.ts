@@ -14,6 +14,8 @@ import {
   emitPhoneDownInvite,
   emitPhoneDownUpdate,
 } from '../lib/socket/phonedownEmit.js';
+import { sendPushToUser } from '../lib/push/expoPush.js';
+import { logger } from '../lib/logger.js';
 
 export const phoneDownRouter = Router();
 
@@ -158,6 +160,25 @@ phoneDownRouter.post('/lobby', requireAuth, async (req, res, next) => {
         hostId: userId,
         hostName: host.name,
       });
+    }
+
+    // Push real (APNs/FCM via Expo) pe langa socketul in-app: invitatul e
+    // notificat chiar daca app-ul e in background sau inchis — singura cale
+    // sigura cand socketul nu e conectat. Fire-and-forget: nu intarziem
+    // raspunsul host-ului si nu pica crearea lobby-ului daca pushul esueaza.
+    for (const fid of realFriendIds) {
+      void sendPushToUser(fid, {
+        title: `${host.name} te-a invitat`,
+        body: 'Last Phone Standing — cine rezista mai mult fara telefon',
+        data: {
+          kind: 'phonedown_invite',
+          sessionId: session.id,
+          hostId: userId,
+          hostName: host.name,
+        },
+        channelId: 'social',
+        sound: 'default',
+      }).catch((err) => logger.warn({ err, fid }, 'phonedown_invite.push_failed'));
     }
 
     res.status(201).json(serializeSession(session, new Date()));
