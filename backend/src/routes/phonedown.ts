@@ -145,6 +145,7 @@ phoneDownRouter.post('/lobby', requireAuth, async (req, res, next) => {
       data: {
         hostId: userId,
         status: PhoneDownStatus.WAITING,
+        invitedUserIds: realFriendIds,
         participants: {
           create: { userId, status: PhoneDownParticipantStatus.ACTIVE },
         },
@@ -454,6 +455,46 @@ phoneDownRouter.get('/current', requireAuth, async (req, res, next) => {
     const session = await loadSession(part.sessionId);
     if (!session) return res.json({ session: null });
     res.json({ session: serializeSession(session, new Date()) });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /phonedown/invites — lobby-uri WAITING in care user-ul curent e invitat
+// dar inca nu a aderat. Recuperarea pentru invitatii ratate (socket/push
+// pierdut): mobilul afiseaza lista in pre-lobby si user-ul poate adera oricand
+// cat timp lobby-ul e deschis. Filtram lobby-urile vechi (>15 min) ca sa nu
+// aratam zombii — un host care n-a pornit in 15 min a abandonat practic.
+const INVITE_FRESH_MS = 15 * 60 * 1000;
+phoneDownRouter.get('/invites', requireAuth, async (req, res, next) => {
+  try {
+    const userId = req.userId!;
+    const since = new Date(Date.now() - INVITE_FRESH_MS);
+    const sessions = await prisma.phoneDownSession.findMany({
+      where: {
+        status: PhoneDownStatus.WAITING,
+        createdAt: { gte: since },
+        invitedUserIds: { has: userId },
+        participants: { none: { userId } },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        hostId: true,
+        createdAt: true,
+        host: { select: { name: true } },
+        _count: { select: { participants: true } },
+      },
+    });
+    res.json({
+      invites: sessions.map((s) => ({
+        sessionId: s.id,
+        hostId: s.hostId,
+        hostName: s.host.name,
+        createdAt: s.createdAt,
+        participantCount: s._count.participants,
+      })),
+    });
   } catch (e) {
     next(e);
   }

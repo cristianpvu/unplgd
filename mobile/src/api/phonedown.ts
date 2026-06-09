@@ -89,3 +89,17 @@ export function getSession(sessionId: string) {
 export function getCurrent() {
   return api<{ session: PhoneDownSessionDto | null }>('/phonedown/current');
 }
+
+export type PhoneDownInviteDto = {
+  sessionId: string;
+  hostId: string;
+  hostName: string;
+  createdAt: string;
+  participantCount: number;
+};
+
+// Lobby-uri WAITING in care esti invitat dar inca n-ai aderat. Recuperare
+// pentru invitatii ratate (socket/push pierdut).
+export function getInvites() {
+  return api<{ invites: PhoneDownInviteDto[] }>('/phonedown/invites');
+}

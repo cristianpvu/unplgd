@@ -1214,6 +1214,10 @@ model PhoneDownSession {
   endedAt   DateTime?
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
+  // Userii invitati la creare lobby (prieteni ACCEPTED in raza BLE). Persistat
+  // ca sa putem recupera invitatii ratate: un invitat care nu a vazut socketul/
+  // pushul descopera lobby-ul via GET /phonedown/invites cat timp e WAITING.
+  invitedUserIds String[] @default([])
 
   host         User                   @relation("PhoneDownHost", fields: [hostId], references: [id], onDelete: Cascade)
   participants PhoneDownParticipant[]

@@ -20,6 +20,10 @@ export function PhoneDownInviteToast() {
 
   useEffect(() => {
     if (!invite) return;
+    // Toast-ul e un singleton global montat in layout — fara reset aici,
+    // `joining` ramanea true dupa primul join reusit (succesul nu il reseta),
+    // deci orice invitatie urmatoare aparea cu butonul blocat pe "...".
+    setJoining(false);
     Animated.spring(slide, {
       toValue: 0,
       useNativeDriver: true,
@@ -52,6 +56,7 @@ export function PhoneDownInviteToast() {
       const session = await joinSession(id);
       qc.setQueryData(['phonedown', 'session', id], session);
       qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
+      setJoining(false);
       dismiss();
       router.push({ pathname: '/(app)/phonedown', params: { sessionId: id } });
     } catch (e) {

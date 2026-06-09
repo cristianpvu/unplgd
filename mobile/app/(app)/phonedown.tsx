@@ -21,9 +21,11 @@ import { listFriends, type Friend } from '../../src/api/friends';
 import {
   createLobby,
   getCurrent,
+  getInvites,
   joinSession,
   leaveSession,
   startSession,
+  type PhoneDownInviteDto,
   type PhoneDownParticipantDto,
   type PhoneDownSessionDto,
 } from '../../src/api/phonedown';
@@ -153,6 +155,37 @@ function PreLobby() {
   const inRange = friends.filter((f) => blePeerUserIds.has(f.user.id));
   const outOfRange = friends.filter((f) => !blePeerUserIds.has(f.user.id));
 
+  // Lobby-uri in care sunt invitat dar n-am aderat — recuperare pentru
+  // invitatii ratate. Poll la 5s ca un lobby creat de un prieten sa apara
+  // chiar daca am ratat socketul/pushul.
+  const invitesQ = useQuery({
+    queryKey: ['phonedown', 'invites'],
+    queryFn: getInvites,
+    refetchInterval: 5000,
+  });
+  const invites = invitesQ.data?.invites ?? [];
+
+  const joinInvite = useMutation({
+    mutationFn: (sessionId: string) => joinSession(sessionId),
+    onSuccess: (session) => {
+      qc.setQueryData(['phonedown', 'session', session.id], session);
+      qc.invalidateQueries({ queryKey: ['phonedown', 'current'] });
+      router.replace({ pathname: '/(app)/phonedown', params: { sessionId: session.id } });
+    },
+    onError: (e: any) => {
+      const msg =
+        e instanceof ApiError
+          ? e.code === 'lobby_closed'
+            ? 'Lobby-ul nu mai e disponibil — host-ul a pornit deja runda sau a iesit.'
+            : e.code === 'already_in_session'
+              ? 'Esti deja intr-o sesiune Last Phone Standing. Iesi din ea intai.'
+              : e.message
+          : 'Nu pot intra in lobby acum.';
+      Alert.alert('Nu pot intra', msg);
+      qc.invalidateQueries({ queryKey: ['phonedown', 'invites'] });
+    },
+  });
+
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -197,7 +230,23 @@ function PreLobby() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollBody}>
-        <SectionLabel>In raza acum · {inRange.length}</SectionLabel>
+        {invites.length > 0 && (
+          <>
+            <SectionLabel>Esti invitat · {invites.length}</SectionLabel>
+            {invites.map((inv) => (
+              <InviteRow
+                key={inv.sessionId}
+                invite={inv}
+                loading={joinInvite.isPending}
+                onJoin={() => joinInvite.mutate(inv.sessionId)}
+              />
+            ))}
+          </>
+        )}
+
+        <SectionLabel style={invites.length > 0 ? { marginTop: 22 } : undefined}>
+          In raza acum · {inRange.length}
+        </SectionLabel>
         {inRange.length === 0 ? (
           <EmptyHint>
             Nimeni in raza. Poti invita prieteni si vor primi notificare.
@@ -286,6 +335,54 @@ function FriendRow({
         {checked && <IconCheck size={14} color="#FFFFFF" />}
       </View>
     </Pressable>
+  );
+}
+
+function InviteRow({
+  invite,
+  loading,
+  onJoin,
+}: {
+  invite: PhoneDownInviteDto;
+  loading: boolean;
+  onJoin: () => void;
+}) {
+  return (
+    <View style={[styles.row, styles.rowChecked]}>
+      <View
+        style={[
+          styles.avatarDot,
+          { backgroundColor: invite.hostId.slice(-1).match(/[0-7]/) ? PD.accent : '#FFC36A' },
+        ]}
+      >
+        <Text style={styles.avatarDotText}>{invite.hostName.slice(0, 1).toUpperCase()}</Text>
+      </View>
+      <View style={styles.rowMain}>
+        <Text style={styles.rowName}>{invite.hostName} te-a invitat</Text>
+        <View style={styles.rowMetaLine}>
+          <Text style={styles.rowMetaText}>
+            {invite.participantCount} in lobby
+          </Text>
+        </View>
+      </View>
+      <Pressable
+        onPress={onJoin}
+        disabled={loading}
+        style={({ pressed }) => [
+          {
+            backgroundColor: PD.accent,
+            paddingHorizontal: 16,
+            paddingVertical: 9,
+            borderRadius: 999,
+          },
+          (pressed || loading) && { opacity: 0.7 },
+        ]}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '800' }}>
+          {loading ? '...' : 'Intra'}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
