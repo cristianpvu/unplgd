@@ -21,6 +21,13 @@ export const HEARTBEAT_INTERVAL_MS = 25_000;
 // Cat de des reprezentam state-ul catre UI (debounce sub presiunea de scanuri).
 export const TICK_INTERVAL_MS = 1_000;
 
+// Cat de des reconciliem state-ul local cu sursa de adevar (backend) via
+// GET /cowalk/current. Plasa de siguranta pentru event-uri socket pierdute
+// (ex. cowalk:started emis inainte ca room-join-ul socketului sa fie gata) —
+// fara asta un telefon ramane blocat pe "Ma conectez..." desi sesiunea exista
+// server-side si celalalt telefon o afiseaza.
+export const RECONCILE_INTERVAL_MS = 10_000;
+
 // Pragul pentru un co-walk valid: 10 min de prezenta sustinuta cu acelasi
 // prieten (BLE detectat constant in fereastra). Aliniat cu validarea backend
 // (POST /interactions/co-walk cere durationSec >= 600).

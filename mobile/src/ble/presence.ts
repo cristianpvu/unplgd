@@ -16,6 +16,7 @@ import {
   RESOLVE_INTERVAL_MS,
   HEARTBEAT_INTERVAL_MS,
   TICK_INTERVAL_MS,
+  RECONCILE_INTERVAL_MS,
 } from './constants';
 import {
   getMyBleToken,
@@ -167,6 +168,7 @@ class PresenceEngine {
   private resolveTimer: ReturnType<typeof setInterval> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private reportTimer: ReturnType<typeof setInterval> | null = null;
+  private reconcileTimer: ReturnType<typeof setInterval> | null = null;
   private pedometerSub: { remove: () => void } | null = null;
   private pedometerAvailable = false;
   private myStepCount = 0;
@@ -415,6 +417,7 @@ class PresenceEngine {
     if (!this.scanOnlyMode) {
       this.heartbeatTimer = setInterval(() => void this.sendHeartbeat(), HEARTBEAT_INTERVAL_MS);
       this.reportTimer = setInterval(() => void this.sendCoWalkReports(), REPORT_INTERVAL_MS);
+      this.reconcileTimer = setInterval(() => void this.reconcileSession(), RECONCILE_INTERVAL_MS);
       void this.sendHeartbeat();
     }
     this.running = true;
@@ -427,10 +430,12 @@ class PresenceEngine {
     if (this.resolveTimer) clearInterval(this.resolveTimer);
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     if (this.reportTimer) clearInterval(this.reportTimer);
+    if (this.reconcileTimer) clearInterval(this.reconcileTimer);
     this.tickTimer = null;
     this.resolveTimer = null;
     this.heartbeatTimer = null;
     this.reportTimer = null;
+    this.reconcileTimer = null;
     try {
       this.manager?.stopDeviceScan();
     } catch {}
@@ -497,6 +502,23 @@ class PresenceEngine {
     this.socket.off('connect');
     this.socket.off('disconnect');
     this.socketHandlersAttached = false;
+  }
+
+  // Plasa de siguranta periodica: daca am pierdut un event socket (ex.
+  // cowalk:started emis inainte ca room-join-ul backend-ului sa fie gata),
+  // clientul ar ramane blocat pe "Ma conectez..." desi sesiunea exista
+  // server-side. Reconciliem cu /cowalk/current cand:
+  //   - avem deja o sesiune locala (prinde join/ended/tick ratate), SAU
+  //   - vedem un prieten in raza dar n-avem sesiune (exact cazul blocat).
+  // In pauza NU reconciliem: backend-ul tine user-ul in pausedParticipants
+  // si refetch-ul ar re-adauga sesiunea peste UI-ul de pauza.
+  private async reconcileSession() {
+    if (!this.running || this.scanOnlyMode || this.paused) return;
+    const hasFriendInRange = [...this.peers.values()].some(
+      (p) => p.userId && p.isFriend,
+    );
+    if (this.serverSessions.size === 0 && !hasFriendInRange) return;
+    await this.refetchCurrentSession();
   }
 
   private async refetchCurrentSession() {

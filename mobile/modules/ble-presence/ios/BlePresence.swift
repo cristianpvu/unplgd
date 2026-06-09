@@ -33,7 +33,6 @@ class BlePresence: RCTEventEmitter, CBPeripheralManagerDelegate {
   override func startObserving() { hasListeners = true }
   override func stopObserving() { hasListeners = false }
 
-.
   @objc(startAdvertising:localName:resolve:reject:)
   func startAdvertising(_ serviceUuid: String,
                         localName: String,

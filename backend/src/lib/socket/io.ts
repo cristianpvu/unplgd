@@ -38,7 +38,7 @@ export function initIO(server: HttpServer): IOServer {
     }
   });
 
-  io.on('connection', (rawSocket) => {
+  io.on('connection', async (rawSocket) => {
     const socket = rawSocket as AuthSocket;
     logger.debug({ userId: socket.data.userId, sid: socket.id }, 'socket connected');
 
@@ -46,7 +46,12 @@ export function initIO(server: HttpServer): IOServer {
     // adresate user-ului (room `user:<userId>`) — fiecare participant vede
     // propria sa progresie / participantii din sesiunea lui. Reconnect-urile
     // sunt automate, fara ca mobile-ul sa "cheme" un join.
-    void socket.join(userRoomName(socket.data.userId));
+    //
+    // AWAIT deliberat: daca un cowalk:started se emite in fereastra dintre
+    // connect si finalizarea join-ului, event-ul ajunge intr-un room gol si
+    // se pierde (clientul ramane blocat pe "Ma conectez..."). Asteptand
+    // join-ul inainte de orice altceva inchidem race-ul la sursa.
+    await socket.join(userRoomName(socket.data.userId));
 
     // cowalk:report { sessionId, steps, rssiSamples } — mobile trimite la
     // ~30s. Backend acumuleaza pasii (max) si RSSI samples (append cu cap)
