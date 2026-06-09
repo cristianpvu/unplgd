@@ -19,6 +19,7 @@ import { ApiError } from '../../../src/api/client';
 import { getMe } from '../../../src/api/me';
 import { cancelTagRead, isNfcAvailable, readTagUid } from '../../../src/lib/nfc';
 import { Button } from '../../../src/ui/Button';
+import { BraceletScanAnimation } from '../../../src/ui/BraceletScanAnimation';
 import { colors } from '../../../src/theme/colors';
 
 type StoryPick = { story: Story; authorName: string; mine: boolean };
@@ -243,7 +244,7 @@ export default function CoCreateStart() {
           </Text>
 
           <View style={styles.scanIllustration}>
-            <Text style={styles.bigIcon}>📡</Text>
+            <BraceletScanAnimation active={scanning} enabled={nfcAvailable !== false} />
             {(scanning || start.isPending) && (
               <View style={styles.scanningRow}>
                 <ActivityIndicator color={colors.accent} />
@@ -431,7 +432,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   scanIllustration: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  bigIcon: { fontSize: 96 },
   scanningRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scanningText: { color: colors.text, fontWeight: '600' },
 });

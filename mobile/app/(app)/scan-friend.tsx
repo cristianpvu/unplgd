@@ -7,6 +7,7 @@ import { scanFriend, type ScanFriendResponse } from '../../src/api/bracelet';
 import { ApiError } from '../../src/api/client';
 import { cancelTagRead, isNfcAvailable, readTagUid } from '../../src/lib/nfc';
 import { Button } from '../../src/ui/Button';
+import { BraceletScanAnimation } from '../../src/ui/BraceletScanAnimation';
 import { colors } from '../../src/theme/colors';
 
 export default function ScanFriend() {
@@ -99,7 +100,7 @@ export default function ScanFriend() {
             </Text>
 
             <View style={styles.illustration}>
-              <Text style={styles.bigIcon}>📡</Text>
+              <BraceletScanAnimation active={scanning} enabled={nfcAvailable !== false} />
               {scanning && (
                 <View style={styles.scanningRow}>
                   <ActivityIndicator color={colors.accent} />
