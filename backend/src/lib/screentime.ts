@@ -115,6 +115,35 @@ export async function rankedGroup(userIds: string[], days: string[]): Promise<Ra
   return group;
 }
 
+export type WeekSummary = {
+  weekKey: string;
+  avgMinutes: number;
+  daysReported: number;
+  todayMinutes: number;
+};
+
+// Sumar live al saptamanii curente pentru un user (pt card-ul de profil).
+// null daca userul nu a raportat nimic saptamana asta.
+export async function weekSummaryForUser(
+  userId: string,
+  ref: Date = new Date(),
+): Promise<WeekSummary | null> {
+  const days = weekDaysFor(ref);
+  const rows = await prisma.screenTimeDay.findMany({
+    where: { userId, day: { in: days } },
+    select: { day: true, minutes: true },
+  });
+  if (rows.length === 0) return null;
+  const sum = rows.reduce((s, r) => s + r.minutes, 0);
+  const today = dayKey(ref);
+  return {
+    weekKey: isoWeekKey(ref),
+    avgMinutes: Math.round(sum / rows.length),
+    daysReported: rows.length,
+    todayMinutes: rows.find((r) => r.day === today)?.minutes ?? 0,
+  };
+}
+
 export type WeekResult = {
   weekKey: string;
   rank: number;
