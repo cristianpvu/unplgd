@@ -256,6 +256,7 @@ export default function Home() {
           <CoWalkButton />
           <ChestsSideButton />
           <QuestsSideButton />
+          <ScreenTimeSideButton />
         </View>
 
         <Text style={styles.hello} numberOfLines={1}>
@@ -801,6 +802,32 @@ function QuestsSideButton() {
           </Text>
         </View>
       )}
+    </Pressable>
+  );
+}
+
+function ScreenTimeSideButton() {
+  return (
+    <Pressable
+      onPress={() => router.push('/(app)/screentime')}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+      accessibilityLabel="Clasament timp pe ecran"
+      hitSlop={8}
+    >
+      <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M5 20V12M12 20V6M19 20v-5"
+          stroke={colors.text}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+        />
+        <Path
+          d="M3 20h18"
+          stroke={colors.accent}
+          strokeWidth={2.2}
+          strokeLinecap="round"
+        />
+      </Svg>
     </Pressable>
   );
 }

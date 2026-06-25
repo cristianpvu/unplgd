@@ -1,0 +1,16 @@
+-- Merging decision tree log ---
+manifest
+ADDED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml:2:13-83
+INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml:2:13-83
+	package
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml
+	xmlns:android
+		ADDED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml:2:23-81
+uses-sdk
+INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml reason: use-sdk injection requested
+INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml
+INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml
+	android:targetSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml
+	android:minSdkVersion
+		INJECTED from /Users/mbair3/unplgd/mobile/modules/screen-time/android/build/intermediates/tmp/ProcessLibraryManifest/debug/tempAndroidManifest1487107236403678055.xml

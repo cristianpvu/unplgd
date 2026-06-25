@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
 import { Stack, router } from 'expo-router';
+import { syncScreenTime } from '../../src/lib/screenTimeSync';
 import { useAuth } from '../../src/lib/auth';
 import { presence } from '../../src/ble/presence';
 import { requestBlePermissions } from '../../src/ble/permissions';
@@ -27,6 +28,17 @@ export default function AppLayout() {
     if (ready && !token) {
       router.replace('/(auth)/welcome');
     }
+  }, [ready, token]);
+
+  // Screen-time sync — raporteaza minutele de azi/ieri la login si la fiecare
+  // revenire in foreground (Android cu Usage access acordat; altfel no-op).
+  useEffect(() => {
+    if (!ready || !token) return;
+    void syncScreenTime();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void syncScreenTime();
+    });
+    return () => sub.remove();
   }, [ready, token]);
 
   // Push notifications — register token + tap listener cand user-ul e logat.

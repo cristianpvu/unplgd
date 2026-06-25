@@ -1,0 +1,8 @@
+{
+  "name": "screen-time",
+  "version": "0.1.0",
+  "description": "Local module: citeste screen time-ul total al device-ului (Android UsageStatsManager). Folosit la leaderboard-ul anti-ecran. iOS nu are API public — modulul lipseste pe iOS, JS-ul face gating.",
+  "main": "src/index.js",
+  "react-native": "src/index.ts",
+  "private": true
+}

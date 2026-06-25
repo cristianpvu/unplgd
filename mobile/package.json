@@ -14,6 +14,7 @@
     "@tanstack/react-query": "^5.99.2",
     "ble-presence": "file:./modules/ble-presence",
     "call-detector": "file:./modules/call-detector",
+    "screen-time": "file:./modules/screen-time",
     "expo": "~54.0.33",
     "expo-asset": "~12.0.13",
     "expo-audio": "^55.0.14",
