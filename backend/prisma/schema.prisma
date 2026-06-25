@@ -63,8 +63,61 @@ model User {
   notifications           Notification[]
   storyLikes              StoryLike[]
   dailyQuests             DailyQuest[]
+  screenTimeDays          ScreenTimeDay[]
+  screenTimeWeeks         ScreenTimeWeek[]
 
   @@index([email])
+}
+
+// ===== SCREEN TIME (leaderboard "anti-ecran": cine sta cel mai PUTIN pe
+// telefon castiga). Sursa de adevar = raport zilnic trimis de device din
+// UsageStatsManager (Android). iOS nu are API public → ramane gated pe mobil.
+//
+// PRINCIPIU: recompensam ABSENTA de pe telefon, nu prezenta — aliniat cu
+// misiunea "unplugged". Vezi lib/screentime.ts.
+
+// Raport zilnic de screen time total al device-ului, per user. `day` e string
+// 'YYYY-MM-DD' pe TZ Europe/Bucharest (la fel ca DailyQuest) ca re-deploy in
+// alt tz sa nu invalideze. Upsert pe (userId, day): ultimul raport al zilei
+// suprascrie (device trimite cumulativ). `minutes` clamp 0..1440 server-side.
+model ScreenTimeDay {
+  id         String   @id @default(cuid())
+  userId     String
+  day        String   // 'YYYY-MM-DD' Europe/Bucharest
+  minutes    Int      // total screen time device-ului in ziua respectiva
+  source     String   @default("android_usagestats") // 'android_usagestats' | 'manual'
+  reportedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@index([userId, day])
+}
+
+// Rezultat finalizat al unei saptamani ISO, per user. Creat LAZY cand userul
+// deschide leaderboard-ul intr-o saptamana noua → calculam rank-ul lui in
+// cercul de prieteni (prieteni + el, doar cei cu date) si acordam XP idempotent
+// (awardXp sourceType='screentime_week', sourceId=weekKey). Unique pe
+// (userId, weekKey) = finalizare o singura data.
+//
+// `rank` 1-based, 1 = cel mai PUTIN timp pe ecran. `groupSize` = cati au intrat
+// in clasament (pt afisare "locul 2 din 5"). `avgMinutes` = media zilelor
+// raportate in saptamana.
+model ScreenTimeWeek {
+  id           String   @id @default(cuid())
+  userId       String
+  weekKey      String   // 'YYYY-Www' ISO, calculat pe TZ Europe/Bucharest
+  avgMinutes   Int
+  daysReported Int
+  rank         Int
+  groupSize    Int
+  xpAwarded    Int
+  finalizedAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekKey])
+  @@index([userId, weekKey])
 }
 
 // Templates pt mini-taskuri zilnice. Pool-ul global din care daily seed
