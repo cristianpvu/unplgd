@@ -20,6 +20,14 @@ export type UserProfile = {
     videoUrl: string | null;
     tier: number;
   } | null;
+  // Sumar live al screen time-ului saptamanii curente. null daca userul nu a
+  // raportat nimic saptamana asta (sau e pe iOS / fara Usage access).
+  screenTime: {
+    weekKey: string;
+    avgMinutes: number;
+    daysReported: number;
+    todayMinutes: number;
+  } | null;
 };
 
 export type CoCreationAlbumItem = {

@@ -2,7 +2,6 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,14 +11,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Svg, { Path } from 'react-native-svg';
-import { SvgXml } from 'react-native-svg';
+import Svg, { Path, SvgXml } from 'react-native-svg';
 import { screenTime } from 'screen-time';
 import { getScreenTimeLeaderboard, type ScreenTimeEntry } from '../../src/api/screentime';
 import { syncScreenTime } from '../../src/lib/screenTimeSync';
 import { colors } from '../../src/theme/colors';
 
 type Perm = 'checking' | 'granted' | 'denied' | 'unavailable';
+
+const GOLD = '#FFC94D';
+const SILVER = '#CBD2DE';
+const BRONZE = '#E5975A';
+const MEDAL = [GOLD, SILVER, BRONZE];
 
 function fmt(minutes: number): string {
   const h = Math.floor(minutes / 60);
@@ -28,8 +31,6 @@ function fmt(minutes: number): string {
   if (m === 0) return `${h}h`;
   return `${h}h ${m}m`;
 }
-
-const MEDAL = ['#FFC94D', '#C9CFDA', '#E0915A']; // aur, argint, bronz
 
 export default function ScreenTimeLeaderboard() {
   const qc = useQueryClient();
@@ -41,9 +42,6 @@ export default function ScreenTimeLeaderboard() {
     refetchInterval: 60 * 1000,
   });
 
-  // La focus: verifica permisiunea, sincronizeaza (daca Android + acces) si
-  // reimprospata clasamentul. Re-verifica si cand app revine activ (user-ul
-  // tocmai a activat accesul in Settings si s-a intors).
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -73,6 +71,10 @@ export default function ScreenTimeLeaderboard() {
 
   const data = lbQ.data;
   const lastWeek = data?.lastWeek ?? null;
+  const entries = data?.entries ?? [];
+  const top3 = entries.slice(0, 3);
+  const rest = entries.slice(3);
+  const me = data?.me ?? null;
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -90,12 +92,16 @@ export default function ScreenTimeLeaderboard() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Cel mai putin pe ecran</Text>
-          <Text style={styles.subtitle}>Saptamana asta · castiga cine sta mai putin</Text>
+          <Text style={styles.subtitle}>Castiga cine sta mai putin pe telefon</Text>
         </View>
+        {me && (
+          <View style={styles.myRankChip}>
+            <Text style={styles.myRankChipText}>#{me.rank}</Text>
+          </View>
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Reward saptamana trecuta */}
         {lastWeek && (
           <View style={styles.rewardCard}>
             <Text style={styles.rewardEmoji}>🏆</Text>
@@ -110,50 +116,53 @@ export default function ScreenTimeLeaderboard() {
           </View>
         )}
 
-        {/* Permisiune */}
         {perm === 'unavailable' && (
-          <View style={styles.permCard}>
-            <Text style={styles.permTitle}>Disponibil pe Android</Text>
-            <Text style={styles.permBody}>
-              iOS nu permite citirea timpului pe ecran din aplicatie. Poti vedea clasamentul
-              prietenilor, dar nu poti participa de pe acest telefon.
-            </Text>
-          </View>
+          <PermCard
+            title="Disponibil pe Android"
+            body="iOS nu permite citirea timpului pe ecran. Poti urmari clasamentul prietenilor, dar nu poti participa de pe acest telefon."
+          />
         )}
         {perm === 'denied' && (
-          <View style={styles.permCard}>
-            <Text style={styles.permTitle}>Activeaza accesul la timpul pe ecran</Text>
-            <Text style={styles.permBody}>
-              Ca sa intri in clasament avem nevoie sa citim cat stai pe telefon. Datele raman
-              private — afisam doar minutele tale, nu ce aplicatii folosesti.
-            </Text>
-            <Pressable style={styles.permBtn} onPress={() => screenTime.openSettings()}>
-              <Text style={styles.permBtnText}>Deschide setarile</Text>
-            </Pressable>
-          </View>
+          <PermCard
+            title="Activeaza accesul"
+            body="Ca sa intri in clasament citim cat stai pe telefon. Afisam doar minutele, nu ce aplicatii folosesti."
+            cta="Deschide setarile"
+            onPress={() => screenTime.openSettings()}
+          />
         )}
 
-        {lbQ.isPending && <ActivityIndicator color={colors.accent} style={{ marginTop: 40 }} />}
+        {lbQ.isPending && <ActivityIndicator color={colors.accent} style={{ marginTop: 50 }} />}
         {lbQ.error && <Text style={styles.errorText}>Nu am putut incarca clasamentul</Text>}
 
-        {data && data.entries.length === 0 && (
+        {data && entries.length === 0 && perm !== 'denied' && (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>Inca nimeni in clasament</Text>
             <Text style={styles.emptyBody}>
-              Cand tu si prietenii tai aveti timpul pe ecran inregistrat, apareti aici. Mai putine
+              Cand tu si prietenii aveti timpul pe ecran inregistrat, apareti aici. Mai putine
               minute = loc mai bun.
             </Text>
           </View>
         )}
 
-        {data?.entries.map((e) => (
-          <Row key={e.userId} entry={e} />
-        ))}
+        {top3.length > 0 && (
+          <View style={styles.podiumCard}>
+            <View style={styles.podiumHalo} pointerEvents="none" />
+            <Podium top3={top3} />
+          </View>
+        )}
 
-        {data && data.entries.length > 0 && (
+        {rest.length > 0 && (
+          <View style={styles.list}>
+            {rest.map((e) => (
+              <Row key={e.userId} entry={e} />
+            ))}
+          </View>
+        )}
+
+        {entries.length > 0 && (
           <Text style={styles.footer}>
-            La finalul saptamanii, primii din clasament primesc cel mai mult XP. Mai putin timp pe
-            telefon = mai mult timp afara. 🌳
+            La finalul saptamanii, primii din clasament primesc cel mai mult XP.{'\n'}Mai putin
+            ecran = mai mult timp afara. 🌳
           </Text>
         )}
       </ScrollView>
@@ -161,54 +170,159 @@ export default function ScreenTimeLeaderboard() {
   );
 }
 
+// Podium top 3: ordinea vizuala 2 - 1 - 3.
+function Podium({ top3 }: { top3: ScreenTimeEntry[] }) {
+  const first = top3[0];
+  const second = top3[1];
+  const third = top3[2];
+  return (
+    <View style={styles.podium}>
+      {second ? <Spot entry={second} place={2} /> : <View style={styles.spot} />}
+      {first ? <Spot entry={first} place={1} /> : <View style={styles.spot} />}
+      {third ? <Spot entry={third} place={3} /> : <View style={styles.spot} />}
+    </View>
+  );
+}
+
+function Spot({ entry, place }: { entry: ScreenTimeEntry; place: 1 | 2 | 3 }) {
+  const ring = MEDAL[place - 1];
+  const avatarSize = place === 1 ? 74 : 58;
+  const pedestalH = place === 1 ? 70 : place === 2 ? 50 : 36;
+  return (
+    <View style={styles.spot}>
+      {place === 1 && <Text style={styles.crown}>👑</Text>}
+      <PodiumAvatar svg={entry.avatarSvg} name={entry.name} size={avatarSize} ring={ring} />
+      <Text style={[styles.spotName, entry.isMe && { color: colors.accent }]} numberOfLines={1}>
+        {entry.isMe ? 'Tu' : entry.name}
+      </Text>
+      <Text style={styles.spotTime}>{fmt(entry.avgMinutes)}</Text>
+      <View style={[styles.pedestal, { height: pedestalH, backgroundColor: ring }]}>
+        <Text style={styles.pedestalRank}>{place}</Text>
+      </View>
+    </View>
+  );
+}
+
+function PodiumAvatar({
+  svg,
+  name,
+  size,
+  ring,
+}: {
+  svg: string | null;
+  name: string;
+  size: number;
+  ring: string;
+}) {
+  const fullHeight = Math.round(size * (1400 / 762));
+  return (
+    <View
+      style={[
+        styles.podiumAvatar,
+        { width: size, height: size, borderRadius: size / 2, borderColor: ring },
+      ]}
+    >
+      {svg ? (
+        <SvgXml xml={svg} width={size} height={fullHeight} />
+      ) : (
+        <Text style={styles.avatarFallback}>{name.charAt(0).toUpperCase()}</Text>
+      )}
+    </View>
+  );
+}
+
 function Row({ entry }: { entry: ScreenTimeEntry }) {
-  const medal = entry.rank <= 3 ? MEDAL[entry.rank - 1] : null;
+  const size = 38;
+  const fullHeight = Math.round(size * (1400 / 762));
   return (
     <View style={[styles.row, entry.isMe && styles.rowMe]}>
-      <View style={[styles.rankBadge, medal ? { backgroundColor: medal } : null]}>
-        <Text style={[styles.rankText, medal ? { color: '#fff' } : null]}>{entry.rank}</Text>
-      </View>
-      <View style={styles.avatar}>
+      <Text style={styles.rowRank}>{entry.rank}</Text>
+      <View style={styles.rowAvatar}>
         {entry.avatarSvg ? (
-          <SvgXml xml={entry.avatarSvg} width={40} height={40} />
+          <SvgXml xml={entry.avatarSvg} width={size} height={fullHeight} />
         ) : (
           <Text style={styles.avatarFallback}>{entry.name.charAt(0).toUpperCase()}</Text>
         )}
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>
+        <Text style={styles.rowName} numberOfLines={1}>
           {entry.name}
-          {entry.isMe ? ' (tu)' : ''}
+          {entry.isMe ? ' · tu' : ''}
         </Text>
-        <Text style={styles.meta}>
+        <Text style={styles.rowMeta}>
           azi {fmt(entry.todayMinutes)} · {entry.daysReported} zile
         </Text>
       </View>
-      <Text style={styles.avg}>{fmt(entry.avgMinutes)}</Text>
+      <Text style={styles.rowAvg}>{fmt(entry.avgMinutes)}</Text>
     </View>
   );
 }
 
+function PermCard({
+  title,
+  body,
+  cta,
+  onPress,
+}: {
+  title: string;
+  body: string;
+  cta?: string;
+  onPress?: () => void;
+}) {
+  return (
+    <View style={styles.permCard}>
+      <Text style={styles.permTitle}>{title}</Text>
+      <Text style={styles.permBody}>{body}</Text>
+      {cta && onPress && (
+        <Pressable style={styles.permBtn} onPress={onPress}>
+          <Text style={styles.permBtnText}>{cta}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+const SHADOW = {
+  shadowColor: colors.shadow,
+  shadowOffset: { width: 0, height: 3 },
+  shadowOpacity: 1,
+  shadowRadius: 8,
+  elevation: 2,
+} as const;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.card,
     alignItems: 'center',
     justifyContent: 'center',
+    ...SHADOW,
   },
-  title: { fontSize: 20, fontWeight: '800', color: colors.text },
+  title: { fontSize: 19, fontWeight: '900', color: colors.text },
   subtitle: { fontSize: 12.5, color: colors.textMuted, marginTop: 1 },
-  scroll: { paddingHorizontal: 16, paddingBottom: 32, gap: 10 },
+  myRankChip: {
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW,
+  },
+  myRankChipText: { color: '#fff', fontWeight: '900', fontSize: 14 },
+
+  scroll: { paddingHorizontal: 16, paddingBottom: 36, gap: 14 },
 
   rewardCard: {
     flexDirection: 'row',
@@ -217,19 +331,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success,
     borderRadius: 18,
     padding: 14,
-    marginTop: 4,
+    marginTop: 2,
+    ...SHADOW,
   },
-  rewardEmoji: { fontSize: 28 },
-  rewardTitle: { color: '#fff', fontWeight: '800', fontSize: 15 },
-  rewardSub: { color: 'rgba(255,255,255,0.9)', fontSize: 12.5, marginTop: 2 },
+  rewardEmoji: { fontSize: 26 },
+  rewardTitle: { color: '#fff', fontWeight: '800', fontSize: 14.5 },
+  rewardSub: { color: 'rgba(255,255,255,0.92)', fontSize: 12.5, marginTop: 2 },
 
   permCard: {
-    backgroundColor: colors.cardAlt,
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 16,
     borderWidth: 1,
     borderColor: colors.border,
     gap: 8,
+    ...SHADOW,
   },
   permTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
   permBody: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
@@ -240,50 +356,101 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     alignItems: 'center',
   },
-  permBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  permBtnText: { color: '#fff', fontWeight: '900', fontSize: 14 },
 
-  emptyCard: { backgroundColor: colors.card, borderRadius: 18, padding: 18, gap: 6 },
+  emptyCard: {
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    padding: 18,
+    gap: 6,
+    ...SHADOW,
+  },
   emptyTitle: { fontSize: 15, fontWeight: '800', color: colors.text },
   emptyBody: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
 
+  // Podium intr-un card alb, ca sa fie in tema cu restul app-ului.
+  podiumCard: {
+    backgroundColor: colors.card,
+    borderRadius: 22,
+    paddingTop: 16,
+    paddingHorizontal: 8,
+    overflow: 'hidden',
+    ...SHADOW,
+  },
+  podiumHalo: {
+    position: 'absolute',
+    top: -70,
+    alignSelf: 'center',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: colors.bgAlt,
+  },
+  podium: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  spot: { flex: 1, alignItems: 'center', maxWidth: 120 },
+  crown: { fontSize: 20, marginBottom: 2 },
+  podiumAvatar: {
+    overflow: 'hidden',
+    borderWidth: 3,
+    backgroundColor: colors.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  spotName: { color: colors.text, fontWeight: '800', fontSize: 13, marginTop: 8, maxWidth: 104 },
+  spotTime: { color: colors.textMuted, fontWeight: '700', fontSize: 12, marginTop: 1, marginBottom: 8 },
+  pedestal: {
+    width: '88%',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  pedestalRank: { color: 'rgba(45,42,74,0.55)', fontWeight: '900', fontSize: 20 },
+
+  // Lista rank 4+
+  list: { gap: 8 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     backgroundColor: colors.card,
     borderRadius: 16,
-    padding: 10,
+    padding: 9,
+    ...SHADOW,
   },
   rowMe: { borderWidth: 2, borderColor: colors.accent },
-  rankBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.bgAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rowRank: {
+    width: 22,
+    textAlign: 'center',
+    color: colors.textMuted,
+    fontWeight: '900',
+    fontSize: 14,
   },
-  rankText: { fontSize: 13, fontWeight: '800', color: colors.textMuted },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bgAlt,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rowAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     overflow: 'hidden',
+    backgroundColor: colors.bgAlt,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
-  avatarFallback: { fontSize: 17, fontWeight: '800', color: colors.textMuted },
-  name: { fontSize: 15, fontWeight: '700', color: colors.text },
-  meta: { fontSize: 12, color: colors.textMuted, marginTop: 1 },
-  avg: { fontSize: 16, fontWeight: '800', color: colors.text },
+  avatarFallback: { fontSize: 16, fontWeight: '800', color: colors.textMuted, marginTop: 8 },
+  rowName: { color: colors.text, fontWeight: '700', fontSize: 14.5 },
+  rowMeta: { color: colors.textMuted, fontSize: 11.5, marginTop: 1 },
+  rowAvg: { color: colors.text, fontWeight: '900', fontSize: 15 },
 
   footer: {
     fontSize: 12.5,
     color: colors.textMuted,
-    lineHeight: 18,
+    lineHeight: 19,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: 6,
     paddingHorizontal: 8,
   },
   errorText: { color: colors.danger, textAlign: 'center', marginTop: 24 },

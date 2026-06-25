@@ -8,7 +8,7 @@
 // profilul prietenilor — datele sunt publice (mai putin insight-ul mentor, care
 // ramane exclusiv in heroes-book pt user-ul logat).
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -24,13 +24,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { SvgXml, Svg, Path, Circle, G } from 'react-native-svg';
 import { BackgroundMedia } from '../../../../src/ui/BackgroundMedia';
 import { getMe } from '../../../../src/api/me';
 import { getBackgrounds, selectBackground } from '../../../../src/api/adventure';
 import { getUserCoCreations, getUserProfile } from '../../../../src/api/users';
+import { syncScreenTime } from '../../../../src/lib/screenTimeSync';
 import {
   getUserSkills,
   getUserDomainsTop,
@@ -49,6 +50,58 @@ function xpProgress(xp: number, level: number) {
   const span = ceiling - floor;
   const earned = Math.max(0, xp - floor);
   return { earned, span, ratio: span > 0 ? Math.min(1, earned / span) : 0 };
+}
+
+function fmtHM(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+// Chip discret "timp pe ecran" pe profil — tap deschide leaderboard-ul.
+// Cand exista date arata media/zi; altfel un chip neutru, fara mesaj de
+// activare (activarea tine de ecranul de leaderboard).
+function ScreenTimeChip({
+  data,
+  onPress,
+}: {
+  data: { avgMinutes: number } | null;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [styles.stChip, pressed && styles.stChipPressed]}
+    >
+      <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M19 13.5A7.5 7.5 0 0 1 10.5 5a7.5 7.5 0 1 0 8.5 8.5Z"
+          fill={colors.textMuted}
+        />
+      </Svg>
+      <Text style={styles.stChipText}>
+        {data ? (
+          <>
+            <Text style={styles.stChipValue}>{fmtHM(data.avgMinutes)}</Text> pe ecran / zi
+          </>
+        ) : (
+          'Timp pe ecran'
+        )}
+      </Text>
+      <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M9 6l6 6-6 6"
+          stroke={colors.textMuted}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </Pressable>
+  );
 }
 
 const PAGE_LABELS = ['Profil', 'Talente', 'Constelatie'];
@@ -107,6 +160,23 @@ export default function ProfileScreen() {
   });
 
   const [selectedDomain, setSelectedDomain] = useState<DomainScore | null>(null);
+
+  // Pe profilul propriu: la focus raporteaza screen time-ul si reimprospata
+  // profilul, ca chip-ul sa arate valoarea curenta imediat (nu null cat timp
+  // n-a ajuns primul raport al zilei).
+  useFocusEffect(
+    useCallback(() => {
+      if (me.data?.id !== id) return;
+      let cancelled = false;
+      void (async () => {
+        await syncScreenTime();
+        if (!cancelled) qc.invalidateQueries({ queryKey: ['users', id] });
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [me.data?.id, id, qc]),
+  );
 
   if (!id) return null;
 
@@ -224,6 +294,11 @@ export default function ProfileScreen() {
                     />
                   </View>
                 </View>
+
+                <ScreenTimeChip
+                  data={u.screenTime}
+                  onPress={() => router.push('/(app)/screentime')}
+                />
 
                 {isMe && (
                   <>
@@ -644,6 +719,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   progressFill: { height: '100%', backgroundColor: colors.accent, borderRadius: 999 },
+
+  stChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.cardAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: -4,
+  },
+  stChipPressed: { opacity: 0.7 },
+  stChipText: { color: colors.textMuted, fontSize: 12.5, fontWeight: '600' },
+  stChipValue: { color: colors.text, fontWeight: '800' },
 
   chestsBtn: {
     width: 44,
