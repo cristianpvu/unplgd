@@ -293,6 +293,87 @@ huntRouter.post('/sessions/:id/join', async (req, res, next) => {
   }
 });
 
+// POST /hunt/sessions/:id/join-bracelet
+// Copil FARA telefon la el: cineva deja in lobby ii scaneaza bratara NFC cu
+// telefonul lui si backend-ul il adauga in lobby pe contul lui. Participa si
+// primeste XP normal, dar nu poate fi ales lider (n-are telefon pt gameplay).
+// Aceeasi regula de acces ca /join: proprietarul bratarii trebuie sa fie
+// prieten ACCEPTED cu host-ul (sau chiar host-ul, caz in care e no-op).
+const joinBraceletSchema = z.object({
+  uid: z.string().min(4).max(64).regex(/^[0-9a-fA-F:]+$/, 'UID hex invalid'),
+});
+
+huntRouter.post('/sessions/:id/join-bracelet', async (req, res, next) => {
+  try {
+    const me = req.userId!;
+    const { id } = req.params;
+    if (!id) throw badRequest('missing_id', 'sessionId lipsa');
+    const { uid } = joinBraceletSchema.parse(req.body);
+    const normalizedUid = uid.toLowerCase().replace(/:/g, '');
+
+    const session = await prisma.huntSession.findUnique({
+      where: { id },
+      select: { id: true, hostId: true, status: true, lobby: { select: { userId: true } } },
+    });
+    if (!session) throw notFound('session_not_found', 'Sesiune inexistenta');
+    if (session.status !== HuntStatus.LOBBY) {
+      throw conflict('lobby_closed', 'Sesiunea nu mai accepta jucatori');
+    }
+    // Doar cineva deja in lobby (host inclus) poate inrola bratari — altfel
+    // oricine cu sessionId ar putea baga useri in joc.
+    const scannerInLobby =
+      session.hostId === me || session.lobby.some((l) => l.userId === me);
+    if (!scannerInLobby) {
+      throw forbidden('not_member', 'Doar cineva din lobby poate scana bratari');
+    }
+
+    const bracelet = await prisma.nfcBracelet.findUnique({
+      where: { uid: normalizedUid },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    if (!bracelet) {
+      throw notFound('bracelet_unknown', 'Bratara nu e inregistrata pe niciun cont');
+    }
+    const owner = bracelet.user;
+
+    if (owner.id !== session.hostId) {
+      const friendship = await prisma.friendship.findFirst({
+        where: {
+          status: FriendshipStatus.ACCEPTED,
+          OR: [
+            { requesterId: owner.id, receiverId: session.hostId },
+            { requesterId: session.hostId, receiverId: owner.id },
+          ],
+        },
+        select: { id: true },
+      });
+      if (!friendship) {
+        throw forbidden('not_friends', `${owner.name} nu e prieten cu host-ul`);
+      }
+    }
+
+    const already = session.lobby.some((l) => l.userId === owner.id);
+    if (!already) {
+      // update: {} — daca intre timp a intrat de pe telefonul lui, nu-l
+      // retrogradam la viaBracelet.
+      await prisma.huntLobbyMember.upsert({
+        where: { sessionId_userId: { sessionId: id, userId: owner.id } },
+        create: { sessionId: id, userId: owner.id, viaBracelet: true },
+        update: {},
+      });
+      emitHuntUpdate(id, 'lobby_changed');
+    }
+
+    res.json({
+      joined: true,
+      alreadyIn: already,
+      user: { id: owner.id, name: owner.name },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
 // POST /hunt/sessions/:id/leave
 // Friend iese din lobby inainte de start. Host nu poate face leave (face
 // /cancel separat).
@@ -337,7 +418,7 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
       where: { id },
       include: {
         park: { select: { polygon: true } },
-        lobby: { select: { userId: true } },
+        lobby: { select: { userId: true, viaBracelet: true } },
       },
     });
     if (!session) throw notFound('session_not_found', 'Sesiune inexistenta');
@@ -352,8 +433,12 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
       );
     }
 
-    const memberIds = session.lobby.map((l) => l.userId);
-    const teamPlans = assignTeamsRandomly(memberIds);
+    const teamPlans = assignTeamsRandomly(
+      session.lobby.map((l) => ({ userId: l.userId, viaBracelet: l.viaBracelet })),
+    );
+    const braceletSet = new Set(
+      session.lobby.filter((l) => l.viaBracelet).map((l) => l.userId),
+    );
     const parkPolygon = JSON.parse(session.park.polygon) as Polygon | MultiPolygon;
     const zones = splitPolygonIntoZones(parkPolygon, teamPlans.length);
 
@@ -377,7 +462,10 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
         const zone = zones[i]!;
         // Lider random — telefonul lui e cel pe care ruleaza vanatoarea pt
         // toata echipa. Restul stau langa el fizic si discuta raspunsurile.
-        const leaderId = plan.memberIds[Math.floor(Math.random() * plan.memberIds.length)]!;
+        // Membrii intrati cu bratara (fara telefon) nu pot fi lideri, deci
+        // tragem la sorti doar dintre cei cu telefon (garantat >=1 de assign).
+        const leaderId =
+          plan.phoneMemberIds[Math.floor(Math.random() * plan.phoneMemberIds.length)]!;
         const team = await tx.huntTeam.create({
           data: {
             sessionId: id,
@@ -385,7 +473,12 @@ huntRouter.post('/sessions/:id/start', async (req, res, next) => {
             leaderId,
             zone: JSON.stringify(zone),
             zoneArea: zoneAreaSqm(zone),
-            members: { create: plan.memberIds.map((userId) => ({ userId })) },
+            members: {
+              create: plan.memberIds.map((userId) => ({
+                userId,
+                viaBracelet: braceletSet.has(userId),
+              })),
+            },
           },
         });
         createdTeams.push({ id: team.id, zone });
@@ -538,6 +631,7 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
           name: l.user.name,
           level: l.user.level,
           avatarSvg: l.user.avatar?.svg ?? null,
+          viaBracelet: l.viaBracelet,
         })),
         canStart: isHost && session.lobby.length >= MIN_LOBBY_PLAYERS,
         playersNeeded: Math.max(0, MIN_LOBBY_PLAYERS - session.lobby.length),
@@ -566,6 +660,7 @@ huntRouter.get('/sessions/:id', async (req, res, next) => {
           id: m.userId,
           name: m.user.name,
           avatarSvg: m.user.avatar?.svg ?? null,
+          viaBracelet: m.viaBracelet,
         })),
       })),
       myTeamId: myTeam?.id ?? null,

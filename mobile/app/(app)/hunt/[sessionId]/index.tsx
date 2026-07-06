@@ -20,6 +20,7 @@ import {
   cancelSession,
   endSession,
   getSessionState,
+  joinSessionBracelet,
   leaveSession,
   postHeartbeat,
   setTeamName,
@@ -27,6 +28,8 @@ import {
   type HeartbeatResponse,
   type HuntSessionState,
 } from '../../../../src/api/hunt';
+import { ApiError } from '../../../../src/api/client';
+import { cancelTagRead, isNfcAvailable, readTagUid } from '../../../../src/lib/nfc';
 import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
 import { HuntMap } from '../../../../src/hunt/HuntMap';
@@ -308,6 +311,58 @@ function LobbyView({
   const canStart = session.canStart && !startMut.isPending;
   const ready = session.playersNeeded === 0;
 
+  // Inrolare cu bratara NFC — pt copiii veniti in parc FARA telefon. Oricine
+  // din lobby le scaneaza bratara si intra pe contul lor (viaBracelet: nu pot
+  // fi lideri, dar participa si primesc XP normal).
+  const [scanningBracelet, setScanningBracelet] = useState(false);
+  const [nfcAvailable, setNfcAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    isNfcAvailable().then(setNfcAvailable);
+    return () => {
+      cancelTagRead();
+    };
+  }, []);
+
+  const braceletMut = useMutation({
+    mutationFn: (uid: string) => joinSessionBracelet(sessionId, uid),
+    onSuccess: (r) => {
+      qc.invalidateQueries({ queryKey: ['hunt', 'session', sessionId] });
+      Alert.alert(
+        r.alreadyIn ? 'E deja aici' : 'A intrat!',
+        r.alreadyIn
+          ? `${r.user.name} e deja in lobby.`
+          : `${r.user.name} s-a alaturat vanatorii cu bratara.`,
+      );
+    },
+    onError: (err: any) => {
+      const msg =
+        err instanceof ApiError && err.code === 'bracelet_unknown'
+          ? 'Bratara nu e inregistrata pe niciun cont.'
+          : err instanceof ApiError && err.code === 'not_friends'
+            ? err.message
+            : err?.message ?? 'Nu am putut adauga jucatorul';
+      Alert.alert('Hopa', msg);
+    },
+  });
+
+  async function scanBracelet() {
+    if (nfcAvailable === false) {
+      Alert.alert('NFC indisponibil', 'Telefonul tau nu poate citi bratari NFC.');
+      return;
+    }
+    setScanningBracelet(true);
+    try {
+      const uid = await readTagUid({ alertMessage: 'Apropie bratara prietenului de telefon' });
+      braceletMut.mutate(uid);
+    } catch (e: any) {
+      if (e?.message && !/cancel/i.test(e.message)) {
+        Alert.alert('Scanare esuata', 'Tine bratara aproape de spatele telefonului si reincearca.');
+      }
+    } finally {
+      setScanningBracelet(false);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <Header title={session.park.name} onBack={() => router.replace('/(app)/hunt')} />
@@ -346,6 +401,37 @@ function LobbyView({
               <PendingRow key={`pending-${i}`} delay={i * 200} />
             ))}
           </View>
+          {/* Un prieten fara telefon la el? Ii scanezi bratara si intra si el. */}
+          <Pressable
+            onPress={() => {
+              if (scanningBracelet) {
+                cancelTagRead();
+                setScanningBracelet(false);
+              } else {
+                void scanBracelet();
+              }
+            }}
+            disabled={braceletMut.isPending}
+            style={({ pressed }) => [
+              styles.braceletBtn,
+              pressed && styles.btnPressed,
+              braceletMut.isPending && { opacity: 0.5 },
+            ]}
+          >
+            {scanningBracelet || braceletMut.isPending ? (
+              <ActivityIndicator color={colors.accent} size="small" />
+            ) : (
+              <Text style={styles.braceletBtnIcon}>⌚</Text>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.braceletBtnLabel}>
+                {scanningBracelet ? 'Apropie bratara... (apasa pt anulare)' : 'Adauga cu bratara'}
+              </Text>
+              <Text style={styles.braceletBtnSub}>
+                Pentru prietenii veniti fara telefon
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
         {session.isHost ? (
@@ -396,7 +482,13 @@ function PlayerRow({
   member,
   index,
 }: {
-  member: { userId: string; name: string; level: number; avatarSvg: string | null };
+  member: {
+    userId: string;
+    name: string;
+    level: number;
+    avatarSvg: string | null;
+    viaBracelet?: boolean;
+  };
   index: number;
 }) {
   const enter = useRef(new Animated.Value(0)).current;
@@ -422,6 +514,11 @@ function PlayerRow({
       <Text style={styles.playerName} numberOfLines={1}>
         {member.name}
       </Text>
+      {member.viaBracelet && (
+        <View style={styles.braceletBadge}>
+          <Text style={styles.braceletBadgeText}>⌚ bratara</Text>
+        </View>
+      )}
       <Text style={styles.playerLevel}>L{member.level}</Text>
     </Animated.View>
   );
@@ -909,6 +1006,33 @@ const styles = StyleSheet.create({
   },
   playerName: { color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 },
   playerLevel: { color: colors.textMuted, fontSize: 12, fontWeight: '800' },
+
+  // Buton "Adauga cu bratara" — sub lista de jucatori, stil dashed ca sa se
+  // citeasca drept slot de adaugare, nu jucator existent.
+  braceletBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    backgroundColor: colors.cardAlt,
+  },
+  braceletBtnIcon: { fontSize: 20 },
+  braceletBtnLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  braceletBtnSub: { color: colors.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
+  braceletBadge: {
+    backgroundColor: colors.cardAlt,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginRight: 6,
+  },
+  braceletBadgeText: { color: colors.textMuted, fontSize: 10, fontWeight: '800' },
 
   pendingRow: {
     flexDirection: 'row',

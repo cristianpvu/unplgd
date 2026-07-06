@@ -1071,6 +1071,10 @@ model HuntLobbyMember {
   id        String   @id @default(cuid())
   sessionId String
   userId    String
+  // True daca a intrat prin scanarea bratarii NFC de pe telefonul altcuiva
+  // (copil fara telefon la el). Participa si primeste XP normal, dar nu poate
+  // fi ales lider de echipa — liderul are nevoie de telefon.
+  viaBracelet Boolean  @default(false)
   joinedAt  DateTime @default(now())
 
   session HuntSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
@@ -1112,6 +1116,9 @@ model HuntTeamMember {
   id       String   @id @default(cuid())
   teamId   String
   userId   String
+  // Propagat din HuntLobbyMember la start — lobby-ul se sterge, dar UI-ul de
+  // scoreboard/rezultate vrea sa arate badge-ul "cu bratara" si dupa start.
+  viaBracelet Boolean @default(false)
   joinedAt DateTime @default(now())
 
   team HuntTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)

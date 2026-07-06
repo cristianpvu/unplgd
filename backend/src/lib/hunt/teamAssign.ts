@@ -2,18 +2,19 @@
 //
 // Reguli:
 //   - Min 4 jucatori (validare in route inainte sa apeleze aici)
-//   - Echipele au minim 2 membri, maxim 3 (fairness + UI clean)
+//   - Echipele au minim 2 membri, tinta 2-3 (fairness + UI clean)
 //   - Maximizam numarul de echipe (mai multa competitie)
-//   - Ramasitele se distribuie in ultimele echipe (devin echipe de 3)
+//   - Fiecare echipa PRIMESTE MINIM UN JUCATOR CU TELEFON — liderul joaca pe
+//     telefonul lui, deci membrii intrati doar cu bratara (viaBracelet) nu pot
+//     sustine o echipa singuri. Daca bratarile sunt multe si telefoanele
+//     putine, numarul de echipe scade si echipele pot depasi 3 membri.
 //
-// Exemple:
+// Exemple (toti cu telefon):
 //   N=4 → 2,2
 //   N=5 → 2,3
 //   N=6 → 2,2,2
 //   N=7 → 2,2,3
-//   N=8 → 2,2,2,2
-//   N=9 → 2,2,2,3
-//   N=10 → 2,2,2,2,2
+// Exemplu cu bratari: 2 telefoane + 4 bratari → 2 echipe de 3 (cate un telefon).
 
 const TEAM_NAMES = [
   'Lupii',
@@ -28,54 +29,69 @@ const TEAM_NAMES = [
   'Soimii',
 ];
 
+export type LobbyPlayer = {
+  userId: string;
+  viaBracelet: boolean;
+};
+
 export type TeamPlan = {
   name: string;
   memberIds: string[];
+  // Subsetul cu telefon — liderul se alege doar dintre ei.
+  phoneMemberIds: string[];
 };
 
-export function assignTeamsRandomly(memberIds: string[]): TeamPlan[] {
-  const n = memberIds.length;
+function shuffle<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = out[i]!;
+    out[i] = out[j]!;
+    out[j] = tmp;
+  }
+  return out;
+}
+
+export function assignTeamsRandomly(players: LobbyPlayer[]): TeamPlan[] {
+  const n = players.length;
   if (n < 1) {
     throw new Error('Team assign cere minim 1 jucator');
   }
 
-  // Cazuri dev (1-3 jucatori): cream o singura echipa cu toti. La 4+ aplicam
-  // logica de competitie (min 2 echipe, min 2 membri per echipa).
-  if (n < 4) {
-    return [{ name: 'Lupii', memberIds: [...memberIds] }];
+  const phoneIds = shuffle(players.filter((p) => !p.viaBracelet).map((p) => p.userId));
+  const braceletIds = shuffle(players.filter((p) => p.viaBracelet).map((p) => p.userId));
+  if (phoneIds.length === 0) {
+    // Nu ar trebui sa se intample (host-ul e mereu pe telefon) — guard defensiv.
+    throw new Error('Team assign cere minim 1 jucator cu telefon');
   }
 
-  const numTeams = Math.floor(n / 2);
-  const remainder = n % 2; // 0 sau 1; daca 1, ultima echipa e de 3
+  // Cazuri dev (1-3 jucatori): o singura echipa cu toti. La 4+ aplicam logica
+  // de competitie (min 2 echipe, min 2 membri per echipa).
+  const numTeams = n < 4 ? 1 : Math.max(1, Math.min(Math.floor(n / 2), phoneIds.length));
 
-  // Sizes: array de marime numTeams cu valori 2, ultima are 2+remainder.
-  const sizes = Array(numTeams).fill(2);
-  if (remainder === 1 && numTeams > 0) {
-    sizes[numTeams - 1] = 3;
-  }
+  const namePool = numTeams === 1 ? ['Lupii'] : shuffle(TEAM_NAMES);
+  const plans: TeamPlan[] = Array.from({ length: numTeams }, (_, i) => ({
+    name: namePool[i] ?? `Echipa ${i + 1}`,
+    memberIds: [],
+    phoneMemberIds: [],
+  }));
 
-  // Shuffle membership ca atribuirea sa fie aleatoare (Fisher-Yates).
-  const shuffled = [...memberIds];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = shuffled[i]!;
-    shuffled[i] = shuffled[j]!;
-    shuffled[j] = tmp;
-  }
+  // Intai cate un telefon per echipa (garantia de lider), apoi restul
+  // (telefoane ramase + bratari) round-robin — echipele raman echilibrate
+  // (marimile difera cu maxim 1).
+  const seed = phoneIds.slice(0, numTeams);
+  const rest = shuffle([...phoneIds.slice(numTeams), ...braceletIds]);
+  const phoneSet = new Set(phoneIds);
 
-  // Shuffle team names ca etichetele sa fie tematice random, nu mereu "Lupii".
-  const namePool = [...TEAM_NAMES].sort(() => Math.random() - 0.5);
-
-  const plans: TeamPlan[] = [];
-  let cursor = 0;
-  for (let i = 0; i < numTeams; i++) {
-    const size = sizes[i] ?? 2;
-    plans.push({
-      name: namePool[i] ?? `Echipa ${i + 1}`,
-      memberIds: shuffled.slice(cursor, cursor + size),
-    });
-    cursor += size;
-  }
+  seed.forEach((userId, i) => {
+    plans[i]!.memberIds.push(userId);
+    plans[i]!.phoneMemberIds.push(userId);
+  });
+  rest.forEach((userId, i) => {
+    const plan = plans[i % numTeams]!;
+    plan.memberIds.push(userId);
+    if (phoneSet.has(userId)) plan.phoneMemberIds.push(userId);
+  });
 
   return plans;
 }

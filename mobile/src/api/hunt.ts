@@ -27,6 +27,9 @@ export type HuntLobbyMemberDto = {
   name: string;
   level: number;
   avatarSvg: string | null;
+  // Intrat prin scanarea bratarii NFC (fara telefon la el) — participa si
+  // primeste XP normal, dar nu poate fi ales lider de echipa.
+  viaBracelet: boolean;
 };
 
 export type HuntTeamDto = {
@@ -37,7 +40,7 @@ export type HuntTeamDto = {
   monstersDefeated: number;
   memberCount: number;
   zone: GeoJsonPolygon | null;
-  members: { id: string; name: string; avatarSvg: string | null }[];
+  members: { id: string; name: string; avatarSvg: string | null; viaBracelet: boolean }[];
 };
 
 export type HuntSessionState =
@@ -202,6 +205,15 @@ export function listLobbiesNearby(bleTokens: string[]) {
 
 export function joinSession(sessionId: string) {
   return api<{ joined: boolean }>(`/hunt/sessions/${sessionId}/join`, { method: 'POST' });
+}
+
+// Inroleaza in lobby un copil FARA telefon: ii scanezi bratara NFC cu
+// telefonul tau si backend-ul il adauga pe contul lui (viaBracelet).
+export function joinSessionBracelet(sessionId: string, uid: string) {
+  return api<{ joined: boolean; alreadyIn: boolean; user: { id: string; name: string } }>(
+    `/hunt/sessions/${sessionId}/join-bracelet`,
+    { method: 'POST', body: { uid } },
+  );
 }
 
 export function leaveSession(sessionId: string) {

@@ -160,7 +160,9 @@ export async function createDevHereSession(opts: {
 
   // Sesiune ACTIVE.
   const allMemberIds = [opts.hostId, ...demos.map((d) => d.id)];
-  const teamPlans = assignTeamsRandomly(allMemberIds);
+  const teamPlans = assignTeamsRandomly(
+    allMemberIds.map((userId) => ({ userId, viaBracelet: false })),
+  );
   const parkPolygon = JSON.parse(park.polygon) as Polygon | MultiPolygon;
   const zones = splitPolygonIntoZones(parkPolygon, teamPlans.length);
   const now = new Date();
