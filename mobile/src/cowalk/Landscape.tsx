@@ -26,16 +26,39 @@ const VB_H = 192;
 
 export type LandscapeProps = {
   paused?: boolean;
+  // Dimensiunile exacte ale cardului, masurate de PARINTE cu onLayout pe un
+  // view cu continut real. NU folosim absoluteFill (left/right/top/bottom) si
+  // nici onLayout intern pe un view gol: pe RN new arch ambele s-au dovedit
+  // nesigure aici (view-ul intra in flux si impinge continutul, onLayout nu
+  // se emite). Pozitie + marime numerice = deterministic.
+  w: number;
+  h: number;
 };
 
-export function Landscape({ paused = false }: LandscapeProps) {
+export function Landscape({ paused = false, w, h }: LandscapeProps) {
+  // Overlay IN-FLUX, nu position:absolute: randat ca ULTIMUL copil al scenei,
+  // cu marginTop egal cu -inaltimea cardului → se suprapune exact peste card
+  // (net zero inaltime adaugata), iar zIndex -1 il tine sub continut. Nu
+  // depinde de semantica absolute (care s-a dovedit nesigura aici pe new arch).
   return (
-    <View style={styles.wrap} pointerEvents="none">
+    <View
+      style={[styles.wrap, { width: w, height: h, marginTop: -h }]}
+      pointerEvents="none"
+      collapsable={false}
+    >
+      <LandscapeLayers paused={paused} w={w} h={h} />
+    </View>
+  );
+}
+
+function LandscapeLayers({ paused, w, h }: { paused: boolean; w: number; h: number }) {
+  return (
+    <>
       {/* Cer — static, gradient apus blajin. */}
       <View style={styles.skyLayer}>
         <Svg
-          width="100%"
-          height="100%"
+          width={w}
+          height={h}
           viewBox={`0 0 ${PATTERN_W} ${VB_H}`}
           preserveAspectRatio="none"
         >
@@ -54,25 +77,25 @@ export function Landscape({ paused = false }: LandscapeProps) {
       </View>
 
       {/* Nori — translateX foarte lent, pluteste sus. */}
-      <ParallaxLayer durationMs={42000} paused={paused}>
-        {(idx) => <CloudsPattern key={idx} />}
+      <ParallaxLayer durationMs={42000} paused={paused} h={h}>
+        {(idx) => <CloudsPattern key={idx} h={h} />}
       </ParallaxLayer>
 
       {/* Munti distanti — purpur pal, lent. */}
-      <ParallaxLayer durationMs={26000} paused={paused}>
-        {(idx) => <MountainsPattern key={idx} />}
+      <ParallaxLayer durationMs={26000} paused={paused} h={h}>
+        {(idx) => <MountainsPattern key={idx} h={h} />}
       </ParallaxLayer>
 
       {/* Copaci — verzi, mediu. */}
-      <ParallaxLayer durationMs={13000} paused={paused}>
-        {(idx) => <TreesPattern key={idx} />}
+      <ParallaxLayer durationMs={13000} paused={paused} h={h}>
+        {(idx) => <TreesPattern key={idx} h={h} />}
       </ParallaxLayer>
 
       {/* Iarba foreground — viteza maxima, sugereaza pas. */}
-      <ParallaxLayer durationMs={6500} paused={paused}>
-        {(idx) => <GrassPattern key={idx} />}
+      <ParallaxLayer durationMs={6500} paused={paused} h={h}>
+        {(idx) => <GrassPattern key={idx} h={h} />}
       </ParallaxLayer>
-    </View>
+    </>
   );
 }
 
@@ -84,10 +107,12 @@ function ParallaxLayer({
   children,
   durationMs,
   paused,
+  h,
 }: {
   children: (idx: number) => React.ReactNode;
   durationMs: number;
   paused: boolean;
+  h: number;
 }) {
   const x = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -113,9 +138,11 @@ function ParallaxLayer({
   const translate = x.interpolate({ inputRange: [0, 1], outputRange: [0, -PATTERN_W] });
 
   return (
-    <Animated.View style={[styles.layer, { transform: [{ translateX: translate }] }]}>
-      <View style={styles.layerHalf}>{children(0)}</View>
-      <View style={styles.layerHalf}>{children(1)}</View>
+    <Animated.View
+      style={[styles.layer, { height: h, transform: [{ translateX: translate }] }]}
+    >
+      <View style={{ width: PATTERN_W, height: h }}>{children(0)}</View>
+      <View style={{ width: PATTERN_W, height: h }}>{children(1)}</View>
     </Animated.View>
   );
 }
@@ -124,11 +151,11 @@ function ParallaxLayer({
 // Patterns SVG — fiecare 360×192 self-tileable (Y(0) === Y(360))
 // =====================================================================
 
-function StretchSvg({ children }: { children: React.ReactNode }) {
+function StretchSvg({ children, h }: { children: React.ReactNode; h: number }) {
   return (
     <Svg
-      width="100%"
-      height="100%"
+      width={PATTERN_W}
+      height={h}
       viewBox={`0 0 ${PATTERN_W} ${VB_H}`}
       preserveAspectRatio="none"
     >
@@ -137,9 +164,9 @@ function StretchSvg({ children }: { children: React.ReactNode }) {
   );
 }
 
-function CloudsPattern() {
+function CloudsPattern({ h }: { h: number }) {
   return (
-    <StretchSvg>
+    <StretchSvg h={h}>
       <Cloud cx={50} cy={28} scale={0.9} />
       <Cloud cx={180} cy={20} scale={1.1} />
       <Cloud cx={290} cy={42} scale={0.75} />
@@ -173,20 +200,20 @@ function Cloud({ cx, cy, scale }: { cx: number; cy: number; scale: number }) {
   );
 }
 
-function MountainsPattern() {
+function MountainsPattern({ h }: { h: number }) {
   // Y la x=0 si x=PATTERN_W identice → pattern self-tileable.
   const baseY = VB_H - 38;
   const back = `M0 ${baseY - 10} L60 ${baseY - 50} L130 ${baseY - 25} L200 ${baseY - 55} L260 ${baseY - 30} L330 ${baseY - 48} L${PATTERN_W} ${baseY - 10} L${PATTERN_W} ${VB_H} L0 ${VB_H} Z`;
   const front = `M0 ${baseY} L40 ${baseY - 30} L100 ${baseY - 5} L170 ${baseY - 38} L230 ${baseY - 15} L290 ${baseY - 32} L${PATTERN_W} ${baseY} L${PATTERN_W} ${VB_H} L0 ${VB_H} Z`;
   return (
-    <StretchSvg>
+    <StretchSvg h={h}>
       <Path d={back} fill="#C7B5E5" opacity={0.85} />
       <Path d={front} fill="#9E83CB" opacity={0.95} />
     </StretchSvg>
   );
 }
 
-function TreesPattern() {
+function TreesPattern({ h }: { h: number }) {
   // Copaci la pozitii departate de margini (>=20 de la 0/PATTERN_W) ca sa nu
   // se taie la junctiunea celor 2 copii. groundY ales astfel incat radacina
   // trunchiului sa intre 2px in iarba (iarba e VB_H-12..VB_H), suficient sa
@@ -203,7 +230,7 @@ function TreesPattern() {
     { x: 340, h: 0.78 },
   ];
   return (
-    <StretchSvg>
+    <StretchSvg h={h}>
       {trees.map((t, i) => (
         <Tree key={i} x={t.x} groundY={ground} scale={t.h} />
       ))}
@@ -242,11 +269,11 @@ function Tree({ x, groundY, scale }: { x: number; groundY: number; scale: number
   );
 }
 
-function GrassPattern() {
+function GrassPattern({ h }: { h: number }) {
   const baseY = VB_H - 4;
   const tufts = [10, 45, 92, 130, 170, 215, 250, 295, 335];
   return (
-    <StretchSvg>
+    <StretchSvg h={h}>
       <Rect x={0} y={baseY - 8} width={PATTERN_W} height={12} fill="#4DA85E" />
       {tufts.map((tx, i) => (
         <Path
@@ -260,25 +287,23 @@ function GrassPattern() {
 }
 
 const styles = StyleSheet.create({
+  // In-flux cu marginTop negativ (vezi Landscape) — fara position absolute.
   wrap: {
-    ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+    zIndex: -1,
   },
   skyLayer: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   // Wrapper pentru cele 2 copii ale unui pattern. top/bottom 0 → ocupa toata
   // inaltimea wrap-ului → Svg-urile cu height "100%" se intind corect.
   layer: {
     position: 'absolute',
     top: 0,
-    bottom: 0,
     left: 0,
     width: PATTERN_W * 2,
     flexDirection: 'row',
-  },
-  layerHalf: {
-    width: PATTERN_W,
-    height: '100%',
   },
 });

@@ -6,7 +6,9 @@ import {
   View,
 } from 'react-native';
 import { GLView, type ExpoWebGLRenderingContext } from 'expo-gl';
-import { Renderer } from 'expo-three';
+// import direct din build/Renderer: barrel-ul expo-three trage loaders
+// (AssimpLoader etc.) care nu mai există în three >= 0.166 și pică bundle-ul de release
+import Renderer from 'expo-three/build/Renderer';
 import { DeviceMotion } from 'expo-sensors';
 import * as THREE from 'three';
 import { bearingDegrees, distanceMeters } from './geo';

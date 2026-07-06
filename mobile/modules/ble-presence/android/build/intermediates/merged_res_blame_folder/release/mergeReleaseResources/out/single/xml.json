@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/xml/rn_dev_preferences.xml",
+        "source": "com.blepresence.ble-presence-react-android-0.85.3-release-19:/xml/rn_dev_preferences.xml"
+    }
+]

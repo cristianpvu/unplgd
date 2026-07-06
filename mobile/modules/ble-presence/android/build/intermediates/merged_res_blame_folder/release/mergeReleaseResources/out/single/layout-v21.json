@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-v21/notification_action_tombstone.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/layout-v21/notification_action_tombstone.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-v21/notification_action.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/layout-v21/notification_action.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-v21/notification_template_custom_big.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/layout-v21/notification_template_custom_big.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-v21/notification_template_icon_group.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/layout-v21/notification_template_icon_group.xml"
+    }
+]

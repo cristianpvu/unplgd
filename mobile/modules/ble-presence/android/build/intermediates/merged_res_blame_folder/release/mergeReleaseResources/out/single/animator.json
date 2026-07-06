@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_open_enter.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_open_enter.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_close_exit.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_close_exit.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_fade_enter.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_fade_enter.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_close_enter.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_close_enter.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_open_exit.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_open_exit.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/animator/fragment_fade_exit.xml",
+        "source": "com.blepresence.ble-presence-fragment-1.5.4-0:/animator/fragment_fade_exit.xml"
+    }
+]

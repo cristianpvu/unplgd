@@ -1,5 +1,13 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Animated,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type LayoutChangeEvent,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { COWALK_MIN_DURATION_MS } from '../ble/constants';
 import type { ClientSession } from '../ble/presence';
@@ -40,6 +48,17 @@ export function CoWalkSessionCard({
   onPause?: () => void;
   onFocus?: () => void;
 }) {
+  // Marimea reala a cardului — masurata pe scena (view in-flux cu continut
+  // real, onLayout se emite garantat). Landscape primeste dimensiuni numerice
+  // exacte; nu mai depindem de absoluteFill (nesigur pe RN new arch aici).
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  const onSceneLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    if (!box || Math.abs(box.w - width) > 1 || Math.abs(box.h - height) > 1) {
+      setBox({ w: width, h: height });
+    }
+  };
+
   const me = session.members.find((m) => m.isMe);
   const others = session.members.filter((m) => !m.isMe);
   const myJoinedAt = me?.joinedAtClient ?? session.startedAtClient;
@@ -70,11 +89,8 @@ export function CoWalkSessionCard({
         : `Cu ${others[0]!.name} +${others.length - 1}`;
 
   return (
-    <View style={styles.scene}>
-      {/* Peisaj parallax — 4 layere care curg cu viteze diferite. Cand
-          obiectivul e cucerit, layerele se opresc (sesiunea s-a terminat). */}
-      <Landscape paused={myAwarded} />
-
+    <View style={styles.scene} onLayout={onSceneLayout}>
+      <View style={styles.sceneContent}>
       {/* Header: LIVE pulse + count + textul "spre XP". */}
       <View style={styles.headerRow}>
         <LiveBadge awarded={myAwarded} />
@@ -147,6 +163,13 @@ export function CoWalkSessionCard({
           )}
         </View>
       )}
+      </View>
+
+      {/* Peisaj parallax — 4 layere care curg cu viteze diferite; se opresc
+          cand obiectivul e cucerit. ULTIMUL copil, in-flux, cu marginTop
+          negativ (vezi Landscape.tsx) → se suprapune exact peste card, sub
+          continut. Randat abia dupa ce onLayout ne da marimea cardului. */}
+      {box && <Landscape paused={myAwarded} w={box.w} h={box.h} />}
     </View>
   );
 }
@@ -365,13 +388,16 @@ function Star({ size, color }: { size: number; color: string }) {
 // =====================================================================
 
 const styles = StyleSheet.create({
+  // Fara gap/padding aici (vezi comentariul din render) — doar forma cardului.
   scene: {
-    paddingVertical: 16,
-    paddingHorizontal: 12,
     overflow: 'hidden',
-    gap: 10,
     borderRadius: 18,
     minHeight: SCENE_HEIGHT,
+  },
+  sceneContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    gap: 10,
   },
   headerRow: {
     flexDirection: 'row',

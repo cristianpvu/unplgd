@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml",
+        "source": "com.blepresence.ble-presence-appcompat-1.7.0-14:/layout-watch-v20/abc_alert_dialog_button_bar_material.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/layout-watch-v20/abc_alert_dialog_title_material.xml",
+        "source": "com.blepresence.ble-presence-appcompat-1.7.0-14:/layout-watch-v20/abc_alert_dialog_title_material.xml"
+    }
+]
