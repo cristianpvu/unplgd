@@ -28,6 +28,7 @@ import { chestsRouter } from './routes/chests.js';
 import { adventureRouter } from './routes/adventure.js';
 import { journeyRouter } from './routes/journey.js';
 import { questsRouter } from './routes/quests.js';
+import { screenTimeRouter } from './routes/screentime.js';
 import { errorHandler } from './middleware/error.js';
 import { authRateLimit } from './middleware/rateLimit.js';
 import { prisma } from './lib/prisma.js';
@@ -83,6 +84,7 @@ app.use('/chests', chestsRouter);
 app.use('/adventure', adventureRouter);
 app.use('/journey', journeyRouter);
 app.use('/quests', questsRouter);
+app.use('/screentime', screenTimeRouter);
 
 app.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 app.use(errorHandler);

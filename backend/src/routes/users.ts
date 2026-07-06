@@ -6,6 +6,7 @@ import { getSignedUrl } from '../lib/storage/gcs.js';
 import { getPetSummaryByUserId, resolveBackgroundAssets } from '../lib/petImage.js';
 import { getAllSkillScores } from '../lib/skills.js';
 import { getTopRootDomains } from '../lib/domains.js';
+import { weekSummaryForUser } from '../lib/screentime.js';
 
 export const usersRouter = Router();
 usersRouter.use(requireAuth);
@@ -32,6 +33,7 @@ usersRouter.get('/:id', async (req, res, next) => {
     if (!user) throw notFound('user_not_found', 'Utilizator inexistent');
 
     const pet = await getPetSummaryByUserId(user.id);
+    const screenTime = await weekSummaryForUser(user.id);
 
     // Fundalul de profil selectat (deblocat din story-adventure) — vizibil de
     // oricine intra pe profil. NULL daca nu si-a setat unul / nu mai e activ.
@@ -57,6 +59,7 @@ usersRouter.get('/:id', async (req, res, next) => {
       avatarSvgBlink: user.avatar?.svgBlink ?? null,
       pet,
       background,
+      screenTime,
     });
   } catch (e) {
     next(e);

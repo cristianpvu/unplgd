@@ -22,6 +22,14 @@ export const XP_REWARDS = {
   HUNT_RANK_2: 60,
   HUNT_RANK_3: 30,
   HUNT_PARTICIPATION: 10,
+  // Screen-time saptamanal: cine sta cel mai PUTIN pe telefon in cercul lui de
+  // prieteni castiga mai mult. Acordat lazy la finalul saptamanii, idempotent
+  // pe (userId, "screentime_week", weekKey). Participation pt cei sub podium
+  // care totusi au raportat date (incurajam obiceiul, nu doar castigul).
+  SCREENTIME_WEEK_RANK_1: 120,
+  SCREENTIME_WEEK_RANK_2: 80,
+  SCREENTIME_WEEK_RANK_3: 50,
+  SCREENTIME_WEEK_PARTICIPATION: 20,
 } as const;
 
 type Tx = PrismaClient | Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
