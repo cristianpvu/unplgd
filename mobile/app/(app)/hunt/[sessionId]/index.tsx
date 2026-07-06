@@ -30,6 +30,7 @@ import {
 } from '../../../../src/api/hunt';
 import { ApiError } from '../../../../src/api/client';
 import { cancelTagRead, isNfcAvailable, readTagUid } from '../../../../src/lib/nfc';
+import { IconBracelet } from '../../../../src/ui/icons';
 import { colors } from '../../../../src/theme/colors';
 import { Encounter } from '../../../../src/hunt/Encounter';
 import { HuntMap } from '../../../../src/hunt/HuntMap';
@@ -338,9 +339,7 @@ function LobbyView({
       const msg =
         err instanceof ApiError && err.code === 'bracelet_unknown'
           ? 'Bratara nu e inregistrata pe niciun cont.'
-          : err instanceof ApiError && err.code === 'not_friends'
-            ? err.message
-            : err?.message ?? 'Nu am putut adauga jucatorul';
+          : err?.message ?? 'Nu am putut adauga jucatorul';
       Alert.alert('Hopa', msg);
     },
   });
@@ -421,7 +420,7 @@ function LobbyView({
             {scanningBracelet || braceletMut.isPending ? (
               <ActivityIndicator color={colors.accent} size="small" />
             ) : (
-              <Text style={styles.braceletBtnIcon}>⌚</Text>
+              <IconBracelet size={22} color={colors.accent} />
             )}
             <View style={{ flex: 1 }}>
               <Text style={styles.braceletBtnLabel}>
@@ -516,7 +515,8 @@ function PlayerRow({
       </Text>
       {member.viaBracelet && (
         <View style={styles.braceletBadge}>
-          <Text style={styles.braceletBadgeText}>⌚ bratara</Text>
+          <IconBracelet size={11} color={colors.textMuted} />
+          <Text style={styles.braceletBadgeText}>bratara</Text>
         </View>
       )}
       <Text style={styles.playerLevel}>L{member.level}</Text>
@@ -1022,10 +1022,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     backgroundColor: colors.cardAlt,
   },
-  braceletBtnIcon: { fontSize: 20 },
   braceletBtnLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
   braceletBtnSub: { color: colors.textMuted, fontSize: 11, fontWeight: '600', marginTop: 1 },
   braceletBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: colors.cardAlt,
     borderRadius: 999,
     paddingHorizontal: 8,

@@ -14,6 +14,16 @@ function Base({ size = 22, children }: { size?: number; children: React.ReactNod
   );
 }
 
+export function IconBracelet({ size, color = '#FFFFFF' }: Props) {
+  return (
+    <Base size={size}>
+      {/* Banda bratarii + "bead"-ul NFC pe margine */}
+      <Circle cx="12" cy="12" r="7" stroke={color} strokeWidth={2} />
+      <Circle cx="16.9" cy="16.9" r="2.6" fill={color} />
+    </Base>
+  );
+}
+
 export function IconArrowLeft({ size, color = '#FFFFFF' }: Props) {
   return (
     <Base size={size}>

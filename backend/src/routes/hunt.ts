@@ -297,8 +297,9 @@ huntRouter.post('/sessions/:id/join', async (req, res, next) => {
 // Copil FARA telefon la el: cineva deja in lobby ii scaneaza bratara NFC cu
 // telefonul lui si backend-ul il adauga in lobby pe contul lui. Participa si
 // primeste XP normal, dar nu poate fi ales lider (n-are telefon pt gameplay).
-// Aceeasi regula de acces ca /join: proprietarul bratarii trebuie sa fie
-// prieten ACCEPTED cu host-ul (sau chiar host-ul, caz in care e no-op).
+// Spre deosebire de /join, NU cerem prietenie cu host-ul: scanarea fizica a
+// bratarii E dovada ca cei doi copii sunt impreuna in parc — echivalentul
+// proximitatii BLE de la join-ul cu telefon.
 const joinBraceletSchema = z.object({
   uid: z.string().min(4).max(64).regex(/^[0-9a-fA-F:]+$/, 'UID hex invalid'),
 });
@@ -335,22 +336,6 @@ huntRouter.post('/sessions/:id/join-bracelet', async (req, res, next) => {
       throw notFound('bracelet_unknown', 'Bratara nu e inregistrata pe niciun cont');
     }
     const owner = bracelet.user;
-
-    if (owner.id !== session.hostId) {
-      const friendship = await prisma.friendship.findFirst({
-        where: {
-          status: FriendshipStatus.ACCEPTED,
-          OR: [
-            { requesterId: owner.id, receiverId: session.hostId },
-            { requesterId: session.hostId, receiverId: owner.id },
-          ],
-        },
-        select: { id: true },
-      });
-      if (!friendship) {
-        throw forbidden('not_friends', `${owner.name} nu e prieten cu host-ul`);
-      }
-    }
 
     const already = session.lobby.some((l) => l.userId === owner.id);
     if (!already) {
