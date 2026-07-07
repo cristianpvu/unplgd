@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -195,13 +195,12 @@ export function Orb({ phase, size = 220, children, subtle = false }: OrbProps) {
   }, [phase, subtle, orbPulse, orbGlow, ring1, ring2, ring3]);
 
   return (
-    <View style={{ width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg
-        width={SIZE}
-        height={SIZE}
-        viewBox="0 0 240 240"
-        style={StyleSheet.absoluteFillObject}
-      >
+    <View style={{ width: SIZE, height: SIZE, alignItems: 'center' }}>
+      {/* Halo-ul e primul copil IN-FLUX (nu absoluteFill — pozitionarea
+          absoluta e nesigura pe RN new arch, vezi cowalk/Landscape.tsx), iar
+          globul de dedesubt se suprapune exact peste el cu marginTop negativ.
+          Net: containerul ramane SIZE inaltime. */}
+      <Svg width={SIZE} height={SIZE} viewBox="0 0 240 240">
         <Defs>
           <RadialGradient id="orbGlow" cx="0.5" cy="0.5" r="0.5">
             <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.5" />
@@ -224,6 +223,7 @@ export function Orb({ phase, size = 220, children, subtle = false }: OrbProps) {
         style={{
           width: SIZE,
           height: SIZE,
+          marginTop: -SIZE,
           alignItems: 'center',
           justifyContent: 'center',
           transform: [{ scale: orbPulse }],
@@ -280,6 +280,9 @@ function Ripple({
 // "magica" e mereu in miscare. Doua layere: fundalul fix (bg color), si peste
 // el cele 3 cercuri colorate radiale care se rotesc.
 export function BackgroundMesh() {
+  // Dimensiuni numerice, nu "100%": Svg cu procente se dimensioneaza gresit pe
+  // Android (RN new arch) — vezi Landscape.tsx pentru context.
+  const { width: winW, height: winH } = useWindowDimensions();
   const rotation = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
@@ -301,13 +304,13 @@ export function BackgroundMesh() {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
+      <Svg width={winW} height={winH} viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
         <Path d="M0 0 H400 V800 H0 Z" fill={colors.bg} />
       </Svg>
       <Animated.View
         style={[StyleSheet.absoluteFill, { transform: [{ rotate: rotateZ }] }]}
       >
-        <Svg width="100%" height="100%" viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
+        <Svg width={winW} height={winH} viewBox="0 0 400 800" preserveAspectRatio="xMidYMid slice">
           <Defs>
             <RadialGradient id="g1" cx="0.5" cy="0.5" r="0.5">
               <Stop offset="0%" stopColor={colors.accent} stopOpacity="0.45" />

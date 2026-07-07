@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.calldetector.call-detector-release-27:/layout-v26/abc_screen_toolbar.xml",
+        "source": "com.calldetector.call-detector-appcompat-1.7.0-14:/layout-v26/abc_screen_toolbar.xml"
+    }
+]

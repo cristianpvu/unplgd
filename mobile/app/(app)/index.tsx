@@ -7,6 +7,7 @@ import {
   Easing,
   Image,
   Modal,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -118,9 +119,14 @@ export default function Home() {
 
   // Daily hook personalizat — un singur mesaj/zi pe baza activitatii recente.
   // Daca pica (network/AI), bubble-ul cade pe catchphrases speciei.
+  // Key-uit PER PET (backend-ul cache-uieste oricum per pet+zi): altfel, dupa
+  // un switch de pet, staleTime-ul de 6h servea hook-ul pet-ului VECHI.
+  const activePet = petQuery.data?.pet;
+  const petKey = activePet ? `${activePet.id}:${activePet.species.slug}` : null;
   const hookQuery = useQuery({
-    queryKey: ['pet', 'daily-hook'],
+    queryKey: ['pet', 'daily-hook', petKey],
     queryFn: getPetDailyHook,
+    enabled: petKey !== null,
     // 6h — hook-ul se schimba zilnic la miezul noptii, dar nu vrem refetch
     // la fiecare focus al app-ului. 6h prinde ziua noua daca ramane logat.
     staleTime: 6 * 60 * 60 * 1000,
@@ -887,22 +893,58 @@ function BottomSheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  // Drag-in-jos pe zona grip+titlu ca sa inchizi sheet-ul (pe langa tap pe
+  // backdrop si back-ul nativ). Pan-ul e doar pe header, nu pe tot sheet-ul,
+  // ca sa nu fure scroll-ul listei de prieteni/notificari.
+  const dragY = useRef(new Animated.Value(0)).current;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (visible) dragY.setValue(0);
+  }, [visible, dragY]);
+  const pan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) =>
+        g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx) * 1.5,
+      onPanResponderMove: (_e, g) => {
+        if (g.dy > 0) dragY.setValue(g.dy);
+      },
+      onPanResponderRelease: (_e, g) => {
+        if (g.dy > 90 || g.vy > 0.8) {
+          onCloseRef.current();
+        } else {
+          Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(dragY, { toValue: 0, useNativeDriver: true }).start();
+      },
+    }),
+  ).current;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose} />
-      <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
-        <View style={styles.sheet}>
-          <View style={styles.sheetGrip} />
-          <Text style={styles.sheetTitle}>{title}</Text>
-          <ScrollView
-            style={styles.sheetScroll}
-            contentContainerStyle={styles.sheetScrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {children}
-          </ScrollView>
-        </View>
-      </SafeAreaView>
+      {/* Backdrop IN-FLUX (flex:1 deasupra sheet-ului), NU absoluteFill: pe RN
+          0.85 new-arch absoluteFill e nesigur si tap-ul pe fundal nu ajungea
+          sa inchida sheet-ul. Zona de sub el e acoperita de sheet-ul opac. */}
+      <View style={styles.modalRoot}>
+        <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Inchide" />
+        <SafeAreaView edges={['bottom']} style={styles.sheetWrap}>
+          <Animated.View style={[styles.sheet, { transform: [{ translateY: dragY }] }]}>
+            <View style={styles.sheetHandle} {...pan.panHandlers}>
+              <View style={styles.sheetGrip} />
+              <Text style={styles.sheetTitle}>{title}</Text>
+            </View>
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetScrollContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {children}
+            </ScrollView>
+          </Animated.View>
+        </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -1140,8 +1182,13 @@ const styles = StyleSheet.create({
 
   errorText: { color: colors.danger, textAlign: 'center', fontWeight: '600' },
 
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
-  sheetWrap: { marginTop: 'auto' },
+  modalRoot: { flex: 1 },
+  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  // Dim si in spatele sheet-ului (colturi rotunjite + gap-ul care apare cand
+  // tragi sheet-ul in jos), ca fundalul sa ramana uniform.
+  sheetWrap: { backgroundColor: 'rgba(0,0,0,0.35)' },
+  // Zona de apucat (grip + titlu) — tinta gestului de drag-to-close.
+  sheetHandle: { alignSelf: 'stretch', gap: 8 },
   sheet: {
     backgroundColor: colors.card,
     borderTopLeftRadius: 24,

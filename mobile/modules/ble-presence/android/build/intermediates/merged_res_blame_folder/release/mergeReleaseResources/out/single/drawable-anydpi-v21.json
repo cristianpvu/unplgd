@@ -1,0 +1,26 @@
+[
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_answer_video.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_answer_video.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_answer.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_answer.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_answer_video_low.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_answer_video_low.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_decline.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_decline.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_answer_low.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_answer_low.xml"
+    },
+    {
+        "merged": "com.blepresence.ble-presence-release-27:/drawable-anydpi-v21/ic_call_decline_low.xml",
+        "source": "com.blepresence.ble-presence-core-1.13.1-9:/drawable-anydpi-v21/ic_call_decline_low.xml"
+    }
+]

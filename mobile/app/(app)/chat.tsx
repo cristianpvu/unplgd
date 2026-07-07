@@ -74,11 +74,44 @@ export default function PetChat() {
   const speakCancelledRef = useRef(false);
 
   const petQuery = useQuery({ queryKey: ['pet'], queryFn: getMyPet });
-  const historyQuery = useQuery({ queryKey: ['pet', 'chat'], queryFn: getPetChatHistory });
 
   const pet = petQuery.data?.pet;
   const petImage = petImageUrl(pet?.species.imagePath ?? null);
   const petName = pet?.name ?? 'Pet';
+
+  // History-ul e cache-uit PER PET (id+specie in key). Fara asta, dupa un
+  // switch de pet react-query servea instant history-ul vechi din cache
+  // (invalidate nu goleste datele) → intro-ul pet-ului VECHI se afisa si se
+  // redau mp3-urile TTS cu vocea veche, iar introPlayedRef bloca redarea
+  // intro-ului nou cand sosea refetch-ul.
+  const petKey = pet ? `${pet.id}:${pet.species.slug}` : null;
+  const historyQuery = useQuery({
+    queryKey: ['pet', 'chat', petKey],
+    queryFn: getPetChatHistory,
+    enabled: petKey !== null,
+  });
+
+  // Daca pet-ul se schimba cat timp ecranul e montat (chat ramane in stack
+  // cand navighezi la /pets si echipezi altul), oprim tot ce e in curs si
+  // resetam starea ca intro-ul noului pet sa porneasca curat.
+  const prevPetKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!petKey) return;
+    if (prevPetKeyRef.current !== null && prevPetKeyRef.current !== petKey) {
+      speakCancelledRef.current = true;
+      stopDevice();
+      void stopRemoteAudio();
+      liveSttRef.current?.stop();
+      liveSttRef.current = null;
+      setBubbles([]);
+      setLivePetText('');
+      setLivePetShown('');
+      setLivePartialUser('');
+      setPhase('idle');
+      introPlayedRef.current = false;
+    }
+    prevPetKeyRef.current = petKey;
+  }, [petKey]);
 
   useEffect(() => {
     if (!historyQuery.data) return;

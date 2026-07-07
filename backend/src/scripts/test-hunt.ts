@@ -214,7 +214,9 @@ async function main() {
   // 6. Creeaza sesiune ACTIVE direct (skip lobby).
   console.log('\n[6/6] Creez sesiune ACTIVE...');
   const allMemberIds = [host.id, ...demos.map((d) => d.id)];
-  const teamPlans = assignTeamsRandomly(allMemberIds);
+  const teamPlans = assignTeamsRandomly(
+    allMemberIds.map((userId) => ({ userId, viaBracelet: false })),
+  );
   const parkPolygon = JSON.parse(parkRow.polygon) as Polygon | MultiPolygon;
   const zones = splitPolygonIntoZones(parkPolygon, teamPlans.length);
 

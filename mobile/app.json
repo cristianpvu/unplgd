@@ -116,7 +116,9 @@
         {
           "color": "#7DCEA0"
         }
-      ]
+      ],
+      "expo-audio",
+      "expo-status-bar"
     ],
     "extra": {
       "router": {},
