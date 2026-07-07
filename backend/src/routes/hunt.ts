@@ -1468,6 +1468,25 @@ huntRouter.get('/sessions/:id/results', async (req, res, next) => {
       throw forbidden('not_member', 'Nu ai participat la aceasta sesiune');
     }
 
+    // DEV MODE: la egalitate perfecta (scor + monstri, ex. 0-0) castiga echipa
+    // host-ului — pt demo rapid: intri, termini sesiunea si vezi podiumul de
+    // rank 1 fara sa invingi monstri. Nu atinge productia (HUNT_DEV_MODE=false)
+    // si nici meciurile decise pe scor.
+    if (env.HUNT_DEV_MODE) {
+      const hostTeamId = session.teams.find((t) =>
+        t.members.some((m) => m.userId === session.hostId),
+      )?.id;
+      if (hostTeamId) {
+        session.teams.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          if (b.monstersDefeated !== a.monstersDefeated) {
+            return b.monstersDefeated - a.monstersDefeated;
+          }
+          return a.id === hostTeamId ? -1 : b.id === hostTeamId ? 1 : 0;
+        });
+      }
+    }
+
     // Acordare XP rank-based — ruleaza o singura data per (user, sessionId)
     // prin unique constraint pe XpTransaction.
     const ranks = session.teams; // deja sortate desc
