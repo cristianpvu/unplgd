@@ -14,9 +14,24 @@ import { appendFile } from 'node:fs/promises';
 
 const ENABLED = process.env.COWALK_TRACE === '1';
 const FILE = process.env.COWALK_TRACE_FILE ?? './cowalk-trace.jsonl';
-const LABEL = process.env.COWALK_TRACE_LABEL ?? 'unlabeled';
 
 export const traceEnabled = ENABLED;
+export const traceFile = FILE;
+
+// Eticheta conditiei experimentale curente. Pornim de la env, dar se schimba
+// in zbor prin GET /admin/trace?key=...&label=... — pe teren, cu doua telefoane
+// in mana, nu vrei sa repornesti containerul intre conditii.
+let currentLabel = process.env.COWALK_TRACE_LABEL ?? 'unlabeled';
+let rowsWritten = 0;
+
+export function setTraceLabel(label: string): string {
+  currentLabel = label.trim() || 'unlabeled';
+  return currentLabel;
+}
+
+export function traceStatus() {
+  return { enabled: ENABLED, label: currentLabel, file: FILE, rowsWritten };
+}
 
 type Row =
   | {
@@ -51,6 +66,7 @@ let chain: Promise<void> = Promise.resolve();
 
 function write(row: Row): void {
   if (!ENABLED) return;
+  rowsWritten++;
   chain = chain
     .then(() => appendFile(FILE, JSON.stringify(row) + '\n'))
     .catch((e) => {
@@ -64,7 +80,7 @@ export function traceReport(
   steps: number,
   rssi: number[],
 ): void {
-  write({ kind: 'report', t: Date.now(), label: LABEL, sessionId, userId, steps, rssi });
+  write({ kind: 'report', t: Date.now(), label: currentLabel, sessionId, userId, steps, rssi });
 }
 
 export function traceVerdict(args: {
@@ -76,5 +92,5 @@ export function traceVerdict(args: {
   stdDev: number;
   effectiveMs: number;
 }): void {
-  write({ kind: 'verdict', t: Date.now(), label: LABEL, ...args });
+  write({ kind: 'verdict', t: Date.now(), label: currentLabel, ...args });
 }

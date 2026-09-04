@@ -10,6 +10,7 @@ import {
   predictNextRootDomain,
 } from '../lib/social/markov.js';
 import { runNotifyDailyQuests } from '../lib/quests/notify.js';
+import { setTraceLabel, traceStatus } from '../lib/cowalk/trace.js';
 
 // Endpoint-uri pentru debug rapid (browser-friendly, fara JWT). Pazite cu
 // ADMIN_KEY din env — query param ?key=<secret>. Daca lipseste cheia, raspund
@@ -28,6 +29,31 @@ function checkKey(req: any, res: any): boolean {
   }
   return true;
 }
+
+// GET /admin/trace?key=<secret>[&label=<conditie>]
+// Control pentru instrumentarea co-walk (evaluare adversariala). Fara `label`
+// raporteaza starea; cu `label` schimba conditia experimentala pentru
+// inregistrarile urmatoare. Browser-friendly: pe teren se apeleaza din
+// telefon, cu cate un bookmark per conditie.
+adminRouter.get('/trace', (req, res) => {
+  if (!checkKey(req, res)) return;
+  const label = typeof req.query.label === 'string' ? req.query.label : null;
+  if (label !== null) setTraceLabel(label);
+  const st = traceStatus();
+  if (req.query.format === 'json') {
+    res.json(st);
+    return;
+  }
+  res.type('html').send(
+    `<html><body style="font:16px/1.6 system-ui;padding:24px">` +
+      `<h2>co-walk trace</h2>` +
+      `<p>activ: <b>${st.enabled ? 'DA' : 'NU (COWALK_TRACE != 1)'}</b></p>` +
+      `<p>conditie curenta: <b style="font-size:24px">${st.label}</b></p>` +
+      `<p>randuri scrise de la pornire: ${st.rowsWritten}</p>` +
+      `<p>fisier: <code>${st.file}</code></p>` +
+      `</body></html>`,
+  );
+});
 
 // GET /admin/ai-usage?key=<secret>
 // Browser-friendly HTML implicit; daca pui &format=json primesti raw JSON.

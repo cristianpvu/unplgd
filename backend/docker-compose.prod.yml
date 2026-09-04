@@ -101,8 +101,19 @@ services:
       REPLICATE_RVC_VERSION: ${REPLICATE_RVC_VERSION:-bbdb9b991f627b94d5fa92f0a3eb4037f224bb79cf56ff46b70afe84ce7bb646}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
       ADMIN_KEY: ${ADMIN_KEY:-}
+      # Instrumentare co-walk pentru evaluarea adversariala. Default oprita:
+      # fara COWALK_TRACE=1 in .env nu se scrie nimic si nu costa nimic.
+      # Eticheta conditiei se schimba in zbor din GET /admin/trace?key=...&label=...
+      COWALK_TRACE: ${COWALK_TRACE:-0}
+      COWALK_TRACE_LABEL: ${COWALK_TRACE_LABEL:-unlabeled}
+      COWALK_TRACE_FILE: /data/trace/cowalk-trace.jsonl
     volumes:
       - unplgd_tts_cache:/data/tts-cache
+      # Bind mount, nu volum numit: trace-ul trebuie sa fie citibil direct de
+      # pe VPS (scp / python3 analyze_trace.py) si sa supravietuiasca la
+      # rebuild-uri. /app nu e persistent — un fisier scris acolo dispare la
+      # urmatorul deploy.
+      - ./trace:/data/trace
     ports:
       - "127.0.0.1:4001:4000"
     networks: [unplgd_net]
