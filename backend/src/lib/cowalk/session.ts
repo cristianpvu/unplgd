@@ -478,6 +478,15 @@ export async function tickHeartbeat(
         rssiSamples: p.rssiSamples.length,
         rssiStdDev: stdDev(p.rssiSamples),
       });
+      traceVerdict({
+        sessionId: session.id,
+        userId: p.userId,
+        outcome: 'steps',
+        steps: p.steps,
+        samples: p.rssiSamples.length,
+        stdDev: stdDev(p.rssiSamples),
+        effectiveMs: eff,
+      });
     }
     if (earlyFails.length > 0) {
       const pipeline = redis.pipeline();
