@@ -4,7 +4,7 @@
             "outputFile": "com.calldetector.call-detector-mergeReleaseResources-25:/values-v24/values-v24.xml",
             "map": [
                 {
-                    "source": "/Users/cristianpvu/.gradle/caches/9.3.1/transforms/8795221828b9ed6baef8a94e188dd7e1/transformed/appcompat-1.7.0/res/values-v24/values-v24.xml",
+                    "source": "/Users/mbair3/.gradle/caches/9.3.1/transforms/c3f18d2e00ef3ec8f7d9142e262c1a72/transformed/appcompat-1.7.0/res/values-v24/values-v24.xml",
                     "from": {
                         "startLines": "2,3",
                         "startColumns": "4,4",
@@ -19,7 +19,7 @@
             "outputFile": "com.calldetector.call-detector-release-27:/values-v24/values-v24.xml",
             "map": [
                 {
-                    "source": "/Users/cristianpvu/.gradle/caches/9.3.1/transforms/8795221828b9ed6baef8a94e188dd7e1/transformed/appcompat-1.7.0/res/values-v24/values-v24.xml",
+                    "source": "/Users/mbair3/.gradle/caches/9.3.1/transforms/c3f18d2e00ef3ec8f7d9142e262c1a72/transformed/appcompat-1.7.0/res/values-v24/values-v24.xml",
                     "from": {
                         "startLines": "2,3",
                         "startColumns": "4,4",

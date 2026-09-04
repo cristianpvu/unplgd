@@ -1,5 +1,6 @@
 import { redis } from '../redis.js';
 import { randomUUID } from 'node:crypto';
+import { traceReport, traceVerdict } from './trace.js';
 
 // Cluster session = grup de 2+ prieteni mutual vizibili prin BLE care merg
 // impreuna. Fiecare membru are propriul `joinedAt` (cand a fost atras in
@@ -550,6 +551,15 @@ export async function tickHeartbeat(
       });
       p.awarded = true;
       p.lastTickXpMinute = 10;
+      traceVerdict({
+        sessionId: session.id,
+        userId: p.userId,
+        outcome: 'award',
+        steps: p.steps,
+        samples: p.rssiSamples.length,
+        stdDev: std,
+        effectiveMs: effectiveElapsed,
+      });
       events.push({
         type: 'completed',
         sessionId: session.id,
@@ -627,6 +637,15 @@ export async function tickHeartbeat(
       steps: p.steps,
       rssiSamples: p.rssiSamples.length,
       rssiStdDev: stdDev(p.rssiSamples),
+    });
+    traceVerdict({
+      sessionId: session.id,
+      userId: p.userId,
+      outcome: reason,
+      steps: p.steps,
+      samples: p.rssiSamples.length,
+      stdDev: stdDev(p.rssiSamples),
+      effectiveMs: effectiveElapsed,
     });
   }
   if (fails.length > 0) {
@@ -776,6 +795,7 @@ export async function recordReport(
   if (!p) return null;
   // Steps total e cumulativ de la session start (mobile tracker → joinedAt
   // delta). Luam max ca sa fie idempotent la retry-uri / reconnect-uri.
+  traceReport(session.id, userId, stepsTotal, rssiSamples);
   p.steps = Math.max(p.steps, stepsTotal);
   for (const s of rssiSamples) p.rssiSamples.push(s);
   if (p.rssiSamples.length > RSSI_SAMPLES_CAP) {

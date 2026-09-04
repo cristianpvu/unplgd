@@ -9,7 +9,7 @@
 9       dar declaratia o tinem ca runtime request sa functioneze in toate cazurile.
 10    -->
 11    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-11-->/Users/cristianpvu/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:3-73
-11-->/Users/cristianpvu/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:20-70
+11-->/Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:3-73
+11-->/Users/mbair3/unplgd/mobile/modules/call-detector/android/src/main/AndroidManifest.xml:5:20-70
 12
 13</manifest>
